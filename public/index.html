@@ -1,0 +1,1879 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AppSec Ops</title>
+<script>
+  (function () {
+    try {
+      if (localStorage.getItem('appsecops-theme') === 'light') {
+        document.documentElement.dataset.theme = 'light';
+      }
+    } catch (e) {}
+  })();
+</script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #1f1e1d;
+    --panel: #262523;
+    --panel-2: #2d2b28;
+    --panel-3: #363330;
+    --border: #3e3a35;
+    --border-soft: #2e2b27;
+    --text: #f0eee6;
+    --text-dim: #c7c2b4;
+    --muted: #8f8a7b;
+    --accent: #da7756;
+    --accent-contrast: #1f1e1d;
+    --accent-soft: rgba(218, 119, 86, .14);
+    --ok: #87a878;
+    --ok-soft: rgba(135, 168, 120, .14);
+    --warn: #d3a05e;
+    --warn-soft: rgba(211, 160, 94, .14);
+    --err: #c76a5c;
+    --err-soft: rgba(199, 106, 92, .14);
+    --crit: #a8453b;
+    --crit-soft: rgba(168, 69, 59, .17);
+    --scan: #6ba3c9;
+    --scan-soft: rgba(107, 163, 201, .14);
+    --font: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+    font-family: var(--font);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #faf9f5;
+    --panel: #ffffff;
+    --panel-2: #f3f1ea;
+    --panel-3: #ebe8df;
+    --border: #e4e1d6;
+    --border-soft: #eeece3;
+    --text: #21201c;
+    --text-dim: #4d4a42;
+    --muted: #8a8574;
+    --accent: #bd5b3a;
+    --accent-contrast: #ffffff;
+    --accent-soft: rgba(189, 91, 58, .1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .icon { width: 14px; height: 14px; flex-shrink: 0; display: inline-block; vertical-align: -2.5px; }
+  .icon-lg { width: 17px; height: 17px; vertical-align: -3.5px; }
+
+  /* ---------- global nav ---------- */
+  #global-nav {
+    width: 200px; flex-shrink: 0;
+    background: var(--panel); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 16px 10px;
+  }
+  .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: .02em; padding: 6px 8px 20px; color: var(--text-dim); }
+  .nav-brand .icon { color: var(--accent); }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 5px;
+    background: none; color: var(--muted); font-weight: 500; font-size: 12.5px; text-align: left;
+    width: 100%; margin-bottom: 1px; border-left: 2px solid transparent;
+  }
+  .nav-item .icon { color: var(--muted); }
+  .nav-item:hover { background: var(--panel-2); color: var(--text-dim); }
+  .nav-item.active { background: var(--panel-2); color: var(--text); border-left-color: var(--accent); }
+  .nav-item.active .icon { color: var(--accent); }
+  .nav-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 8px; }
+
+  #status {
+    font-size: 10.5px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);
+    color: var(--muted); text-align: center; text-transform: uppercase; letter-spacing: .04em; font-weight: 600;
+  }
+  #status.connected { color: var(--ok); border-color: var(--border); background: var(--ok-soft); }
+  #status.disconnected { color: var(--err); border-color: var(--border); background: var(--err-soft); }
+
+  /* ---------- views ---------- */
+  .view { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .view-header {
+    padding: 18px 26px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  }
+  .view-header h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+  .view-subtitle { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .view-body { flex: 1; overflow-y: auto; padding: 20px 26px; }
+
+  label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  select, textarea, input {
+    width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 5px; padding: 7px 9px; font-size: 13px; font-family: inherit;
+  }
+  select:focus, textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; font-family: var(--mono); font-size: 12px; }
+  button {
+    background: var(--accent); color: var(--accent-contrast); border: none; border-radius: 5px;
+    padding: 8px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.secondary { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border); }
+  button.secondary:hover:not(:disabled) { filter: none; background: var(--panel-3); color: var(--text); }
+  .hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  /* ---------- dashboard ---------- */
+  .briefing {
+    border: 1px solid var(--border); border-left: 2px solid var(--accent); border-radius: 6px;
+    background: var(--panel); padding: 11px 14px; font-size: 12.5px; margin-bottom: 18px; color: var(--text-dim);
+  }
+  .briefing .briefing-tag { color: var(--accent); font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 4px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .stat-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 13px 14px; }
+  .stat-tile .stat-icon { color: var(--muted); margin-bottom: 10px; }
+  .stat-tile .stat-value { font-size: 22px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .stat-tile .stat-label { font-size: 11px; color: var(--muted); margin-top: 5px; }
+  .stat-tile .stat-sub { font-size: 10.5px; margin-top: 3px; color: var(--muted); }
+  .stat-tile.accent-warn .stat-icon { color: var(--warn); }
+  .stat-tile.accent-warn .stat-sub { color: var(--warn); }
+  .stat-tile.accent-ok .stat-icon { color: var(--ok); }
+  .stat-tile.accent-ok .stat-sub { color: var(--ok); }
+  .stat-tile.accent-accent .stat-icon { color: var(--accent); }
+  .stat-tile.accent-accent .stat-sub { color: var(--accent); }
+
+  .dash-columns { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; align-items: start; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .panel-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
+
+  .agent-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); }
+  .agent-row:last-child { border-bottom: none; }
+  .agent-row .a-icon { width: 26px; text-align: center; }
+  .agent-row .a-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .agent-row .a-dot.online { background: var(--ok); }
+  .agent-row .a-dot.offline { background: var(--muted); }
+  .agent-row-main { flex: 1; min-width: 0; }
+  .agent-row-name { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .agent-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent-row-status { font-size: 11px; color: var(--muted); text-align: right; flex-shrink: 0; }
+
+  .status-line { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); font-size: 12px; color: var(--text-dim); }
+  .status-line:last-child { border-bottom: none; }
+  .status-line .s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+  .status-line.warn .s-dot { background: var(--warn); }
+
+  .dash-footer {
+    margin-top: 18px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--panel); display: flex; align-items: center; justify-content: space-between;
+    font-size: 11.5px; color: var(--muted);
+  }
+  .dash-footer a, .link-btn { color: var(--accent); text-decoration: none; cursor: pointer; background: none; border: none; font-size: 11.5px; font-weight: 600; padding: 0; }
+
+  /* ---------- timeline ---------- */
+  .filter-pills { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-pill {
+    background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 4px; padding: 5px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .filter-pill:hover { color: var(--text-dim); }
+  .filter-pill .fp-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .filter-pill.active { background: var(--panel-2); color: var(--text); border-color: var(--accent); }
+
+  .timeline-date { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; margin: 20px 0 8px; }
+  .timeline-date:first-child { margin-top: 0; }
+  .timeline-row {
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 6px;
+    border-left: 2px solid var(--border); background: var(--panel); margin-bottom: 5px; cursor: pointer;
+  }
+  .timeline-row:hover { background: var(--panel-2); }
+  .timeline-row .tl-icon { margin-top: 2px; color: var(--muted); }
+  .tl-main { flex: 1; min-width: 0; }
+  .tl-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .tl-title { font-size: 12.5px; font-weight: 600; }
+  .tl-summary { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+  .tl-time { font-size: 10.5px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  #timeline-empty { color: var(--muted); font-size: 12.5px; padding: 40px 0; text-align: center; }
+
+  /* ---------- scan kickoff (lives on the Dashboard) ---------- */
+  .scan-form { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 14px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .scan-form-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+  .scan-form-row { display: flex; gap: 10px; align-items: flex-end; }
+  .scan-form-row > div { flex: 1; }
+  .scan-form-row button { flex-shrink: 0; margin-bottom: 1px; }
+  #scan-note-btn { position: relative; }
+  #scan-note-btn.has-note::after { content: ''; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  #scan-live-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+  #scan-live-container .stage-card { width: 100%; }
+  .scan-stats { display: flex; align-items: center; gap: 16px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .scan-stats .stat b { color: var(--text-dim); font-weight: 600; }
+  .scan-sparkline { display: block; width: 100%; height: 32px; box-sizing: border-box; border-bottom: 1px solid var(--border-soft); }
+  .scan-sparkline polyline { fill: none; stroke: var(--scan); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+
+  /* ---------- timeline scan rows (expandable inline) ---------- */
+  .tl-kind { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; background: var(--panel-3); color: var(--muted); margin-right: 6px; }
+  .timeline-row.expandable { flex-direction: column; align-items: stretch; cursor: pointer; }
+  .timeline-row-body { border-top: 1px solid var(--border-soft); margin: 8px -12px -10px; padding: 8px 12px 2px; }
+
+  /* ---------- settings ---------- */
+  .settings-row { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .theme-toggle { display: inline-flex; gap: 6px; }
+  #settings-env { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ---------- findings view (sidebar + detail) ---------- */
+  #findings-layout { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; }
+  aside#findings-sidebar { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .sidebar-header { padding: 14px 16px 10px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .sidebar-header h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0; }
+  .sidebar-header button { padding: 5px 10px; font-size: 12px; }
+
+  #findings-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .finding-row { display: flex; align-items: flex-start; gap: 8px; padding: 9px 8px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; border-left: 2px solid transparent; }
+  .finding-row:hover { background: var(--panel); }
+  .finding-row.selected { background: var(--panel-2); border-left-color: var(--accent); }
+  .sev-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+  .sev-dot.critical { background: var(--crit); }
+  .sev-dot.high { background: var(--err); }
+  .sev-dot.medium { background: var(--warn); }
+  .sev-dot.low, .sev-dot.informational { background: var(--ok); }
+  .finding-row-main { min-width: 0; flex: 1; }
+  .finding-row-title { font-size: 12.5px; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .finding-row-meta { margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  #findings-empty { padding: 20px 16px; color: var(--muted); font-size: 12px; }
+
+  main#detail { overflow-y: auto; padding: 0; display: flex; flex-direction: column; min-height: 0; }
+  #empty-state { color: var(--muted); font-size: 13px; padding: 60px 0; text-align: center; }
+
+  .finding-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .finding-header-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .finding-header-top h2 { font-size: 16px; margin: 0; font-weight: 600; }
+  .finding-header-meta { margin-top: 8px; font-size: 11.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  .finding-desc { margin-top: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+  .finding-desc summary { padding: 7px 10px; font-size: 11.5px; color: var(--muted); cursor: pointer; }
+  .finding-desc pre { margin: 0; padding: 10px; border-top: 1px solid var(--border-soft); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; }
+
+  .flow-area { flex: 1; padding: 18px 22px; min-height: 0; overflow-y: auto; }
+  .cta-row { display: flex; align-items: center; gap: 12px; }
+
+  .stage-row { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; padding: 4px 2px 14px; }
+  .connector { color: var(--muted); align-self: center; padding: 0 8px; font-size: 16px; flex-shrink: 0; }
+
+  .stage-card { width: 400px; flex-shrink: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; display: flex; flex-direction: column; max-height: 600px; }
+  .stage-card.status-error { border-color: var(--err); }
+  .stage-card.status-done { border-color: var(--border); }
+
+  .stage-header { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-bottom: 1px solid var(--border); cursor: context-menu; }
+  .stage-agent { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .status-dot.running { background: var(--warn); animation: pulse 1.2s infinite ease-in-out; }
+  .status-dot.done { background: var(--ok); }
+  .status-dot.error, .status-dot.cancelled { background: var(--err); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  .status-text { font-size: 10.5px; color: var(--muted); flex: 1; }
+  .stage-menu-btn { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; line-height: 1; cursor: pointer; display: flex; }
+  .stage-menu-btn:hover { color: var(--text); border-color: var(--text-dim); }
+
+  .stage-feed { padding: 10px; overflow-y: auto; font-size: 12px; line-height: 1.5; display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 60px; }
+  .feed-line { padding: 4px 7px; border-radius: 4px; background: var(--panel); color: var(--text-dim); }
+  .feed-line.tool { color: var(--accent); font-family: var(--mono); font-size: 11px; }
+  .feed-line.result { color: var(--muted); font-family: var(--mono); font-size: 11px; margin-left: 10px; }
+  .feed-line.text { background: none; padding: 2px 2px; color: var(--text); }
+  .feed-line.system { color: var(--muted); font-size: 11px; }
+  .feed-line.summary { border-left: 2px solid var(--accent); }
+  .feed-line.err { color: var(--err); border-left: 2px solid var(--err); }
+  .feed-line.thinking { color: var(--muted); font-size: 11px; }
+
+  details.stage-raw { border-top: 1px solid var(--border-soft); font-size: 11px; }
+  details.stage-raw summary { padding: 6px 10px; color: var(--muted); cursor: pointer; }
+  details.stage-raw pre { margin: 0; padding: 8px 10px; max-height: 200px; overflow: auto; font-family: var(--mono); white-space: pre-wrap; word-break: break-word; background: var(--bg); }
+
+  .stage-verdict { padding: 10px; border-top: 1px solid var(--border-soft); }
+  .stage-verdict .vgrid { display: grid; grid-template-columns: 90px 1fr; gap: 4px 8px; font-size: 11.5px; }
+  .stage-verdict .vgrid .k { color: var(--muted); font-weight: 600; }
+  .stage-verdict .vgrid .v { font-family: var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--text-dim); }
+
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .badge.confirmed, .badge.high, .badge.p0 { background: var(--err-soft); color: var(--err); }
+  .badge.critical { background: var(--crit-soft); color: var(--crit); }
+  .badge.needs_review, .badge.medium, .badge.p1, .badge.in_review { background: var(--warn-soft); color: var(--warn); }
+  .badge.false_positive, .badge.low, .badge.p2, .badge.p3, .badge.informational, .badge.duplicate, .badge.remediation_ready { background: var(--ok-soft); color: var(--ok); }
+  .badge.new { background: rgba(143,138,123,.16); color: var(--muted); }
+  .badge.closed { background: rgba(143,138,123,.16); color: var(--muted); }
+
+  .stage-actions { padding: 10px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; }
+  .stage-actions button { flex: 1; font-size: 12px; padding: 7px 8px; }
+
+  #context-menu { position: fixed; z-index: 50; background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; padding: 4px; box-shadow: 0 8px 20px rgba(0,0,0,.35); min-width: 240px; }
+  #context-menu button { display: block; width: 100%; text-align: left; background: none; color: var(--text-dim); border: none; padding: 8px 10px; font-size: 12px; font-weight: 400; border-radius: 4px; }
+  #context-menu button:hover:not(:disabled) { background: var(--panel-3); color: var(--text); }
+  #context-menu button:disabled { color: var(--muted); opacity: .5; }
+  #context-menu hr { border: none; border-top: 1px solid var(--border-soft); margin: 4px 0; }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(4,5,7,.6); z-index: 60; display: flex; align-items: center; justify-content: center; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; width: 480px; max-width: 90vw; padding: 18px; display: flex; flex-direction: column; gap: 10px; max-height: 88vh; overflow-y: auto; }
+  .modal h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+  .modal textarea { min-height: 70px; }
+  #stage-modal-context { min-height: 120px; }
+  #finding-modal-description { min-height: 140px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<nav id="global-nav">
+  <div class="nav-brand">
+    <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 4.5 5.5v5.7c0 5.1 3.2 8.7 7.5 10.3 4.3-1.6 7.5-5.2 7.5-10.3V5.5L12 2.5Z"/><path d="m9 12 2 2 4-4.5"/></svg>
+    <span>AppSec Ops</span>
+  </div>
+  <button class="nav-item active" data-view="dashboard">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/></svg>
+    <span>Dashboard</span>
+  </button>
+  <button class="nav-item" data-view="timeline">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
+    <span>Timeline</span>
+  </button>
+  <button class="nav-item" data-view="findings">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.5h16M9.5 9.5V20"/></svg>
+    <span>Findings</span>
+  </button>
+  <div class="nav-footer">
+    <button class="nav-item" data-view="settings">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1l2.1-2.1M17 7l2.1-2.1"/></svg>
+      <span>Settings</span>
+    </button>
+    <span id="status" class="disconnected">disconnected</span>
+  </div>
+</nav>
+
+<div id="view-dashboard" class="view">
+  <div class="view-header">
+    <div>
+      <h1 id="dash-greeting">Dashboard</h1>
+      <div class="view-subtitle" id="dash-date"></div>
+    </div>
+  </div>
+  <div class="view-body">
+    <div class="briefing"><span class="briefing-tag">Briefing</span><span id="dash-briefing-text">Loading…</span></div>
+
+    <div class="scan-form">
+      <div class="scan-form-title">New scan</div>
+      <div class="scan-form-row">
+        <div>
+          <label for="scan-path-input">Target directory</label>
+          <input id="scan-path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
+        </div>
+        <button class="secondary" type="button" id="scan-note-btn" title="Optional instructions for the scan">Note</button>
+        <button id="scan-start-btn">Start Scan</button>
+      </div>
+      <div id="scan-instruction-wrap" hidden>
+        <label for="scan-instruction-input">Additional instructions (optional)</label>
+        <textarea id="scan-instruction-input" placeholder="e.g. Focus on the API routes under src/api, skip test fixtures." style="min-height:44px;"></textarea>
+      </div>
+    </div>
+    <div id="scan-live-container"></div>
+
+    <div class="stat-grid" id="dash-stats"></div>
+    <div class="dash-columns">
+      <div class="panel">
+        <div class="panel-title">Agents</div>
+        <div id="dash-agents"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Status</div>
+        <div id="dash-status-panel"></div>
+      </div>
+    </div>
+    <div class="dash-footer">
+      <span id="dash-footer-text"></span>
+      <button class="link-btn" id="dash-timeline-link">Timeline →</button>
+    </div>
+  </div>
+</div>
+
+<div id="view-timeline" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>Timeline</h1>
+      <div class="view-subtitle">Every scan and agent run, newest first</div>
+    </div>
+    <button class="secondary" id="timeline-refresh">Refresh</button>
+  </div>
+  <div class="view-body">
+    <div class="filter-pills" id="timeline-filters"></div>
+    <div id="timeline-list"></div>
+  </div>
+</div>
+
+<div id="view-settings" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>Settings</h1>
+      <div class="view-subtitle">Appearance and environment</div>
+    </div>
+  </div>
+  <div class="view-body">
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-title">Appearance</div>
+      <div class="settings-row">
+        <label>Theme</label>
+        <div class="theme-toggle" id="theme-toggle">
+          <button class="filter-pill" data-theme-choice="dark">Dark</button>
+          <button class="filter-pill" data-theme-choice="light">Light</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Environment</div>
+      <div id="settings-env"></div>
+    </div>
+  </div>
+</div>
+
+<div id="view-findings" class="view" hidden>
+  <div id="findings-layout">
+    <aside id="findings-sidebar">
+      <div class="sidebar-header">
+        <h2>Findings</h2>
+        <div style="display:flex; gap:6px;">
+          <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
+          <button id="add-finding-btn">+ Add</button>
+        </div>
+      </div>
+      <div id="findings-list"></div>
+    </aside>
+
+    <main id="detail">
+      <div id="empty-state">Select a finding on the left, or add one.</div>
+      <div id="finding-view" hidden>
+        <div class="finding-header">
+          <div class="finding-header-top">
+            <h2 id="fh-title"></h2>
+            <span id="fh-severity" class="badge"></span>
+            <span id="fh-status" class="badge"></span>
+          </div>
+          <div class="finding-header-meta" id="fh-meta"></div>
+          <details class="finding-desc">
+            <summary>Finding details</summary>
+            <pre id="fh-description"></pre>
+          </details>
+        </div>
+        <div class="flow-area" id="flow-area">
+          <div class="cta-row" id="fh-cta">
+            <button id="run-remediation-btn">Run Remediation</button>
+            <span class="hint">Or right-click this finding to add instructions first, or to expand analysis with Triage / Threat Model.</span>
+          </div>
+          <div id="flow-container"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="context-menu" hidden></div>
+
+<div class="modal-overlay" id="stage-modal-overlay" hidden>
+  <div class="modal">
+    <h3 id="stage-modal-title">New stage</h3>
+    <div>
+      <label for="stage-modal-agent">Agent</label>
+      <select id="stage-modal-agent"></select>
+    </div>
+    <div>
+      <label for="stage-modal-context">Context passed to agent</label>
+      <textarea id="stage-modal-context"></textarea>
+    </div>
+    <div>
+      <label for="stage-modal-instruction">Additional instructions</label>
+      <textarea id="stage-modal-instruction" placeholder="Optional — anything you want this agent to focus on or account for."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="secondary" id="stage-modal-cancel">Cancel</button>
+      <button id="stage-modal-start">Start stage</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="finding-modal-overlay" hidden>
+  <div class="modal">
+    <h3>Add finding</h3>
+    <div>
+      <label for="finding-modal-title">Title</label>
+      <input id="finding-modal-title" placeholder="e.g. SQL Injection in /api/search" />
+    </div>
+    <div>
+      <label for="finding-modal-severity">Severity (as reported by scanner)</label>
+      <select id="finding-modal-severity">
+        <option value="critical">Critical</option>
+        <option value="high">High</option>
+        <option value="medium" selected>Medium</option>
+        <option value="low">Low</option>
+        <option value="informational">Informational</option>
+      </select>
+    </div>
+    <div>
+      <label for="finding-modal-rule">Rule / CWE (optional)</label>
+      <input id="finding-modal-rule" placeholder="e.g. CWE-89 SQL Injection" />
+    </div>
+    <div>
+      <label for="finding-modal-file">File (optional)</label>
+      <input id="finding-modal-file" placeholder="e.g. src/api/search.js:42" />
+    </div>
+    <div>
+      <label for="finding-modal-description">Description / snippet</label>
+      <textarea id="finding-modal-description" placeholder="Scanner output, code snippet, description — whatever context the agent should see."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="secondary" id="finding-modal-cancel">Cancel</button>
+      <button id="finding-modal-save">Add finding</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- icon system (hand-drawn monoline SVGs, no emoji anywhere in the UI) ----------
+
+const ICONS = {
+  search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8"/>',
+  target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/>',
+  wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2-2 2.7-2.7Z"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1l2.1-2.1M17 7l2.1-2.1"/>',
+  hourglass: '<path d="M6.5 3h11M6.5 21h11M7.5 3c0 5 4.5 6 4.5 9s-4.5 4-4.5 9M16.5 3c0 5-4.5 6-4.5 9s4.5 4 4.5 9"/>',
+  inbox: '<path d="M3.5 12h4.3l1.8 3h4.8l1.8-3h4.3"/><path d="M3.5 12 5 5h14l1.5 7v6a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1v-6Z"/>',
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  checkCircle: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.3 2.6 2.6 5.2-5.2"/>',
+  folder: '<path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2h8.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3 17.5v-11Z"/>',
+  trending: '<path d="m3 16 6-6 4 4 8-8"/><path d="M15 6h6v6"/>',
+  dots: '<circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/>',
+  shield: '<path d="M12 2.5 4.5 5.5v5.7c0 5.1 3.2 8.7 7.5 10.3 4.3-1.6 7.5-5.2 7.5-10.3V5.5L12 2.5Z"/><path d="m9 12 2 2 4-4.5"/>',
+  radar: '<circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/>',
+};
+function icon(name, cls) {
+  return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+}
+
+// ---------- agent metadata (shared across dashboard / timeline / findings) ----------
+
+const KNOWN_AGENTS = ['triage', 'threat_model', 'remediation'];
+const AGENT_META = {
+  scan: { label: 'Scan', icon: 'radar', color: '#6ba3c9', role: 'Reads a directory and creates findings' },
+  triage: { label: 'Triage', icon: 'search', color: '#8f95d6', role: 'First pass: real finding or noise, how urgent' },
+  threat_model: { label: 'Threat Model', icon: 'target', color: '#d3a05e', role: 'Exploit path, preconditions, blast radius' },
+  remediation: { label: 'Remediation', icon: 'wrench', color: '#87a878', role: 'Concrete fix guidance, terminal stage' },
+};
+const TIMELINE_KINDS = ['scan', ...KNOWN_AGENTS];
+function agentMeta(name) {
+  return AGENT_META[name] || { label: name, icon: 'gear', color: '#8f8a7b', role: '' };
+}
+
+// ---------- dom refs ----------
+
+const statusEl = document.getElementById('status');
+const findingsListEl = document.getElementById('findings-list');
+const addFindingBtn = document.getElementById('add-finding-btn');
+const exportCsvBtn = document.getElementById('export-csv-btn');
+const emptyState = document.getElementById('empty-state');
+const findingView = document.getElementById('finding-view');
+const fhTitle = document.getElementById('fh-title');
+const fhSeverity = document.getElementById('fh-severity');
+const fhStatus = document.getElementById('fh-status');
+const fhMeta = document.getElementById('fh-meta');
+const fhDescription = document.getElementById('fh-description');
+const fhCta = document.getElementById('fh-cta');
+const runRemediationBtn = document.getElementById('run-remediation-btn');
+const flowContainer = document.getElementById('flow-container');
+const contextMenuEl = document.getElementById('context-menu');
+
+const scanPathInput = document.getElementById('scan-path-input');
+const scanInstructionInput = document.getElementById('scan-instruction-input');
+const scanStartBtn = document.getElementById('scan-start-btn');
+const scanLiveContainer = document.getElementById('scan-live-container');
+
+const stageModalOverlay = document.getElementById('stage-modal-overlay');
+const stageModalTitle = document.getElementById('stage-modal-title');
+const stageModalAgent = document.getElementById('stage-modal-agent');
+const stageModalContext = document.getElementById('stage-modal-context');
+const stageModalInstruction = document.getElementById('stage-modal-instruction');
+
+const findingModalOverlay = document.getElementById('finding-modal-overlay');
+const findingModalTitle = document.getElementById('finding-modal-title');
+const findingModalSeverity = document.getElementById('finding-modal-severity');
+const findingModalRule = document.getElementById('finding-modal-rule');
+const findingModalFile = document.getElementById('finding-modal-file');
+const findingModalDescription = document.getElementById('finding-modal-description');
+
+let ws = null;
+let agentsList = [];
+let findings = [];               // list-item shape from GET /api/findings
+let selectedFindingId = null;
+let currentView = 'dashboard';
+const findingCache = new Map();  // findingId -> full finding record (from GET /api/findings/:id)
+const flows = new Map();         // findingId -> { el, stageRowEl, stages: [runId,...] }
+const stages = new Map();        // runId -> stage state
+
+let timelineEntries = [];        // flattened run history, newest first
+let timelineLoaded = false;
+let timelineFilter = 'all';
+
+let scansList = [];              // list-item shape from GET /api/scans
+let scansLoaded = false;
+const scanRuns = new Map();      // runId -> live scan run state (mirrors a stage's shape)
+const scanDetailCache = new Map(); // scanId -> full scan detail (with findings)
+
+function uid() {
+  return (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now());
+}
+
+function truncate(str, n) {
+  str = String(str);
+  return str.length > n ? str.slice(0, n) + '…' : str;
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function formatRelativeTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function dateGroupLabel(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const isSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (isSameDay(d, now)) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDay(d, yesterday)) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function setStatus(connected) {
+  statusEl.textContent = connected ? 'connected' : 'disconnected';
+  statusEl.className = connected ? 'connected' : 'disconnected';
+}
+
+async function loadAgents() {
+  const res = await fetch('/api/agents');
+  agentsList = await res.json();
+  stageModalAgent.innerHTML = '';
+  for (const a of agentsList) {
+    const opt = document.createElement('option');
+    opt.value = a; opt.textContent = a;
+    stageModalAgent.appendChild(opt);
+  }
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+
+  ws.addEventListener('open', () => { setStatus(true); if (currentView === 'dashboard') renderDashboard(); });
+  ws.addEventListener('close', () => { setStatus(false); if (currentView === 'dashboard') renderDashboard(); setTimeout(connect, 2000); });
+  ws.addEventListener('error', () => ws.close());
+  ws.addEventListener('message', (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    handleServerMessage(msg);
+  });
+}
+
+// ---------- nav / view switching ----------
+
+document.querySelectorAll('.nav-item').forEach((btn) => {
+  btn.addEventListener('click', () => showView(btn.dataset.view));
+});
+document.getElementById('dash-timeline-link').addEventListener('click', () => showView('timeline'));
+
+function showView(view) {
+  currentView = view;
+  document.getElementById('view-dashboard').hidden = view !== 'dashboard';
+  document.getElementById('view-timeline').hidden = view !== 'timeline';
+  document.getElementById('view-settings').hidden = view !== 'settings';
+  document.getElementById('view-findings').hidden = view !== 'findings';
+  document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === view));
+
+  if (view === 'dashboard') renderDashboard();
+  if (view === 'timeline') { if (!timelineLoaded) loadTimeline(); else renderTimeline(); }
+  if (view === 'settings') renderSettings();
+}
+
+// ---------- dashboard ----------
+
+function renderDashboardHeader() {
+  document.getElementById('dash-greeting').textContent = 'Dashboard';
+  document.getElementById('dash-date').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function statTile(iconName, value, label, sub, accent) {
+  const div = document.createElement('div');
+  div.className = 'stat-tile' + (accent ? ' accent-' + accent : '');
+  div.innerHTML = `
+    <div class="stat-icon">${icon(iconName, 'icon-lg')}</div>
+    <div class="stat-value">${escapeHtml(String(value))}</div>
+    <div class="stat-label">${escapeHtml(label)}</div>
+    ${sub ? `<div class="stat-sub">${escapeHtml(sub)}</div>` : ''}
+  `;
+  return div;
+}
+
+function computeBriefing() {
+  const runningScans = scansList.filter((s) => s.status === 'running');
+  const running = findings.filter((f) => f.latestRun && f.latestRun.status === 'running');
+  const notTriaged = findings.filter((f) => f.status === 'new').length;
+  const parts = [];
+  if (runningScans.length) {
+    parts.push(`Scanning "${truncate(runningScans[0].path, 45)}"${runningScans.length > 1 ? ` (+${runningScans.length - 1} more running)` : ''}`);
+  } else if (running.length) {
+    const r = running[0];
+    parts.push(`${agentMeta(r.latestRun.agent).label} is working on "${truncate(r.title, 50)}"${running.length > 1 ? ` (+${running.length - 1} more running)` : ''}`);
+  } else {
+    parts.push('No agents currently running');
+  }
+  parts.push(`${notTriaged} finding${notTriaged === 1 ? '' : 's'} awaiting remediation`);
+  parts.push(`${agentsList.length}/${KNOWN_AGENTS.length} pipeline agents available`);
+  return parts.join('. ') + '.';
+}
+
+function renderDashboard() {
+  renderDashboardHeader();
+
+  document.getElementById('dash-briefing-text').textContent = computeBriefing();
+
+  const statsEl = document.getElementById('dash-stats');
+  statsEl.innerHTML = '';
+  const inProgress = findings.filter((f) => f.latestRun && f.latestRun.status === 'running').length;
+  const notTriaged = findings.filter((f) => f.status === 'new').length;
+  const inReview = findings.filter((f) => f.status === 'in_review').length;
+  const remediationReady = findings.filter((f) => f.status === 'remediation_ready').length;
+  const closed = findings.filter((f) => f.status === 'closed').length;
+  const runsToday = timelineEntries.filter((e) => dateGroupLabel(e.startedAt) === 'Today').length;
+  const totalRuns = timelineEntries.length || findings.reduce((n, f) => n + f.runCount, 0);
+
+  statsEl.appendChild(statTile('hourglass', inProgress, 'In Progress', inProgress ? 'agents running' : '', inProgress ? 'warn' : ''));
+  statsEl.appendChild(statTile('inbox', notTriaged, 'Not Started', '', ''));
+  statsEl.appendChild(statTile('eye', inReview, 'In Review', '', ''));
+  statsEl.appendChild(statTile('checkCircle', remediationReady, 'Remediation Ready', remediationReady ? 'ready to fix' : '', remediationReady ? 'ok' : ''));
+  statsEl.appendChild(statTile('folder', findings.length, 'Total Findings', `${closed} closed`, ''));
+  statsEl.appendChild(statTile('trending', totalRuns, 'Agent Runs', `${runsToday} today`, 'accent'));
+
+  const agentsEl = document.getElementById('dash-agents');
+  agentsEl.innerHTML = '';
+  for (const name of KNOWN_AGENTS) {
+    const meta = agentMeta(name);
+    const available = agentsList.includes(name);
+    const lastEntry = timelineEntries.find((e) => e.agent === name);
+    const row = document.createElement('div');
+    row.className = 'agent-row';
+    row.innerHTML = `
+      <span class="a-icon">${icon(meta.icon)}</span>
+      <span class="a-dot ${available ? 'online' : 'offline'}"></span>
+      <div class="agent-row-main">
+        <div class="agent-row-name">${escapeHtml(meta.label)}</div>
+        <div class="agent-row-meta">${escapeHtml(meta.role)}</div>
+      </div>
+      <div class="agent-row-status">${lastEntry ? `${escapeHtml(truncate(lastEntry.findingTitle, 26))}<br>${formatRelativeTime(lastEntry.startedAt)}` : (available ? 'no runs yet' : 'not available')}</div>
+    `;
+    agentsEl.appendChild(row);
+  }
+
+  const statusPanel = document.getElementById('dash-status-panel');
+  statusPanel.innerHTML = '';
+  const wsLine = document.createElement('div');
+  wsLine.className = 'status-line' + (statusEl.classList.contains('connected') ? '' : ' warn');
+  wsLine.innerHTML = `<span class="s-dot"></span> WebSocket: ${statusEl.classList.contains('connected') ? 'connected' : 'disconnected'}`;
+  statusPanel.appendChild(wsLine);
+  const storeLine = document.createElement('div');
+  storeLine.className = 'status-line';
+  storeLine.innerHTML = `<span class="s-dot"></span> Findings store: ${findings.length} finding${findings.length === 1 ? '' : 's'}, in-memory`;
+  statusPanel.appendChild(storeLine);
+  const agentsLine = document.createElement('div');
+  agentsLine.className = 'status-line' + (agentsList.length < KNOWN_AGENTS.length ? ' warn' : '');
+  agentsLine.innerHTML = `<span class="s-dot"></span> Pipeline agents: ${agentsList.length}/${KNOWN_AGENTS.length} available`;
+  statusPanel.appendChild(agentsLine);
+
+  const runningScanCount = scansList.filter((s) => s.status === 'running').length;
+  const scansLine = document.createElement('div');
+  scansLine.className = 'status-line' + (runningScanCount ? ' warn' : '');
+  scansLine.innerHTML = `<span class="s-dot"></span> Scans: ${scansList.length} total${runningScanCount ? `, ${runningScanCount} running` : ''}`;
+  statusPanel.appendChild(scansLine);
+
+  document.getElementById('dash-footer-text').textContent = `${findings.length} findings · ${totalRuns} total runs`;
+}
+
+// ---------- timeline ----------
+
+async function loadTimeline() {
+  const res = await fetch('/api/timeline');
+  timelineEntries = await res.json();
+  timelineLoaded = true;
+  renderTimeline();
+}
+
+document.getElementById('timeline-refresh').addEventListener('click', loadTimeline);
+
+function renderTimelineFilters() {
+  const el = document.getElementById('timeline-filters');
+  el.innerHTML = '';
+  const makePill = (key, label, color) => {
+    const pill = document.createElement('button');
+    pill.className = 'filter-pill' + (timelineFilter === key ? ' active' : '');
+    pill.innerHTML = color ? `<span class="fp-dot" style="background:${color}"></span>${escapeHtml(label)}` : escapeHtml(label);
+    pill.addEventListener('click', () => { timelineFilter = key; renderTimeline(); });
+    el.appendChild(pill);
+  };
+  makePill('all', 'All', null);
+  for (const kind of TIMELINE_KINDS) makePill(kind, agentMeta(kind).label, agentMeta(kind).color);
+}
+
+function timelineStatusBadge(entry) {
+  if (entry.status === 'running') return { cls: 'in_review', text: 'running' };
+  if (entry.status === 'cancelled') return { cls: 'new', text: 'cancelled' };
+  if (entry.status === 'error') return { cls: 'high', text: 'error' };
+  if (entry.kind === 'scan') return { cls: 'remediation_ready', text: 'done' };
+  const v = entry.verdict && entry.verdict.verdict;
+  return { cls: v || 'new', text: v || 'done' };
+}
+
+function timelineSummary(entry) {
+  if (entry.kind === 'scan') {
+    if (entry.status === 'running') return entry.instruction ? `Scanning — ${truncate(entry.instruction, 100)}` : 'Scanning…';
+    if (entry.status === 'cancelled') return 'Cancelled';
+    if (entry.status === 'error') return entry.error ? truncate(entry.error, 140) : 'Error';
+    const n = entry.findingCount || 0;
+    return `${n} finding${n === 1 ? '' : 's'} created`;
+  }
+  if (entry.status === 'running') return entry.instruction ? `Running — ${truncate(entry.instruction, 100)}` : 'Running…';
+  if (entry.status === 'cancelled') return 'Cancelled';
+  if (entry.status === 'error') return 'Error';
+  if (entry.verdict && entry.verdict.reasoning) return truncate(entry.verdict.reasoning, 140);
+  if (entry.verdict && entry.verdict.verdict) return `Verdict: ${entry.verdict.verdict}`;
+  return 'Completed — no verdict block found';
+}
+
+function renderTimeline() {
+  renderTimelineFilters();
+  const listEl = document.getElementById('timeline-list');
+  listEl.innerHTML = '';
+
+  const filtered = timelineFilter === 'all' ? timelineEntries : timelineEntries.filter((e) => e.kind === timelineFilter);
+  if (!filtered.length) {
+    const empty = document.createElement('div');
+    empty.id = 'timeline-empty';
+    empty.textContent = 'No activity yet.';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  let lastGroup = null;
+  for (const entry of filtered) {
+    const group = dateGroupLabel(entry.startedAt);
+    if (group !== lastGroup) {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'timeline-date';
+      groupEl.textContent = group;
+      listEl.appendChild(groupEl);
+      lastGroup = group;
+    }
+
+    const meta = agentMeta(entry.kind);
+    const badge = timelineStatusBadge(entry);
+    const isScan = entry.kind === 'scan';
+    const title = isScan ? entry.path : entry.findingTitle;
+
+    const row = document.createElement('div');
+    row.className = 'timeline-row' + (isScan ? ' expandable' : '');
+    row.style.borderLeftColor = meta.color;
+    row.innerHTML = `
+      <div style="display:flex; align-items:flex-start; gap:10px; width:100%;">
+        <span class="tl-icon">${icon(meta.icon)}</span>
+        <div class="tl-main">
+          <div class="tl-top">
+            <span class="tl-kind">${escapeHtml(meta.label)}</span>
+            <span class="tl-title">${escapeHtml(title)}</span>
+            <span class="badge ${badge.cls}">${escapeHtml(badge.text)}</span>
+          </div>
+          <div class="tl-summary">${escapeHtml(timelineSummary(entry))}</div>
+        </div>
+        <div class="tl-time">${escapeHtml(formatRelativeTime(entry.startedAt))}</div>
+      </div>
+    `;
+
+    if (isScan) {
+      row.addEventListener('click', async () => {
+        let body = row.querySelector('.timeline-row-body');
+        if (body) { body.remove(); return; }
+        body = document.createElement('div');
+        body.className = 'timeline-row-body';
+        body.innerHTML = '<div class="hint">Loading…</div>';
+        row.appendChild(body);
+        if (!entry.scanId) { body.innerHTML = '<div class="hint">No findings to show yet.</div>'; return; }
+        let detail = scanDetailCache.get(entry.scanId);
+        if (!detail) {
+          detail = await fetch(`/api/scans/${entry.scanId}`).then((r) => r.json());
+          scanDetailCache.set(entry.scanId, detail);
+        }
+        renderScanFindingsBody(body, detail.findings);
+      });
+    } else {
+      row.addEventListener('click', async () => {
+        showView('findings');
+        await selectFinding(entry.findingId);
+      });
+    }
+    listEl.appendChild(row);
+  }
+}
+
+function upsertTimelineEntry(entry) {
+  const idx = timelineEntries.findIndex((e) => e.runId === entry.runId);
+  if (idx >= 0) timelineEntries[idx] = { ...timelineEntries[idx], ...entry };
+  else timelineEntries.unshift(entry);
+  if (currentView === 'timeline') renderTimeline();
+}
+
+// ---------- scans ----------
+// A scan runs the Scan agent (agents/scan.md) against a whole directory and,
+// on completion, creates zero or more new findings server-side. It's the
+// entry point of the workflow: Scan -> Findings -> Remediation, with Triage
+// and Threat Model available afterward as optional deeper-analysis actions
+// rather than gates in front of Remediation.
+
+async function loadScans() {
+  const res = await fetch('/api/scans');
+  scansList = await res.json();
+  scansLoaded = true;
+  if (currentView === 'dashboard') renderDashboard();
+}
+
+function scanStatusLabel(s) {
+  return { running: 'Running', done: 'Done', error: 'Error', cancelled: 'Cancelled' }[s] || s;
+}
+
+function renderScanFindingsBody(body, scanFindings) {
+  if (!scanFindings.length) {
+    body.innerHTML = '<div class="hint" style="padding:10px 14px;">No findings produced by this scan.</div>';
+    return;
+  }
+  body.innerHTML = '';
+  for (const f of scanFindings) {
+    const item = document.createElement('div');
+    item.className = 'finding-row';
+    item.style.padding = '9px 14px';
+    item.innerHTML = `
+      <span class="sev-dot ${f.severity}"></span>
+      <div class="finding-row-main">
+        <div class="finding-row-title">${escapeHtml(f.title)}</div>
+        <div class="finding-row-meta"><span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span></div>
+      </div>
+    `;
+    item.addEventListener('click', async () => {
+      showView('findings');
+      await selectFinding(f.id);
+    });
+    body.appendChild(item);
+  }
+}
+
+function makeScanCard(runId, targetPath) {
+  const cardEl = document.createElement('article');
+  cardEl.className = 'stage-card status-running';
+  cardEl.dataset.runId = runId;
+  cardEl.innerHTML = `
+    <div class="stage-header">
+      <span class="stage-agent">${icon('radar')}<span>${escapeHtml(targetPath)}</span></span>
+      <span class="status-dot running"></span>
+      <span class="status-text">Starting…</span>
+    </div>
+    <div class="scan-stats">
+      <span class="stat"><b class="ss-tools">0</b> checks</span>
+      <span class="stat"><b class="ss-files">0</b> files read</span>
+      <span class="stat"><b class="ss-elapsed">0:00</b> elapsed</span>
+    </div>
+    <svg class="scan-sparkline" viewBox="0 0 200 32" preserveAspectRatio="none">
+      <polyline points=""></polyline>
+    </svg>
+    <div class="stage-feed"></div>
+    <details class="stage-raw" hidden>
+      <summary>Raw stream-json</summary>
+      <pre></pre>
+    </details>
+  `;
+  scanLiveContainer.prepend(cardEl);
+  return cardEl;
+}
+
+function formatElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function updateScanElapsed(run) {
+  if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);
+}
+
+function stopScanElapsedTimer(run) {
+  if (run.elapsedTimer) {
+    clearInterval(run.elapsedTimer);
+    run.elapsedTimer = null;
+  }
+  updateScanElapsed(run);
+}
+
+function renderScanSparkline(run) {
+  if (!run.sparklineEl || run.history.length < 2) return;
+  const w = 200, h = 32, pad = 3;
+  const maxT = run.history[run.history.length - 1].t || 1;
+  const maxC = Math.max(...run.history.map((p) => p.count), 1);
+  const points = run.history.map((p) => {
+    const x = pad + (p.t / maxT) * (w - pad * 2);
+    const y = h - pad - (p.count / maxC) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  run.sparklineEl.setAttribute('points', points);
+}
+
+function trackScanToolActivity(run, event) {
+  if (event.type !== 'assistant' || !event.message || !Array.isArray(event.message.content)) return;
+  let sawTool = false;
+  for (const block of event.message.content) {
+    if (block.type !== 'tool_use') continue;
+    sawTool = true;
+    run.toolCount++;
+    if (block.name === 'Read') run.fileCount++;
+  }
+  if (!sawTool) return;
+  if (run.toolsEl) run.toolsEl.textContent = String(run.toolCount);
+  if (run.filesEl) run.filesEl.textContent = String(run.fileCount);
+  run.history.push({ t: Date.now() - run.startTime, count: run.toolCount });
+  if (run.history.length > 60) run.history.shift();
+  renderScanSparkline(run);
+}
+
+function handleScanRawEvent(run, event) {
+  handleRawEvent(run, event);
+  trackScanToolActivity(run, event);
+}
+
+function startScan() {
+  const targetPath = scanPathInput.value.trim();
+  if (!targetPath) {
+    alert('Enter a target directory path.');
+    return;
+  }
+  const instruction = scanInstructionInput.value.trim();
+  const runId = uid();
+
+  const cardEl = makeScanCard(runId, targetPath);
+  const startedAt = Date.now();
+  const run = {
+    runId, path: targetPath, instruction,
+    status: 'running',
+    cardEl,
+    feedEl: cardEl.querySelector('.stage-feed'),
+    rawDetailsEl: cardEl.querySelector('.stage-raw'),
+    rawPreEl: cardEl.querySelector('.stage-raw pre'),
+    thinkingEl: null,
+    rawEvents: [],
+    startTime: startedAt,
+    toolCount: 0,
+    fileCount: 0,
+    history: [{ t: 0, count: 0 }],
+    toolsEl: cardEl.querySelector('.ss-tools'),
+    filesEl: cardEl.querySelector('.ss-files'),
+    elapsedEl: cardEl.querySelector('.ss-elapsed'),
+    sparklineEl: cardEl.querySelector('.scan-sparkline polyline'),
+    elapsedTimer: null,
+  };
+  scanRuns.set(runId, run);
+  run.elapsedTimer = setInterval(() => updateScanElapsed(run), 1000);
+  scansList.unshift({ id: null, runId, path: targetPath, instruction, status: 'running', error: null, findingIds: [], startedAt, finishedAt: null });
+  upsertTimelineEntry({ kind: 'scan', runId, path: targetPath, instruction, status: 'running', findingCount: 0, startedAt, finishedAt: null });
+  if (currentView === 'dashboard') renderDashboard();
+
+  ws.send(JSON.stringify({ type: 'scan', runId, path: targetPath, instruction }));
+  scanInstructionInput.value = '';
+  scanInstructionWrap.hidden = true;
+  scanNoteBtn.classList.remove('has-note');
+}
+
+scanStartBtn.addEventListener('click', startScan);
+
+const scanNoteBtn = document.getElementById('scan-note-btn');
+const scanInstructionWrap = document.getElementById('scan-instruction-wrap');
+scanNoteBtn.addEventListener('click', () => {
+  scanInstructionWrap.hidden = !scanInstructionWrap.hidden;
+  if (!scanInstructionWrap.hidden) scanInstructionInput.focus();
+});
+scanInstructionInput.addEventListener('input', () => {
+  scanNoteBtn.classList.toggle('has-note', scanInstructionInput.value.trim().length > 0);
+});
+
+function handleScanServerMessage(msg) {
+  const run = msg.runId ? scanRuns.get(msg.runId) : null;
+  const listItem = msg.runId ? scansList.find((s) => s.runId === msg.runId) : null;
+
+  if (msg.type === 'scan-started') {
+    if (run) run.scanId = msg.scanId;
+    if (listItem) listItem.id = msg.scanId;
+    return;
+  }
+  if (!run) return;
+
+  if (msg.type === 'scan-event') {
+    handleScanRawEvent(run, msg.event);
+    return;
+  }
+  if (msg.type === 'scan-stderr') {
+    appendFeedLine(run, msg.data.trim(), 'err');
+    return;
+  }
+  if (msg.type === 'scan-error') {
+    appendFeedLine(run, msg.message, 'err');
+    setStageStatus(run, 'error', 'Error');
+    stopScanElapsedTimer(run);
+    if (listItem) { listItem.status = 'error'; listItem.error = msg.message; listItem.finishedAt = Date.now(); }
+    upsertTimelineEntry({ runId: msg.runId, status: 'error', error: msg.message, finishedAt: Date.now() });
+    if (currentView === 'dashboard') renderDashboard();
+    return;
+  }
+  if (msg.type === 'scan-done') {
+    clearThinkingPill(run);
+    stopScanElapsedTimer(run);
+    const n = msg.findings.length;
+    setStageStatus(run, msg.code === 0 ? 'done' : 'error', `${n} finding${n === 1 ? '' : 's'} created`);
+    appendFeedLine(run, `Scan complete — ${n} finding${n === 1 ? '' : 's'} created.`, 'summary');
+    upsertTimelineEntry({ runId: msg.runId, scanId: msg.scanId, status: msg.code === 0 ? 'done' : 'error', findingCount: n, finishedAt: Date.now() });
+    loadFindings();
+    loadScans();
+    return;
+  }
+}
+
+// ---------- findings list (sidebar) ----------
+
+async function loadFindings() {
+  const res = await fetch('/api/findings');
+  findings = await res.json();
+  renderFindingsList();
+  if (currentView === 'dashboard') renderDashboard();
+}
+
+function statusLabel(status) {
+  return { new: 'Not started', in_review: 'In review', remediation_ready: 'Remediation ready', closed: 'Closed' }[status] || status;
+}
+
+function renderFindingsList() {
+  findingsListEl.innerHTML = '';
+  if (!findings.length) {
+    const empty = document.createElement('div');
+    empty.id = 'findings-empty';
+    empty.textContent = 'No findings yet — click "+ Add" to create one.';
+    findingsListEl.appendChild(empty);
+    return;
+  }
+
+  for (const f of findings) {
+    const row = document.createElement('div');
+    row.className = 'finding-row' + (f.id === selectedFindingId ? ' selected' : '');
+    row.dataset.findingId = f.id;
+
+    const runInfo = f.runCount
+      ? `${f.runCount} run${f.runCount === 1 ? '' : 's'}${f.latestRun ? ' · ' + f.latestRun.agent : ''}`
+      : 'no runs yet';
+
+    row.innerHTML = `
+      <span class="sev-dot ${f.severity}"></span>
+      <div class="finding-row-main">
+        <div class="finding-row-title">${escapeHtml(f.title)}</div>
+        <div class="finding-row-meta">
+          <span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span>
+          <span class="hint">${escapeHtml(runInfo)}</span>
+        </div>
+      </div>
+    `;
+    row.addEventListener('click', () => selectFinding(f.id));
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openFindingContextMenu(e.clientX, e.clientY, f.id);
+    });
+    findingsListEl.appendChild(row);
+  }
+}
+
+function updateFindingListItem(findingId, patch) {
+  const item = findings.find((f) => f.id === findingId);
+  if (item) Object.assign(item, patch);
+  renderFindingsList();
+  if (currentView === 'dashboard') renderDashboard();
+}
+
+// ---------- finding detail / selection ----------
+
+async function selectFinding(findingId) {
+  selectedFindingId = findingId;
+  renderFindingsList();
+
+  let finding = findingCache.get(findingId);
+  if (!finding) {
+    const res = await fetch(`/api/findings/${findingId}`);
+    if (!res.ok) return;
+    finding = await res.json();
+    findingCache.set(findingId, finding);
+  }
+
+  emptyState.hidden = true;
+  findingView.hidden = false;
+
+  fhTitle.textContent = finding.title;
+  fhSeverity.textContent = finding.severity;
+  fhSeverity.className = 'badge ' + finding.severity;
+  fhStatus.textContent = statusLabel(finding.status);
+  fhStatus.className = 'badge ' + finding.status;
+  fhMeta.innerHTML = [
+    finding.rule ? `Rule: ${escapeHtml(finding.rule)}` : '',
+    finding.file ? `File: ${escapeHtml(finding.file)}` : '',
+  ].filter(Boolean).join('<span></span>');
+  fhDescription.textContent = finding.description;
+
+  ensureFlow(findingId, finding);
+  for (const [id, flow] of flows.entries()) {
+    flow.el.hidden = id !== findingId;
+  }
+
+  const hasStages = flows.get(findingId).stages.length > 0;
+  fhCta.hidden = hasStages;
+}
+
+function buildBaseContext(finding) {
+  const parts = [
+    `Title: ${finding.title}`,
+    `Severity (as reported by scanner): ${finding.severity}`,
+    finding.rule ? `Rule: ${finding.rule}` : '',
+    finding.file ? `File: ${finding.file}` : '',
+    `Description:\n${finding.description}`,
+  ];
+  return parts.filter(Boolean).join('\n');
+}
+
+function ensureFlow(findingId, finding) {
+  if (flows.has(findingId)) return flows.get(findingId);
+
+  const flowEl = document.createElement('div');
+  flowEl.className = 'stage-row';
+  flowEl.dataset.findingId = findingId;
+  flowContainer.appendChild(flowEl);
+
+  const flow = { el: flowEl, stageRowEl: flowEl, stages: [] };
+  flows.set(findingId, flow);
+
+  // Rehydrate any runs already persisted server-side (from an earlier
+  // selection this session, or created before this page loaded). Live
+  // activity feed isn't retained across reload — only the final verdict.
+  for (const run of finding.runs || []) {
+    rehydrateStage(findingId, run);
+  }
+
+  return flow;
+}
+
+// ---------- stage creation & rehydration ----------
+
+function describeToolUse(block) {
+  const name = block.name;
+  const input = block.input || {};
+  switch (name) {
+    case 'Read': return `Read ${input.file_path || ''}`;
+    case 'Grep': return `Grep "${input.pattern || ''}"${input.glob ? ' in ' + input.glob : ''}`;
+    case 'Glob': return `Glob "${input.pattern || ''}"`;
+    case 'Bash': return `Run: ${truncate(input.command || '', 90)}`;
+    default: return `${name} ${truncate(JSON.stringify(input), 80)}`;
+  }
+}
+
+function describeToolResult(event) {
+  const meta = event.tool_use_result;
+  if (meta) {
+    if (Array.isArray(meta.filenames)) {
+      const extra = typeof meta.totalMatches === 'number' ? `, ${meta.totalMatches} total match(es)` : '';
+      return `${meta.numFiles || meta.filenames.length} file(s) found${extra}`;
+    }
+    if (meta.file && typeof meta.file.numLines === 'number') {
+      return `read ${meta.file.numLines} lines from ${meta.file.filePath}`;
+    }
+    if (typeof meta.totalMatches === 'number') {
+      return `${meta.totalMatches} match(es)`;
+    }
+  }
+  const content = event.message && event.message.content;
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (block.type === 'tool_result') {
+        let text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
+        return truncate(text.replace(/\s+/g, ' ').trim(), 140);
+      }
+    }
+  }
+  return '(result)';
+}
+
+function appendFeedLine(stage, text, cls) {
+  const div = document.createElement('div');
+  div.className = 'feed-line ' + (cls || '');
+  div.textContent = text;
+  stage.feedEl.appendChild(div);
+  stage.feedEl.scrollTop = stage.feedEl.scrollHeight;
+}
+
+function updateThinkingPill(stage, tokens) {
+  if (!stage.thinkingEl) {
+    stage.thinkingEl = document.createElement('div');
+    stage.thinkingEl.className = 'feed-line thinking';
+    stage.feedEl.appendChild(stage.thinkingEl);
+  }
+  stage.thinkingEl.textContent = `Thinking… (~${tokens} tokens)`;
+  stage.feedEl.scrollTop = stage.feedEl.scrollHeight;
+}
+
+function clearThinkingPill(stage) {
+  if (stage.thinkingEl) {
+    stage.thinkingEl.remove();
+    stage.thinkingEl = null;
+  }
+}
+
+function handleRawEvent(stage, event) {
+  stage.rawEvents.push(event);
+  stage.rawPreEl.textContent = stage.rawEvents.map((e) => JSON.stringify(e)).join('\n');
+
+  if (event.type === 'system' && event.subtype === 'init') {
+    appendFeedLine(stage, 'Session started', 'system');
+    return;
+  }
+  if (event.type === 'system' && event.subtype === 'thinking_tokens') {
+    updateThinkingPill(stage, event.estimated_tokens);
+    return;
+  }
+  if (event.type === 'system' && event.subtype === 'post_turn_summary') {
+    appendFeedLine(stage, event.status_detail || event.needs_action || 'Turn summary', 'summary');
+    return;
+  }
+  if (event.type === 'system' || event.type === 'rate_limit_event' || event.type === 'thinking') {
+    return; // noise, still available in raw
+  }
+
+  if (event.type === 'assistant' && event.message && Array.isArray(event.message.content)) {
+    clearThinkingPill(stage);
+    for (const block of event.message.content) {
+      if (block.type === 'text' && block.text.trim()) {
+        appendFeedLine(stage, block.text.trim(), 'text');
+      } else if (block.type === 'tool_use') {
+        appendFeedLine(stage, describeToolUse(block), 'tool');
+      }
+    }
+    return;
+  }
+
+  if (event.type === 'user') {
+    appendFeedLine(stage, describeToolResult(event), 'result');
+    return;
+  }
+
+  if (event.type === 'result') {
+    return; // covered by the 'done' message / verdict card
+  }
+}
+
+function makeStageCard(findingId, runId, agent) {
+  const flow = flows.get(findingId);
+  if (flow.stages.length > 0) {
+    const connector = document.createElement('div');
+    connector.className = 'connector';
+    connector.textContent = '→';
+    flow.stageRowEl.appendChild(connector);
+  }
+
+  const cardEl = document.createElement('article');
+  cardEl.className = 'stage-card status-running';
+  cardEl.dataset.runId = runId;
+  cardEl.dataset.findingId = findingId;
+  cardEl.innerHTML = `
+    <div class="stage-header">
+      <span class="stage-agent"></span>
+      <span class="status-dot running"></span>
+      <span class="status-text">Running…</span>
+      <button class="stage-menu-btn" title="Stage actions">${icon('dots')}</button>
+    </div>
+    <div class="stage-feed"></div>
+    <details class="stage-raw" hidden>
+      <summary>Raw stream-json</summary>
+      <pre></pre>
+    </details>
+    <div class="stage-verdict"></div>
+    <div class="stage-actions"></div>
+  `;
+  flow.stageRowEl.appendChild(cardEl);
+  flow.stages.push(runId);
+  cardEl.querySelector('.stage-agent').innerHTML = icon(agentMeta(agent).icon) + '<span>' + escapeHtml(agentMeta(agent).label) + '</span>';
+
+  cardEl.querySelector('.stage-menu-btn').addEventListener('click', (e) => {
+    const rect = e.target.getBoundingClientRect();
+    openContextMenu(rect.left, rect.bottom, runId);
+  });
+  cardEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    openContextMenu(e.clientX, e.clientY, runId);
+  });
+
+  return cardEl;
+}
+
+function rehydrateStage(findingId, run) {
+  const cardEl = makeStageCard(findingId, run.runId, run.agent);
+  const stage = {
+    runId: run.runId, findingId, agent: run.agent, context: run.context, instruction: run.instruction,
+    status: run.status,
+    cardEl,
+    feedEl: cardEl.querySelector('.stage-feed'),
+    rawDetailsEl: cardEl.querySelector('.stage-raw'),
+    rawPreEl: cardEl.querySelector('.stage-raw pre'),
+    verdictEl: cardEl.querySelector('.stage-verdict'),
+    actionsEl: cardEl.querySelector('.stage-actions'),
+    thinkingEl: null,
+    rawEvents: [],
+    fullText: run.fullText || '',
+    verdict: run.verdict || null,
+  };
+  stages.set(run.runId, stage);
+
+  if (run.status === 'running') {
+    appendFeedLine(stage, 'Reconnected after page load — live activity isn’t retained, this will update once the run finishes.', 'system');
+  } else {
+    setStageStatus(stage, run.status, run.status === 'done' ? 'Completed' : run.status === 'cancelled' ? 'Cancelled' : 'Error');
+    if (run.instruction) appendFeedLine(stage, `Instruction: ${run.instruction}`, 'system');
+    renderVerdict(stage);
+    renderActions(stage);
+  }
+}
+
+function startStage(findingId, agent, context, instruction) {
+  const finding = findingCache.get(findingId);
+  const runId = uid();
+
+  makeStageCard(findingId, runId, agent);
+  const cardEl = flows.get(findingId).stageRowEl.querySelector(`[data-run-id="${runId}"]`);
+
+  const stageState = {
+    runId, findingId, agent, context, instruction,
+    status: 'running',
+    cardEl,
+    feedEl: cardEl.querySelector('.stage-feed'),
+    rawDetailsEl: cardEl.querySelector('.stage-raw'),
+    rawPreEl: cardEl.querySelector('.stage-raw pre'),
+    verdictEl: cardEl.querySelector('.stage-verdict'),
+    actionsEl: cardEl.querySelector('.stage-actions'),
+    thinkingEl: null,
+    rawEvents: [],
+    fullText: '',
+    verdict: null,
+  };
+  stages.set(runId, stageState);
+
+  fhCta.hidden = true;
+
+  const startedAt = Date.now();
+  upsertTimelineEntry({
+    kind: agent, runId, findingId, findingTitle: finding ? finding.title : '(finding)', agent,
+    status: 'running', instruction, verdict: null, startedAt, finishedAt: null,
+  });
+
+  ws.send(JSON.stringify({ type: 'run', runId, findingId, agent, context, instruction }));
+  cardEl.scrollIntoView({ behavior: 'smooth', inline: 'end', block: 'nearest' });
+  return runId;
+}
+
+// ---------- websocket message handling ----------
+
+function handleServerMessage(msg) {
+  if (msg.type && msg.type.indexOf('scan') === 0) {
+    handleScanServerMessage(msg);
+    return;
+  }
+
+  const stage = msg.runId ? stages.get(msg.runId) : null;
+
+  if (msg.type === 'error' && !stage) {
+    alert(msg.message);
+    return;
+  }
+  if (!stage) return;
+
+  if (msg.type === 'started') return;
+
+  if (msg.type === 'event') {
+    handleRawEvent(stage, msg.event);
+    return;
+  }
+  if (msg.type === 'stderr') {
+    appendFeedLine(stage, msg.data.trim(), 'err');
+    return;
+  }
+  if (msg.type === 'error') {
+    appendFeedLine(stage, msg.message, 'err');
+    setStageStatus(stage, 'error', 'Error');
+    upsertTimelineEntry({ runId: stage.runId, status: 'error', finishedAt: Date.now() });
+    refreshFindingAfterRun(stage.findingId);
+    return;
+  }
+  if (msg.type === 'done') {
+    clearThinkingPill(stage);
+    stage.fullText = msg.fullText;
+    stage.verdict = msg.verdict;
+    setStageStatus(stage, msg.code === 0 ? 'done' : 'error', `Exited (code ${msg.code})`);
+    renderVerdict(stage);
+    renderActions(stage);
+    upsertTimelineEntry({ runId: stage.runId, status: msg.code === 0 ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
+    refreshFindingAfterRun(stage.findingId);
+    return;
+  }
+}
+
+async function refreshFindingAfterRun(findingId) {
+  // Re-pull the finding so the sidebar's status/severity badge and run
+  // count reflect the just-finished run without a full page reload.
+  const res = await fetch(`/api/findings/${findingId}`);
+  if (!res.ok) return;
+  const finding = await res.json();
+  findingCache.set(findingId, finding);
+  updateFindingListItem(findingId, {
+    status: finding.status,
+    runCount: finding.runs.length,
+    latestRun: finding.runs.length ? (({ agent, status, verdict }) => ({ agent, status, verdict }))(finding.runs[finding.runs.length - 1]) : null,
+  });
+  if (selectedFindingId === findingId) {
+    fhStatus.textContent = statusLabel(finding.status);
+    fhStatus.className = 'badge ' + finding.status;
+  }
+}
+
+function setStageStatus(stage, status, text) {
+  stage.status = status;
+  stage.cardEl.classList.remove('status-running', 'status-done', 'status-error');
+  stage.cardEl.classList.add('status-' + (status === 'cancelled' ? 'error' : status));
+  const dot = stage.cardEl.querySelector('.status-dot');
+  dot.classList.remove('running', 'done', 'error', 'cancelled');
+  dot.classList.add(status);
+  stage.cardEl.querySelector('.status-text').textContent = text;
+}
+
+function renderVerdict(stage) {
+  if (!stage.verdict) {
+    stage.verdictEl.innerHTML = '<p class="hint">No JSON verdict block found in the response.</p>';
+    return;
+  }
+  const rows = Object.entries(stage.verdict).map(([k, v]) => {
+    const isBadgeField = ['verdict', 'severity_confirmed', 'confidence', 'priority'].includes(k);
+    let valueHtml;
+    if (isBadgeField && typeof v === 'string') {
+      valueHtml = `<span class="badge ${v}">${escapeHtml(v)}</span>`;
+    } else {
+      valueHtml = escapeHtml(typeof v === 'string' ? v : JSON.stringify(v));
+    }
+    return `<div class="k">${escapeHtml(k)}</div><div class="v">${valueHtml}</div>`;
+  }).join('');
+  stage.verdictEl.innerHTML = `<div class="vgrid">${rows}</div>`;
+}
+
+function renderActions(stage) {
+  stage.actionsEl.innerHTML = '';
+  const nextAgent = stage.verdict && stage.verdict.next_agent;
+  if (nextAgent && nextAgent !== 'null' && agentsList.includes(nextAgent)) {
+    const btn = document.createElement('button');
+    btn.textContent = `Continue → ${agentMeta(nextAgent).label}`;
+    btn.addEventListener('click', () => openStageModal('continue', stage.runId));
+    stage.actionsEl.appendChild(btn);
+  } else if (nextAgent && nextAgent !== 'null') {
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.disabled = true;
+    btn.textContent = `Next: ${nextAgent} (not yet available)`;
+    stage.actionsEl.appendChild(btn);
+  }
+  const branchBtn = document.createElement('button');
+  branchBtn.className = 'secondary';
+  branchBtn.textContent = 'Branch to agent…';
+  branchBtn.addEventListener('click', () => openStageModal('branch', stage.runId));
+  stage.actionsEl.appendChild(branchBtn);
+}
+
+// ---------- context menus ----------
+
+function openContextMenu(x, y, runId) {
+  const stage = stages.get(runId);
+  if (!stage) return;
+
+  const nextAgent = stage.verdict && stage.verdict.next_agent;
+  const canContinue = stage.status !== 'running' && nextAgent && nextAgent !== 'null' && agentsList.includes(nextAgent);
+  const canRerun = stage.status !== 'running';
+  const canCancel = stage.status === 'running';
+
+  contextMenuEl.innerHTML = '';
+  const addItem = (label, disabled, onClick) => {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.disabled = !!disabled;
+    btn.addEventListener('click', () => { closeContextMenu(); onClick(); });
+    contextMenuEl.appendChild(btn);
+  };
+
+  addItem(canContinue ? `Add instructions & continue → ${agentMeta(nextAgent).label}` : 'Continue to next agent (not ready)', !canContinue, () => openStageModal('continue', runId));
+  addItem('Re-run this agent with new instructions', !canRerun, () => openStageModal('rerun', runId));
+  addItem('Branch to a different agent…', !canRerun, () => openStageModal('branch', runId));
+  const hr = document.createElement('hr');
+  contextMenuEl.appendChild(hr);
+  addItem('Cancel run', !canCancel, () => {
+    ws.send(JSON.stringify({ type: 'cancel', runId }));
+  });
+
+  positionAndShowMenu(x, y);
+}
+
+function openFindingContextMenu(x, y, findingId) {
+  contextMenuEl.innerHTML = '';
+  const addItem = (label, disabled, onClick) => {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.disabled = !!disabled;
+    btn.addEventListener('click', () => { closeContextMenu(); onClick(); });
+    contextMenuEl.appendChild(btn);
+  };
+
+  const hasRemediation = agentsList.includes('remediation');
+  addItem('Run Remediation', !hasRemediation, async () => {
+    await selectFinding(findingId);
+    const finding = findingCache.get(findingId);
+    startStage(findingId, 'remediation', buildBaseContext(finding), '');
+  });
+  addItem('Run Remediation with instructions…', !hasRemediation, async () => {
+    await selectFinding(findingId);
+    const finding = findingCache.get(findingId);
+    openFreshStageModal(findingId, 'remediation', buildBaseContext(finding));
+  });
+
+  const hr = document.createElement('hr');
+  contextMenuEl.appendChild(hr);
+
+  const hasTriage = agentsList.includes('triage');
+  addItem('Expand analysis: Triage…', !hasTriage, async () => {
+    await selectFinding(findingId);
+    const finding = findingCache.get(findingId);
+    openFreshStageModal(findingId, 'triage', buildBaseContext(finding));
+  });
+
+  const hasThreatModel = agentsList.includes('threat_model');
+  addItem('Expand analysis: Threat Model…', !hasThreatModel, async () => {
+    await selectFinding(findingId);
+    const finding = findingCache.get(findingId);
+    openFreshStageModal(findingId, 'threat_model', buildBaseContext(finding));
+  });
+
+  positionAndShowMenu(x, y);
+}
+
+function positionAndShowMenu(x, y) {
+  contextMenuEl.hidden = false;
+  const rect = contextMenuEl.getBoundingClientRect();
+  const left = Math.min(x, window.innerWidth - rect.width - 8);
+  const top = Math.min(y, window.innerHeight - rect.height - 8);
+  contextMenuEl.style.left = Math.max(8, left) + 'px';
+  contextMenuEl.style.top = Math.max(8, top) + 'px';
+}
+
+function closeContextMenu() { contextMenuEl.hidden = true; }
+
+document.addEventListener('click', (e) => {
+  if (!contextMenuEl.hidden && !contextMenuEl.contains(e.target)) closeContextMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeContextMenu(); closeStageModal(); closeFindingModal(); }
+});
+
+// ---------- stage modal (continue / re-run / branch / fresh run w/ instructions) ----------
+
+let stageModalState = null;
+
+function openStageModal(mode, runId) {
+  const stage = stages.get(runId);
+  if (!stage) return;
+
+  let title, agent, context;
+  if (mode === 'continue') {
+    title = `Continue → ${agentMeta(stage.verdict.next_agent).label}`;
+    agent = stage.verdict.next_agent;
+    context = `Prior agent: ${stage.agent}\nVerdict: ${JSON.stringify(stage.verdict, null, 2)}\n\nOriginal finding context:\n${stage.context}`;
+  } else if (mode === 'rerun') {
+    title = `Re-run ${agentMeta(stage.agent).label}`;
+    agent = stage.agent;
+    context = stage.context;
+  } else {
+    title = 'Branch to a different agent';
+    agent = stage.agent;
+    context = stage.context;
+  }
+
+  stageModalState = { findingId: stage.findingId };
+  stageModalTitle.textContent = title;
+  stageModalAgent.value = agentsList.includes(agent) ? agent : agentsList[0];
+  stageModalContext.value = context;
+  stageModalInstruction.value = '';
+  stageModalOverlay.hidden = false;
+  stageModalInstruction.focus();
+}
+
+function openFreshStageModal(findingId, agent, context) {
+  stageModalState = { findingId };
+  stageModalTitle.textContent = `Run ${agentMeta(agent).label} with instructions`;
+  stageModalAgent.value = agentsList.includes(agent) ? agent : agentsList[0];
+  stageModalContext.value = context;
+  stageModalInstruction.value = '';
+  stageModalOverlay.hidden = false;
+  stageModalInstruction.focus();
+}
+
+function closeStageModal() {
+  stageModalOverlay.hidden = true;
+  stageModalState = null;
+}
+
+document.getElementById('stage-modal-cancel').addEventListener('click', closeStageModal);
+stageModalOverlay.addEventListener('click', (e) => { if (e.target === stageModalOverlay) closeStageModal(); });
+
+document.getElementById('stage-modal-start').addEventListener('click', () => {
+  if (!stageModalState) return;
+  const { findingId } = stageModalState;
+  startStage(findingId, stageModalAgent.value, stageModalContext.value, stageModalInstruction.value);
+  closeStageModal();
+});
+
+// ---------- add-finding modal ----------
+
+function openFindingModal() {
+  findingModalTitle.value = '';
+  findingModalSeverity.value = 'medium';
+  findingModalRule.value = '';
+  findingModalFile.value = '';
+  findingModalDescription.value = '';
+  findingModalOverlay.hidden = false;
+  findingModalTitle.focus();
+}
+function closeFindingModal() { findingModalOverlay.hidden = true; }
+
+addFindingBtn.addEventListener('click', openFindingModal);
+document.getElementById('finding-modal-cancel').addEventListener('click', closeFindingModal);
+findingModalOverlay.addEventListener('click', (e) => { if (e.target === findingModalOverlay) closeFindingModal(); });
+
+document.getElementById('finding-modal-save').addEventListener('click', async () => {
+  const title = findingModalTitle.value.trim();
+  const description = findingModalDescription.value.trim();
+  if (!title || !description) {
+    alert('Title and description are required.');
+    return;
+  }
+  const res = await fetch('/api/findings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title,
+      severity: findingModalSeverity.value,
+      rule: findingModalRule.value.trim() || null,
+      file: findingModalFile.value.trim() || null,
+      description,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    alert(body.error || 'Failed to create finding.');
+    return;
+  }
+  const finding = await res.json();
+  findingCache.set(finding.id, finding);
+  closeFindingModal();
+  await loadFindings();
+  showView('findings');
+  selectFinding(finding.id);
+});
+
+// ---------- run-remediation CTA ----------
+
+runRemediationBtn.addEventListener('click', () => {
+  if (!selectedFindingId) return;
+  const finding = findingCache.get(selectedFindingId);
+  startStage(selectedFindingId, 'remediation', buildBaseContext(finding), '');
+});
+
+// ---------- csv export ----------
+
+exportCsvBtn.addEventListener('click', () => {
+  window.open('/api/findings/export.csv', '_blank');
+});
+
+// ---------- settings / theme ----------
+
+const THEME_KEY = 'appsecops-theme';
+
+function applyTheme(theme) {
+  if (theme === 'light') document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+  renderThemeToggle();
+}
+
+function renderThemeToggle() {
+  const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  document.querySelectorAll('#theme-toggle [data-theme-choice]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.themeChoice === current);
+  });
+}
+
+document.querySelectorAll('#theme-toggle [data-theme-choice]').forEach((btn) => {
+  btn.addEventListener('click', () => applyTheme(btn.dataset.themeChoice));
+});
+
+function renderSettings() {
+  renderThemeToggle();
+  const env = document.getElementById('settings-env');
+  env.innerHTML = `
+    <div class="hint">Findings and scans are stored in-memory on the server and reset whenever it restarts — there's no database yet.</div>
+    <div class="hint">Scans run <code>claude</code> against whatever directory path you give them, using this machine's own filesystem permissions — this app does not sandbox or restrict which directories can be scanned. Only point it at directories you trust reading.</div>
+    <div class="hint">${escapeHtml(agentsList.length)}/${KNOWN_AGENTS.length} pipeline agents available · ${escapeHtml(String(scansList.length))} scan${scansList.length === 1 ? '' : 's'} run this session.</div>
+  `;
+}
+
+// ---------- init ----------
+
+async function init() {
+  await loadAgents();
+  await loadFindings();
+  await loadScans();
+  await loadTimeline();
+  showView('dashboard');
+  connect();
+}
+init();
+</script>
+</body>
+</html>
