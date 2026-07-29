@@ -113,13 +113,27 @@
   .nav-item {
     display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
     background: none; color: var(--muted); font-weight: 500; font-size: 12.5px; text-align: left;
-    width: 100%; margin-bottom: 1px; border: none;
+    width: 100%; margin-bottom: 1px; border: none; position: relative;
   }
   #global-nav.collapsed .nav-item { justify-content: center; padding: 9px; }
-  #global-nav.collapsed .nav-item span, #global-nav.collapsed .nav-brand span { display: none; }
+  #global-nav.collapsed .nav-item span:not(.nav-badge), #global-nav.collapsed .nav-brand span { display: none; }
   .nav-item .icon { color: var(--muted); }
   .nav-item:hover { background: var(--panel-2); color: var(--text-dim); }
   .nav-item.active { background: var(--panel-2); color: var(--text); }
+  .nav-badge {
+    margin-left: auto; min-width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .nav-badge.alert {
+    width: auto; height: auto; min-width: 16px; padding: 1px 5px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; text-align: center; line-height: 1.4;
+    font-variant-numeric: tabular-nums; background: var(--err-soft); color: var(--err);
+  }
+  .nav-badge.running { background: var(--warn); box-shadow: 0 0 8px 1px var(--warn); animation: pulse 1.2s infinite ease-in-out; }
+  .nav-badge.completed { background: var(--ok); box-shadow: 0 0 6px -1px var(--ok); }
+  #global-nav.collapsed .nav-item .nav-badge {
+    position: absolute; top: 6px; right: 6px; margin-left: 0;
+    width: 8px; height: 8px; min-width: 8px; padding: 0; font-size: 0; overflow: hidden;
+  }
   .nav-item.active .icon { color: var(--accent); }
   .nav-status { margin-top: auto; padding: 10px 8px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 6px; }
   .nav-status-line { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); overflow: hidden; }
@@ -148,6 +162,7 @@
   }
   .view-header h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
   .view-subtitle { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .view-subtitle.viewing-label { color: var(--accent); font-weight: 600; }
   .view-body { flex: 1; overflow-y: auto; padding: 20px 26px; }
 
   label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
@@ -203,6 +218,16 @@
   .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .panel-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
 
+  .danger-zone { border-color: var(--err); margin-top: 16px; }
+  .danger-zone .panel-title { color: var(--err); }
+  .danger-zone-body { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; }
+  .danger-zone-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .danger-btn {
+    background: var(--err-soft); color: var(--err); border: 1px solid rgba(248, 113, 113, .35);
+    box-shadow: none; flex-shrink: 0; white-space: nowrap;
+  }
+  .danger-btn:hover:not(:disabled) { background: var(--err); color: #2a0a0a; filter: none; box-shadow: 0 0 16px -4px var(--err); }
+
   .agent-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); }
   .agent-row:last-child { border-bottom: none; }
   .agent-row .a-icon { width: 26px; text-align: center; }
@@ -219,12 +244,23 @@
   .status-line .s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
   .status-line.warn .s-dot { background: var(--warn); }
 
-  .dash-footer {
-    margin-top: 18px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px;
-    background: var(--panel); display: flex; align-items: center; justify-content: space-between;
-    font-size: 11.5px; color: var(--muted);
+  .link-btn { color: var(--accent); text-decoration: none; cursor: pointer; background: none; border: none; font-size: 11.5px; font-weight: 600; padding: 0; }
+
+  .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .quick-action-btn {
+    display: flex; align-items: center; gap: 12px; text-align: left; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; box-shadow: none;
+    color: var(--text); font-weight: 400;
   }
-  .dash-footer a, .link-btn { color: var(--accent); text-decoration: none; cursor: pointer; background: none; border: none; font-size: 11.5px; font-weight: 600; padding: 0; }
+  .quick-action-btn:hover { border-color: var(--accent); background: var(--panel-2); filter: none; box-shadow: none; }
+  .quick-action-btn .qa-icon {
+    width: 34px; height: 34px; border-radius: 8px; background: var(--panel-3); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .quick-action-btn .qa-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .quick-action-btn .qa-title { font-size: 13px; font-weight: 600; }
+  .quick-action-btn .qa-sub { font-size: 11px; color: var(--muted); }
+  .quick-action-btn .qa-arrow { color: var(--muted); font-size: 15px; flex-shrink: 0; }
 
   /* ---------- timeline ---------- */
   .filter-pills { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -246,6 +282,7 @@
   .timeline-row .tl-icon { margin-top: 2px; color: var(--muted); }
   .tl-main { flex: 1; min-width: 0; }
   .tl-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .tl-top .badge { margin-left: auto; }
   .tl-title { font-size: 12.5px; font-weight: 600; }
   .tl-summary { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
   .tl-time { font-size: 10.5px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
@@ -254,12 +291,16 @@
   /* ---------- scan kickoff (lives on the Dashboard) ---------- */
   .scan-form { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 12px; }
   .scan-form-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
-  .scan-top-row { display: flex; gap: 10px; align-items: flex-end; }
   .scan-start-btn {
-    flex-shrink: 0; margin-bottom: 1px; background: var(--ok-soft); color: var(--ok);
+    background: var(--ok-soft); color: var(--ok);
     border: 1px solid rgba(74, 222, 128, .35); box-shadow: none;
   }
   .scan-start-btn:hover:not(:disabled) { background: var(--ok); color: #06210f; filter: none; box-shadow: 0 0 16px -4px var(--ok); }
+  .atm-start-btn { background: rgba(244, 114, 182, .14); color: #f472b6; border: 1px solid rgba(244, 114, 182, .35); }
+  .atm-start-btn:hover:not(:disabled) { background: #f472b6; color: #3a0a20; filter: none; box-shadow: 0 0 16px -4px #f472b6; }
+  .scan-field-row { display: flex; gap: 10px; }
+  .label-optional { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .7; }
+  .scan-section { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .scan-agents-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .scan-agents-caption { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; flex-shrink: 0; }
   #scan-agents-list { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -275,6 +316,18 @@
   .agent-pill:disabled { opacity: .4; cursor: not-allowed; }
   #scan-note-toggle-btn { margin-left: auto; font-size: 11px; }
 
+  .scan-type-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .scan-type-pill {
+    display: flex; align-items: center; gap: 6px; padding: 5px 11px 5px 9px; border-radius: 20px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
+    font-size: 11.5px; font-weight: 600; cursor: pointer; box-shadow: none; white-space: nowrap;
+  }
+  .scan-type-pill:hover:not(:disabled) { filter: none; box-shadow: none; background: var(--panel-3); }
+  .scan-type-pill .icon { color: var(--muted); }
+  .scan-type-pill.selected { background: var(--pill-bg); border-color: var(--pill-color); color: var(--pill-color); }
+  .scan-type-pill.selected .icon { color: var(--pill-color); }
+  .scan-scope-row { gap: 10px; }
+
   .agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
   .agent-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
   .agent-card-top { display: flex; align-items: center; gap: 8px; }
@@ -288,25 +341,21 @@
   #agent-modal-content { min-height: 220px; font-family: var(--mono); font-size: 12px; }
   #agent-modal-overlay .modal { width: 620px; }
 
-  .tm-section { margin-bottom: 18px; }
-  .tm-section-header { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-  .tm-section-title { font-size: 13px; font-weight: 700; }
-  .tm-section-count { font-size: 10.5px; color: var(--muted); }
-  .tm-asvs-chip { font-size: 10px; padding: 2px 8px; border-radius: 20px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim); font-family: var(--mono); }
-  .tm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-  .tm-card { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--card-color, var(--border)); border-radius: 10px; padding: 11px 13px; cursor: pointer; display: flex; flex-direction: column; gap: 7px; }
-  .tm-card:hover { background: var(--panel-2); }
-  .tm-card-title { font-size: 12.5px; font-weight: 600; line-height: 1.4; }
-  .tm-card-badges { display: flex; gap: 5px; flex-wrap: wrap; }
-  .tm-card-tags { display: flex; gap: 5px; flex-wrap: wrap; }
-  .tm-card-tag { font-size: 10px; padding: 1px 7px; border-radius: 20px; background: var(--panel-2); border: 1px solid var(--border-soft); color: var(--muted); font-family: var(--mono); }
-  .tm-card-flow { font-size: 11px; line-height: 1.5; color: var(--text-dim); }
-  .tm-card-flow b { color: var(--muted); font-weight: 600; }
-
   #scan-live-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
-  #scan-live-container .stage-card { width: 100%; max-height: none; }
-  .scan-stats { display: flex; align-items: center; gap: 16px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stage-agent .path-text { font-size: 12.5px; }
+  .scan-meta-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); }
+  .scan-type-chip { display: inline-flex; align-items: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+  .scan-type-chip.scope-chip { background: var(--panel-3); color: var(--muted); }
+  .scan-meta-text { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .scan-stats { display: flex; align-items: center; gap: 14px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
   .scan-stats .stat b { color: var(--text-dim); font-weight: 600; }
+  .scan-status-stat { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+  .context-bar-wrap { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; border-bottom: 1px solid var(--border-soft); }
+  .context-bar { flex: 1; height: 5px; background: var(--panel-3); border-radius: 3px; overflow: hidden; }
+  .context-bar-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width .3s ease, background-color .3s ease; }
+  .context-bar-fill.warn { background: var(--warn); }
+  .context-bar-fill.danger { background: var(--err); }
+  .context-bar-label { font-size: 10px; color: var(--muted); flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .scan-error-msg { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11.5px; color: var(--err); }
   .scan-sev-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); min-height: 15px; }
   .sev-chip { font-size: 10.5px; font-weight: 700; text-transform: capitalize; padding: 2px 8px; border-radius: 20px; }
@@ -326,7 +375,7 @@
   .scan-actions button { font-size: 11.5px; padding: 5px 10px; }
 
   /* ---------- timeline scan rows (expandable inline) ---------- */
-  .tl-kind { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; background: var(--panel-3); color: var(--muted); margin-right: 6px; }
+  .tl-kind { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
   .timeline-row.expandable { flex-direction: column; align-items: stretch; cursor: pointer; }
   .timeline-row-body { border-top: 1px solid var(--border-soft); margin: 8px -12px -10px; padding: 8px 12px 2px; }
 
@@ -345,73 +394,147 @@
   .finding-row-title { font-size: 12.5px; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .finding-row-meta { margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
-  /* ---------- findings kanban ---------- */
+  /* ---------- findings: type tabs + table ---------- */
+  .findings-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .findings-scan-filter-wrap { display: flex; align-items: center; gap: 8px; }
+  .findings-scan-filter-wrap label { font-size: 11px; color: var(--muted); font-weight: 600; }
+  #findings-scan-filter { font-size: 12px; padding: 6px 8px; max-width: 320px; }
   .group-toggle { display: flex; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
   .group-toggle-btn { background: none; color: var(--muted); border: none; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; box-shadow: none; }
   .group-toggle-btn:hover:not(:disabled) { filter: none; box-shadow: none; color: var(--text-dim); }
   .group-toggle-btn.active { background: var(--panel-2); color: var(--text); }
+  .group-toggle-btn .gt-count { opacity: .6; margin-left: 3px; font-variant-numeric: tabular-nums; }
 
-  #kanban-view-body { display: flex; flex-direction: column; min-height: 0; }
-  #kanban-board { display: flex; gap: 14px; align-items: stretch; overflow-x: auto; flex: 1; padding-bottom: 6px; }
-  .kanban-column { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; min-width: 270px; max-width: 300px; flex: 1 0 270px; display: flex; flex-direction: column; }
-  .kanban-col-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); border-top: 3px solid var(--col-color, var(--border)); border-radius: 10px 10px 0 0; flex-shrink: 0; }
-  .kanban-col-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--col-color, var(--muted)); flex-shrink: 0; }
-  .kanban-col-title { font-size: 12px; font-weight: 700; color: var(--text-dim); flex: 1; }
-  .kanban-col-count { font-size: 11px; color: var(--muted); background: var(--panel-3); padding: 1px 7px; border-radius: 20px; font-variant-numeric: tabular-nums; }
-  .kanban-cards { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 80px; max-height: calc(100vh - 260px); }
-  .kanban-empty { color: var(--muted); font-size: 11.5px; text-align: center; padding: 18px 6px; }
-  .kanban-card { background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--card-color, var(--border)); border-radius: 8px; padding: 9px 10px; cursor: pointer; }
-  .kanban-card:hover { background: var(--panel-3); border-color: var(--text-dim); }
-  .kanban-card-title { font-size: 12px; font-weight: 600; line-height: 1.4; margin-bottom: 6px; }
-  .kanban-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .kanban-card-file { font-size: 10.5px; color: var(--muted); font-family: var(--mono); margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-  #finding-detail-overlay { justify-content: flex-end; align-items: stretch; }
-  #finding-detail-overlay .finding-modal { width: 680px; max-width: 92vw; height: 100%; max-height: 100%; border-radius: 14px 0 0 14px; margin: 0; position: relative; padding-top: 42px; }
-  .modal-close-btn, .finding-menu-btn {
-    position: absolute; top: 12px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
-    border-radius: 8px; width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: none;
+  #findings-view-body { display: flex; flex-direction: column; min-height: 0; gap: 12px; }
+  .findings-table-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: auto; flex: 1; }
+  table.findings-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .findings-table thead th {
+    position: sticky; top: 0; background: var(--panel); text-align: left; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700;
+    padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; user-select: none;
   }
-  .modal-close-btn:hover, .finding-menu-btn:hover { color: var(--text); border-color: var(--text-dim); filter: none; box-shadow: none; }
-  .modal-close-btn { right: 12px; }
-  .finding-menu-btn { right: 50px; }
-  .finding-modal .finding-header { padding-right: 92px; }
+  .findings-table thead th.sortable { cursor: pointer; }
+  .findings-table thead th.sortable:hover { color: var(--text-dim); }
+  .findings-table thead th.sorted { color: var(--text); }
+  .findings-table .sort-arrow { margin-left: 4px; opacity: .7; }
+  .findings-table tbody tr { cursor: pointer; }
+  .findings-table tbody tr:hover { background: var(--panel); }
+  .findings-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--border-soft); }
+  .findings-table td { padding: 10px 12px; vertical-align: top; }
+  .findings-table .ft-title { font-weight: 600; line-height: 1.4; max-width: 340px; }
+  .findings-table .ft-mono { font-family: var(--mono); font-size: 11px; color: var(--text-dim); word-break: break-word; max-width: 220px; display: inline-block; }
+  .findings-table .ft-sev-cell { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .ft-empty { padding: 40px; text-align: center; color: var(--muted); font-size: 12.5px; }
 
-  .finding-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-  .finding-header-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .finding-header-top h2 { font-size: 16px; margin: 0; font-weight: 600; }
-  .finding-header-meta { margin-top: 8px; font-size: 11.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
-  .finding-header-meta .scan-link-btn { background: none; border: none; padding: 0; color: var(--accent); font-size: 11.5px; cursor: pointer; box-shadow: none; text-decoration: underline; text-underline-offset: 2px; }
-  .finding-header-meta .scan-link-btn:hover { filter: none; box-shadow: none; color: var(--text); }
+  /* ---------- finding detail (full page) ---------- */
+  #fd-back-btn { font-size: 11px; margin-bottom: 6px; padding: 0; }
+  .fd-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .fd-scan-source { font-size: 11.5px; color: var(--muted); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .fd-scan-source .link-btn { font-size: 11.5px; }
+  .fd-scan-source .mono { font-family: var(--mono); color: var(--text-dim); }
+  .fd-meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .fd-meta-item { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
+  .fd-meta-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; margin-bottom: 3px; }
+  .fd-meta-value { font-size: 12.5px; color: var(--text-dim); word-break: break-word; }
+  .fd-meta-value.mono { font-family: var(--mono); font-size: 11.5px; }
+  .fd-section { margin-bottom: 22px; }
+  .fd-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+  .fd-prose { font-size: 13px; line-height: 1.6; color: var(--text-dim); white-space: pre-wrap; }
+  .fd-code-wrap { position: relative; }
+  .code-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 0; }
+  .fd-copy-btn { position: absolute; top: 8px; right: 8px; font-size: 10.5px; padding: 4px 9px; }
+  .tok-keyword { color: var(--accent); font-weight: 600; }
+  .tok-string { color: var(--ok); }
+  .tok-comment { color: var(--muted); font-style: italic; }
+  .tok-number { color: var(--warn); }
+  .fd-runs-empty { color: var(--muted); font-size: 12px; }
+  .fd-run-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .fd-run-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .fd-run-agent { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  .fd-run-time { font-size: 10.5px; color: var(--muted); margin-left: auto; }
+  .fd-view-tm-btn { margin-top: 8px; }
+  .fd-verdict-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; font-size: 12px; }
+  .fd-verdict-item b { color: var(--muted); font-weight: 600; margin-right: 4px; }
+  .fd-verdict-reasoning { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
 
-  .finding-verdict-strip { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  .vs-source { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--muted); }
-  .vs-item { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-  .vs-label { color: var(--muted); }
-  .vs-frameworks { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .chip { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10.5px; font-family: var(--mono); background: var(--panel-3); color: var(--text-dim); border: 1px solid var(--border); }
+  /* ---------- app-level (whole-directory) threat models ---------- */
+  .atm-section { margin-bottom: 20px; }
+  .atm-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+  .atm-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .atm-row { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
+  .atm-row:hover { border-color: var(--text-dim); }
+  .atm-row.expanded { border-color: var(--accent); }
+  .atm-row-summary { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .atm-row .sev-dot { margin-top: 0; }
+  .atm-row-main { flex: 1; min-width: 0; }
+  .atm-row-title { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .atm-row-sub { font-size: 10.5px; color: var(--muted); }
+  .atm-row .atm-live-stats { padding: 6px 0 0; border-bottom: none; gap: 10px; }
+  .atm-row .atm-context-wrap { padding: 6px 0 0; border-bottom: none; }
+  .atm-row-body { margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--border-soft); cursor: default; }
+  .atm-detail-item { font-size: 12.5px; color: var(--text-dim); margin-bottom: 8px; line-height: 1.5; }
+  .atm-detail-item b { color: var(--text); font-weight: 600; }
+  .atm-risk-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+  .atm-risk-card.selected { border-color: var(--accent); }
+  .atm-risk-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .atm-recs { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-dim); line-height: 1.7; }
 
-  details.finding-details { margin-top: 12px; }
-  details.finding-details summary { cursor: pointer; font-size: 11.5px; font-weight: 600; color: var(--muted); }
-  details.finding-details summary:hover { color: var(--text-dim); }
-  .finding-body { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
-  .finding-code { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); overflow: hidden; }
-  .finding-code-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--border-soft); }
-  .chip-btn { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; font-size: 10.5px; text-transform: none; letter-spacing: 0; font-weight: 600; cursor: pointer; box-shadow: none; }
-  .chip-btn:hover { color: var(--text); border-color: var(--text-dim); filter: none; box-shadow: none; }
-  .finding-code pre { margin: 0; padding: 10px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; color: var(--text-dim); }
-  .finding-prose { font-size: 12.5px; line-height: 1.6; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
+  /* ---------- threat model (radial OWASP map + attack-path flow) ---------- */
+  .tm-diagram-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 24px 16px 16px; margin-bottom: 16px; overflow-x: auto; }
+  /* Top-down tree/org-chart: App -> OWASP category -> individual finding/risk, connected by
+     straight drop-lines instead of a radial hub-and-spoke — the radial layout's edge labels
+     kept getting crowded/truncated ("A01:2021 - Broken Ac..."); a tree lets category labels
+     wrap onto two lines in full instead of being cut off, since there's no arc-crowding
+     constraint to fight. */
+  .tm-tree { display: flex; flex-direction: column; align-items: center; min-width: max-content; }
+  .tm-tree-root-wrap { margin-bottom: 26px; }
+  .tm-tree-box { border-radius: 8px; padding: 8px 12px; font-size: 11.5px; text-align: center; border: 2px solid var(--border); background: var(--panel-2); color: var(--text-dim); }
+  .tm-tree-root-box { font-weight: 700; color: var(--text); padding: 10px 22px; }
+  .tm-tree-cats { display: flex; justify-content: center; gap: 20px; }
+  .tm-tree-branch { display: flex; flex-direction: column; align-items: center; position: relative; padding-top: 26px; width: 170px; flex-shrink: 0; }
+  .tm-tree-branch::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 26px; background: var(--border); }
+  .tm-tree-cat-box { font-weight: 700; width: 100%; }
+  .tm-tree-cat-label { line-height: 1.3; margin-bottom: 3px; }
+  .tm-tree-cat-count { font-size: 10px; font-weight: 600; opacity: .75; }
+  .tm-tree-cat-box.sev-critical { border-color: var(--crit); color: var(--crit); background: color-mix(in srgb, var(--crit) 14%, var(--panel-2)); }
+  .tm-tree-cat-box.sev-high { border-color: var(--err); color: var(--err); background: color-mix(in srgb, var(--err) 14%, var(--panel-2)); }
+  .tm-tree-cat-box.sev-medium { border-color: var(--warn); color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--panel-2)); }
+  .tm-tree-cat-box.sev-low, .tm-tree-cat-box.sev-informational { border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--panel-2)); }
+  .tm-tree-leaves { display: flex; flex-direction: column; gap: 6px; margin-top: 18px; width: 100%; position: relative; }
+  .tm-tree-leaf-box {
+    cursor: pointer; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-left-width: 3px; position: relative; padding-top: 14px; font-size: 10.5px;
+  }
+  .tm-tree-leaf-box::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 14px; background: var(--border); }
+  .tm-tree-leaf-box.selected { background: var(--panel-3); }
+  .tm-tree-leaf-box.selected, .tm-tree-leaf-box:hover { border-color: var(--accent); }
+  .tm-tree-leaf-box.sev-critical { border-left-color: var(--crit); }
+  .tm-tree-leaf-box.sev-high { border-left-color: var(--err); }
+  .tm-tree-leaf-box.sev-medium { border-left-color: var(--warn); }
+  .tm-tree-leaf-box.sev-low, .tm-tree-leaf-box.sev-informational { border-left-color: var(--ok); }
 
-  .flow-area { flex: 1; padding: 18px 22px; min-height: 0; overflow-y: auto; }
-
-  .stage-row { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 4px 2px 14px; }
-  .connector { color: var(--muted); align-self: center; padding: 6px 0; font-size: 16px; flex-shrink: 0; }
+  .tm-detail-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .tm-detail-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .tm-run-select-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .tm-run-select-wrap label { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .tm-run-select-wrap select { font-size: 12px; padding: 4px 8px; }
+  .tm-not-in-map-hint { margin-bottom: 12px; }
+  .tm-detail-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tm-flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
+  .tm-flow-box {
+    flex: 1 1 160px; min-width: 160px; background: var(--panel-2); border: 1px solid var(--border);
+    border-top: 3px solid var(--box-color, var(--border)); border-radius: 8px; padding: 10px 12px;
+  }
+  .tm-flow-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; margin-bottom: 5px; }
+  .tm-flow-text { font-size: 12px; line-height: 1.5; color: var(--text-dim); }
+  .tm-flow-arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 16px; flex: 0 0 auto; padding: 0 2px; }
+  .tm-view-finding-btn { margin-top: 14px; }
 
   .stage-card { width: 100%; flex-shrink: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
   .stage-card.status-error { border-color: var(--err); }
   .stage-card.status-done { border-color: var(--border); }
 
-  .stage-header { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-bottom: 1px solid var(--border); cursor: context-menu; }
+  .stage-header { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-bottom: 1px solid var(--border); cursor: context-menu; }
   .stage-agent { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
   .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
   .status-dot.running { background: var(--warn); box-shadow: 0 0 8px 1px var(--warn); animation: pulse 1.2s infinite ease-in-out; }
@@ -419,24 +542,9 @@
   .status-dot.error, .status-dot.cancelled { background: var(--err); box-shadow: 0 0 6px -1px var(--err); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .status-text { font-size: 10.5px; color: var(--muted); flex: 1; }
-  .stage-menu-btn { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; line-height: 1; cursor: pointer; display: flex; }
-  .stage-menu-btn:hover { color: var(--text); border-color: var(--text-dim); }
-
-  .stage-body { padding: 10px; }
-  .stage-section-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
-  .stage-analysis-text { font-size: 12.5px; line-height: 1.6; color: var(--text-dim); display: flex; flex-direction: column; gap: 8px; }
-  .stage-analysis-text p { margin: 0; }
-  .stage-analysis-text p.muted { color: var(--muted); font-style: italic; }
-  .stage-analysis-text p.err-line { color: var(--err); }
-
-  details.stage-raw { border-top: 1px solid var(--border-soft); font-size: 11px; }
-  details.stage-raw summary { padding: 6px 10px; color: var(--muted); cursor: pointer; }
-  details.stage-raw pre { margin: 0; padding: 8px 10px; max-height: 200px; overflow: auto; font-family: var(--mono); white-space: pre-wrap; word-break: break-word; background: var(--bg); }
-
-  .stage-verdict { padding: 10px; border-top: 1px solid var(--border-soft); }
-  .stage-verdict .vgrid { display: grid; grid-template-columns: 90px 1fr; gap: 4px 8px; font-size: 11.5px; }
-  .stage-verdict .vgrid .k { color: var(--muted); font-weight: 600; }
-  .stage-verdict .vgrid .v { font-family: var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--text-dim); }
+  .status-text.running { color: var(--warn); }
+  .status-text.done { color: var(--ok); }
+  .status-text.error, .status-text.cancelled { color: var(--err); }
 
   .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
   .badge.confirmed, .badge.high, .badge.p0 { background: var(--err-soft); color: var(--err); }
@@ -445,9 +553,6 @@
   .badge.false_positive, .badge.low, .badge.p2, .badge.p3, .badge.informational, .badge.duplicate, .badge.remediation_ready { background: var(--ok-soft); color: var(--ok); }
   .badge.new { background: rgba(109,108,104,.18); color: var(--muted); }
   .badge.closed { background: rgba(109,108,104,.18); color: var(--muted); }
-
-  .stage-actions { padding: 10px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; }
-  .stage-actions button { flex: 1; font-size: 12px; padding: 7px 8px; }
 
   #context-menu { position: fixed; z-index: 70; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 4px; box-shadow: 0 8px 20px rgba(0,0,0,.35); min-width: 240px; }
   #context-menu button { display: block; width: 100%; text-align: left; background: none; color: var(--text-dim); border: none; padding: 8px 10px; font-size: 12px; font-weight: 400; border-radius: 6px; }
@@ -477,13 +582,25 @@
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/></svg>
     <span>Dashboard</span>
   </button>
+  <button class="nav-item" data-view="scans">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/></svg>
+    <span>Scans</span>
+    <span class="nav-badge" id="nav-badge-scans" hidden></span>
+  </button>
+  <button class="nav-item" data-view="sca">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.2 12 4l8.5 4.2v7.6L12 20 3.5 15.8V8.2Z"/><path d="M3.5 8.2 12 12l8.5-3.8"/><path d="M12 12v8"/></svg>
+    <span>SCA</span>
+    <span class="nav-badge" id="nav-badge-sca" hidden></span>
+  </button>
   <button class="nav-item" data-view="timeline">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
     <span>Timeline</span>
+    <span class="nav-badge" id="nav-badge-timeline" hidden></span>
   </button>
   <button class="nav-item" data-view="findings">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.5h16M9.5 9.5V20"/></svg>
     <span>Findings</span>
+    <span class="nav-badge alert" id="nav-badge-findings" hidden></span>
   </button>
   <button class="nav-item" data-view="threatmodel">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/></svg>
@@ -521,15 +638,76 @@
   <div class="view-body">
     <div class="briefing"><span class="briefing-tag">Briefing</span><span id="dash-briefing-text">Loading…</span></div>
 
+    <div class="quick-actions">
+      <button class="quick-action-btn" id="dash-scans-link">
+        <span class="qa-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/></svg></span>
+        <span class="qa-text">
+          <span class="qa-title">Start a scan</span>
+          <span class="qa-sub">Kick off a reasoning or custom scan against a directory</span>
+        </span>
+        <span class="qa-arrow">→</span>
+      </button>
+      <button class="quick-action-btn" id="dash-timeline-link">
+        <span class="qa-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg></span>
+        <span class="qa-text">
+          <span class="qa-title">View timeline</span>
+          <span class="qa-sub">Every scan and agent run, newest first</span>
+        </span>
+        <span class="qa-arrow">→</span>
+      </button>
+    </div>
+
+    <div class="stat-grid" id="dash-stats"></div>
+    <div class="panel">
+      <div class="panel-title">Agents</div>
+      <div id="dash-agents"></div>
+    </div>
+  </div>
+</div>
+
+<div id="view-scans" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>Scans</h1>
+      <div class="view-subtitle">Kick off a new scan and watch it run live</div>
+    </div>
+  </div>
+  <div class="view-body">
     <div class="scan-form">
       <div class="scan-form-title">New scan</div>
-      <div class="scan-top-row">
-        <div style="flex:1; min-width:0;">
-          <label for="scan-path-input">Target directory</label>
-          <input id="scan-path-input" class="path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
-        </div>
-        <button id="scan-start-btn" class="scan-start-btn">Start scan</button>
+
+      <div>
+        <label for="scan-path-input">Target directory</label>
+        <input id="scan-path-input" class="path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
       </div>
+
+      <div class="scan-field-row">
+        <div style="flex:1; min-width:0;">
+          <label for="scan-branch-input">Branch <span class="label-optional">optional</span></label>
+          <input id="scan-branch-input" class="path-input" placeholder="e.g. main" />
+        </div>
+        <div style="flex:1; min-width:0;">
+          <label for="scan-app-input">App / service <span class="label-optional">optional</span></label>
+          <input id="scan-app-input" placeholder="e.g. Payments API" />
+        </div>
+      </div>
+
+      <div class="scan-section">
+        <span class="scan-agents-caption">Scan type:</span>
+        <div id="scan-type-list" class="scan-type-row"></div>
+      </div>
+
+      <div class="scan-section scan-scope-row">
+        <span class="scan-agents-caption">Scope:</span>
+        <div class="group-toggle" id="scan-scope-toggle">
+          <button class="group-toggle-btn active" data-scope="full" type="button">Full scan</button>
+          <button class="group-toggle-btn" data-scope="diff" type="button">Diff only</button>
+        </div>
+        <div id="scan-base-branch-wrap" style="flex:1; min-width:170px;" hidden>
+          <input id="scan-base-branch-input" class="path-input" placeholder="Base branch to diff against, e.g. main" />
+        </div>
+      </div>
+
       <div class="scan-agents-row">
         <span class="scan-agents-caption">Run after scan:</span>
         <div id="scan-agents-list"></div>
@@ -538,18 +716,63 @@
       <div id="scan-instruction-wrap" hidden>
         <textarea id="scan-instruction-input" placeholder="e.g. Focus on the API routes under src/api, skip test fixtures." style="min-height:44px;"></textarea>
       </div>
+
+      <button id="scan-start-btn" class="scan-start-btn" style="width:100%;">Start scan</button>
     </div>
     <div id="scan-live-container"></div>
+  </div>
+</div>
 
-    <div class="stat-grid" id="dash-stats"></div>
-    <div class="panel">
-      <div class="panel-title">Agents</div>
-      <div id="dash-agents"></div>
+<div id="view-sca" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>SCA</h1>
+      <div class="view-subtitle">Software Composition Analysis — dependency manifests & lockfiles, checked separately from code reasoning</div>
     </div>
-    <div class="dash-footer">
-      <span id="dash-footer-text"></span>
-      <button class="link-btn" id="dash-timeline-link">Timeline →</button>
+  </div>
+  <div class="view-body">
+    <div class="scan-form">
+      <div class="scan-form-title">New SCA scan</div>
+
+      <div>
+        <label for="sca-path-input">Target directory</label>
+        <input id="sca-path-input" class="path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
+      </div>
+
+      <div class="scan-field-row">
+        <div style="flex:1; min-width:0;">
+          <label for="sca-branch-input">Branch <span class="label-optional">optional</span></label>
+          <input id="sca-branch-input" class="path-input" placeholder="e.g. main" />
+        </div>
+        <div style="flex:1; min-width:0;">
+          <label for="sca-app-input">App / service <span class="label-optional">optional</span></label>
+          <input id="sca-app-input" placeholder="e.g. Payments API" />
+        </div>
+      </div>
+
+      <div class="scan-section scan-scope-row">
+        <span class="scan-agents-caption">Scope:</span>
+        <div class="group-toggle" id="sca-scope-toggle">
+          <button class="group-toggle-btn active" data-scope="full" type="button">Full scan</button>
+          <button class="group-toggle-btn" data-scope="diff" type="button">Diff only</button>
+        </div>
+        <div id="sca-base-branch-wrap" style="flex:1; min-width:170px;" hidden>
+          <input id="sca-base-branch-input" class="path-input" placeholder="Base branch to diff against, e.g. main" />
+        </div>
+      </div>
+
+      <div class="scan-agents-row">
+        <span class="scan-agents-caption">Run after scan:</span>
+        <div id="sca-agents-list"></div>
+        <button class="link-btn" id="sca-note-toggle-btn" type="button">+ instructions</button>
+      </div>
+      <div id="sca-instruction-wrap" hidden>
+        <textarea id="sca-instruction-input" placeholder="e.g. Only check direct dependencies, skip devDependencies." style="min-height:44px;"></textarea>
+      </div>
+
+      <button id="sca-start-btn" class="scan-start-btn" style="width:100%;">Start SCA scan</button>
     </div>
+    <div id="sca-live-container"></div>
   </div>
 </div>
 
@@ -580,6 +803,16 @@
       <div class="panel-title">Environment</div>
       <div id="settings-env"></div>
     </div>
+    <div class="panel danger-zone">
+      <div class="panel-title">Danger zone</div>
+      <div class="danger-zone-body">
+        <div>
+          <div class="danger-zone-title">Clear session</div>
+          <div class="hint">Permanently wipes every finding, scan, and app-level threat model on the server — a full reset back to empty, no reseed. Refused while anything is still running.</div>
+        </div>
+        <button class="danger-btn" id="clear-session-btn" type="button">Clear session</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -590,16 +823,38 @@
       <div class="view-subtitle" id="findings-subtitle"></div>
     </div>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-      <div class="group-toggle" id="findings-group-toggle">
-        <button class="group-toggle-btn active" data-group="status" type="button">By status</button>
-        <button class="group-toggle-btn" data-group="severity" type="button">By severity</button>
-      </div>
       <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
       <button id="add-finding-btn">+ Add</button>
     </div>
   </div>
-  <div class="view-body" id="kanban-view-body">
-    <div id="kanban-board"></div>
+  <div class="view-body" id="findings-view-body">
+    <div class="findings-toolbar">
+      <div class="group-toggle" id="findings-type-tabs"></div>
+      <div class="findings-scan-filter-wrap">
+        <label for="findings-scan-filter">Scan</label>
+        <select id="findings-scan-filter"><option value="all">All scans</option></select>
+      </div>
+    </div>
+    <div class="findings-table-wrap">
+      <table class="findings-table">
+        <thead id="findings-table-head"></thead>
+        <tbody id="findings-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="view-finding-detail" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <button class="link-btn" id="fd-back-btn" type="button">← Back to Findings</button>
+      <h1 id="fd-title">Finding</h1>
+      <div class="view-subtitle" id="fd-subtitle"></div>
+    </div>
+    <div id="fd-header-actions" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+  </div>
+  <div class="view-body">
+    <div id="fd-body"></div>
   </div>
 </div>
 
@@ -607,10 +862,37 @@
   <div class="view-header">
     <div>
       <h1>Threat Model</h1>
-      <div class="view-subtitle">Confirmed exploit paths, grouped by OWASP Top 10 category</div>
+      <div class="view-subtitle">Every threat-modeled finding, mapped by OWASP category — click a node for its attack path</div>
+      <div class="view-subtitle viewing-label" id="tm-viewing-label" hidden></div>
     </div>
   </div>
   <div class="view-body">
+    <div class="scan-form">
+      <div class="scan-form-title">New app threat model</div>
+
+      <div>
+        <label for="atm-path-input">Target directory</label>
+        <input id="atm-path-input" class="path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
+      </div>
+
+      <div class="scan-field-row">
+        <div style="flex:1; min-width:0;">
+          <label for="atm-branch-input">Branch <span class="label-optional">optional</span></label>
+          <input id="atm-branch-input" class="path-input" placeholder="e.g. main" />
+        </div>
+        <div style="flex:1; min-width:0;">
+          <label for="atm-app-input">App / service <span class="label-optional">optional</span></label>
+          <input id="atm-app-input" placeholder="e.g. Payments API" />
+        </div>
+      </div>
+
+      <div>
+        <label for="atm-instruction-input">Focus areas <span class="label-optional">optional</span></label>
+        <textarea id="atm-instruction-input" placeholder="e.g. Focus on the payment and auth flows, skip the admin dashboard." style="min-height:44px;"></textarea>
+      </div>
+
+      <button id="atm-start-btn" class="scan-start-btn atm-start-btn" style="width:100%;">Start app threat model</button>
+    </div>
     <div id="tm-content"></div>
   </div>
 </div>
@@ -630,44 +912,6 @@
 </div>
 
 <div id="context-menu" hidden></div>
-
-<div class="modal-overlay" id="finding-detail-overlay" hidden>
-  <div class="modal finding-modal">
-    <button class="finding-menu-btn" id="finding-detail-menu-btn" title="More actions" type="button">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/></svg>
-    </button>
-    <button class="modal-close-btn" id="finding-detail-close" title="Close" type="button">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
-    </button>
-    <div>
-      <div class="finding-header">
-        <div class="finding-header-top">
-          <h2 id="fh-title"></h2>
-          <span id="fh-severity" class="badge"></span>
-          <span id="fh-status" class="badge"></span>
-        </div>
-        <div class="finding-header-meta" id="fh-meta"></div>
-        <div class="finding-verdict-strip" id="fh-verdict-strip" hidden></div>
-        <details class="finding-details">
-          <summary>Code &amp; description</summary>
-          <div class="finding-body">
-            <div class="finding-code" id="fh-code-block" hidden>
-              <div class="finding-code-head">
-                <span>Vulnerable code</span>
-                <button class="chip-btn" id="fh-copy-code" type="button">Copy</button>
-              </div>
-              <pre id="fh-code"></pre>
-            </div>
-            <div class="finding-prose" id="fh-prose"></div>
-          </div>
-        </details>
-      </div>
-      <div class="flow-area">
-        <div id="flow-container"></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <div class="modal-overlay" id="stage-modal-overlay" hidden>
   <div class="modal">
@@ -698,27 +942,66 @@
       <label for="finding-modal-title">Title</label>
       <input id="finding-modal-title" placeholder="e.g. SQL Injection in /api/search" />
     </div>
-    <div>
-      <label for="finding-modal-severity">Severity (as reported by scanner)</label>
-      <select id="finding-modal-severity">
-        <option value="critical">Critical</option>
-        <option value="high">High</option>
-        <option value="medium" selected>Medium</option>
-        <option value="low">Low</option>
-        <option value="informational">Informational</option>
-      </select>
+    <div class="scan-field-row">
+      <div style="flex:1; min-width:0;">
+        <label for="finding-modal-scantype">Type</label>
+        <select id="finding-modal-scantype">
+          <option value="reasoning" selected>Reasoning Scan</option>
+          <option value="sca">SCA</option>
+        </select>
+      </div>
+      <div style="flex:1; min-width:0;">
+        <label for="finding-modal-severity">Severity (as reported by scanner)</label>
+        <select id="finding-modal-severity">
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium" selected>Medium</option>
+          <option value="low">Low</option>
+          <option value="informational">Informational</option>
+        </select>
+      </div>
     </div>
     <div>
-      <label for="finding-modal-rule">Rule / CWE (optional)</label>
+      <label for="finding-modal-rule">Rule / CWE / CVE (optional)</label>
       <input id="finding-modal-rule" placeholder="e.g. CWE-89 SQL Injection" />
     </div>
-    <div>
-      <label for="finding-modal-file">File (optional)</label>
-      <input id="finding-modal-file" placeholder="e.g. src/api/search.js:42" />
+    <div id="fm-fields-reasoning">
+      <div>
+        <label for="finding-modal-file">File <span class="label-optional">optional</span></label>
+        <input id="finding-modal-file" placeholder="e.g. src/api/search.js:42" />
+      </div>
+      <div>
+        <label for="finding-modal-code">Code snippet (optional, shown with syntax highlighting)</label>
+        <textarea id="finding-modal-code" style="font-family: var(--mono); min-height: 70px;" placeholder="Paste the exact vulnerable snippet"></textarea>
+      </div>
+      <div class="scan-field-row">
+        <div style="flex:1; min-width:0;">
+          <label for="finding-modal-endpoint">Endpoint <span class="label-optional">optional</span></label>
+          <input id="finding-modal-endpoint" placeholder="e.g. /internal/metrics" />
+        </div>
+        <div style="flex:1; min-width:0;">
+          <label for="finding-modal-method">Method <span class="label-optional">optional</span></label>
+          <input id="finding-modal-method" placeholder="e.g. GET" />
+        </div>
+      </div>
+    </div>
+    <div id="fm-fields-sca" hidden class="scan-field-row">
+      <div style="flex:1; min-width:0;">
+        <label for="finding-modal-package">Package name</label>
+        <input id="finding-modal-package" placeholder="e.g. lodash" />
+      </div>
+      <div style="flex:1; min-width:0;">
+        <label for="finding-modal-package-version">Current version</label>
+        <input id="finding-modal-package-version" placeholder="e.g. 4.17.15" />
+      </div>
+      <div style="flex:1; min-width:0;">
+        <label for="finding-modal-fixed-version">Fixed version</label>
+        <input id="finding-modal-fixed-version" placeholder="e.g. 4.17.21" />
+      </div>
     </div>
     <div>
-      <label for="finding-modal-description">Description / snippet</label>
-      <textarea id="finding-modal-description" placeholder="Scanner output, code snippet, description — whatever context the agent should see."></textarea>
+      <label for="finding-modal-description">Description</label>
+      <textarea id="finding-modal-description" placeholder="Scanner output, description — whatever context the agent should see."></textarea>
     </div>
     <div class="modal-actions">
       <button class="secondary" id="finding-modal-cancel">Cancel</button>
@@ -761,8 +1044,11 @@ const ICONS = {
   checkCircle: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.3 2.6 2.6 5.2-5.2"/>',
   folder: '<path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2h8.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3 17.5v-11Z"/>',
   trending: '<path d="m3 16 6-6 4 4 8-8"/><path d="M15 6h6v6"/>',
-  dots: '<circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/>',
   radar: '<circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/>',
+  package: '<path d="M3.5 8.2 12 4l8.5 4.2v7.6L12 20 3.5 15.8V8.2Z"/><path d="M3.5 8.2 12 12l8.5-3.8"/><path d="M12 12v8"/>',
+  edit: '<path d="M4 20h4l10-10a2 2 0 0 0 0-2.8L16.8 5a2 2 0 0 0-2.8 0L4 15v5Z"/><path d="m13.5 6.5 4 4"/>',
+  branch: '<circle cx="6" cy="4.5" r="2.2"/><circle cx="6" cy="19.5" r="2.2"/><circle cx="18" cy="7.5" r="2.2"/><path d="M6 6.7V17.3"/><path d="M18 9.7A7 7 0 0 1 11 16.5"/>',
+  shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6L12 3Z"/><path d="m9 12 2 2 4-4"/>',
 };
 function icon(name, cls) {
   return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -776,6 +1062,7 @@ const AGENT_META = {
   triage: { label: 'Triage', icon: 'search', color: '#a78bfa', role: 'First pass: real finding or noise, how urgent' },
   threat_model: { label: 'Threat Model', icon: 'target', color: '#fb923c', role: 'Exploit path, preconditions, blast radius' },
   remediation: { label: 'Remediation', icon: 'wrench', color: '#2dd4bf', role: 'Concrete fix guidance, terminal stage' },
+  app_threat_model: { label: 'App Threat Model', icon: 'shield', color: '#f472b6', role: 'Whole-app architecture-level threat model' },
 };
 function agentMeta(name) {
   return AGENT_META[name] || { label: name, icon: 'gear', color: '#8f8a7b', role: '' };
@@ -786,33 +1073,62 @@ function knownAgentsAvailableCount() {
   return KNOWN_AGENTS.filter((a) => agentsList.includes(a)).length;
 }
 
+// ---------- scan type metadata (mirrors what server.js's SCAN_TYPE_FRAMING actually does) ----------
+
+// 'reasoning' replaced the old separate 'sast'/'dast' entries — both were just this same LLM
+// reading source and reasoning about it, so calling them distinct scanner categories was
+// misleading. SCA stays distinct since it's a genuinely different task (manifests/lockfiles
+// vs. code patterns), and now lives on its own page (#view-sca) rather than as a pill here.
+const SCAN_TYPE_META = {
+  reasoning: { label: 'Reasoning Scan', icon: 'search', color: '#a78bfa', caption: 'LLM reasoning pass over source — vulnerability patterns and attack surface, no live target is hit' },
+  sca: { label: 'SCA', icon: 'package', color: '#fb923c', caption: 'Dependency manifests & lockfiles for known-vulnerable packages' },
+  custom: { label: 'Custom', icon: 'edit', color: '#2dd4bf', caption: 'Your own instructions drive the pass, no canned framing' },
+};
+
 // ---------- dom refs ----------
 
 const statusEl = document.getElementById('status');
-const kanbanBoardEl = document.getElementById('kanban-board');
+const findingsTypeTabsEl = document.getElementById('findings-type-tabs');
+const findingsTableHeadEl = document.getElementById('findings-table-head');
+const findingsTableBodyEl = document.getElementById('findings-table-body');
 const findingsSubtitleEl = document.getElementById('findings-subtitle');
+const findingsScanFilterEl = document.getElementById('findings-scan-filter');
 const addFindingBtn = document.getElementById('add-finding-btn');
 const exportCsvBtn = document.getElementById('export-csv-btn');
-const findingDetailOverlay = document.getElementById('finding-detail-overlay');
-const fhTitle = document.getElementById('fh-title');
-const fhSeverity = document.getElementById('fh-severity');
-const fhStatus = document.getElementById('fh-status');
-const fhMeta = document.getElementById('fh-meta');
-const fhVerdictStrip = document.getElementById('fh-verdict-strip');
-const fhCodeBlock = document.getElementById('fh-code-block');
-const fhCode = document.getElementById('fh-code');
-const fhProse = document.getElementById('fh-prose');
-const fhCopyCodeBtn = document.getElementById('fh-copy-code');
-const flowContainer = document.getElementById('flow-container');
 const contextMenuEl = document.getElementById('context-menu');
 
 const scanPathInput = document.getElementById('scan-path-input');
+const scanBranchInput = document.getElementById('scan-branch-input');
+const scanAppInput = document.getElementById('scan-app-input');
 const scanInstructionInput = document.getElementById('scan-instruction-input');
 const scanStartBtn = document.getElementById('scan-start-btn');
 const scanLiveContainer = document.getElementById('scan-live-container');
 const scanAgentsList = document.getElementById('scan-agents-list');
+const scanTypeListEl = document.getElementById('scan-type-list');
+const scanBaseBranchWrap = document.getElementById('scan-base-branch-wrap');
+const scanBaseBranchInput = document.getElementById('scan-base-branch-input');
+
+const atmPathInput = document.getElementById('atm-path-input');
+const atmBranchInput = document.getElementById('atm-branch-input');
+const atmAppInput = document.getElementById('atm-app-input');
+const atmInstructionInput = document.getElementById('atm-instruction-input');
+const atmStartBtn = document.getElementById('atm-start-btn');
+
+const scaPathInput = document.getElementById('sca-path-input');
+const scaBranchInput = document.getElementById('sca-branch-input');
+const scaAppInput = document.getElementById('sca-app-input');
+const scaInstructionInput = document.getElementById('sca-instruction-input');
+const scaStartBtn = document.getElementById('sca-start-btn');
+const scaLiveContainer = document.getElementById('sca-live-container');
+const scaAgentsList = document.getElementById('sca-agents-list');
+const scaBaseBranchWrap = document.getElementById('sca-base-branch-wrap');
+const scaBaseBranchInput = document.getElementById('sca-base-branch-input');
 
 let scanSelectedAgents = new Set();
+let scaSelectedAgents = new Set();
+let scanType = 'reasoning';
+let scanScope = 'full';
+let scaScope = 'full';
 
 const stageModalOverlay = document.getElementById('stage-modal-overlay');
 const stageModalTitle = document.getElementById('stage-modal-title');
@@ -822,12 +1138,19 @@ const stageModalInstruction = document.getElementById('stage-modal-instruction')
 
 const findingModalOverlay = document.getElementById('finding-modal-overlay');
 const findingModalTitle = document.getElementById('finding-modal-title');
+const findingModalScanType = document.getElementById('finding-modal-scantype');
 const findingModalSeverity = document.getElementById('finding-modal-severity');
 const findingModalRule = document.getElementById('finding-modal-rule');
 const findingModalFile = document.getElementById('finding-modal-file');
+const findingModalCode = document.getElementById('finding-modal-code');
+const findingModalPackage = document.getElementById('finding-modal-package');
+const findingModalPackageVersion = document.getElementById('finding-modal-package-version');
+const findingModalFixedVersion = document.getElementById('finding-modal-fixed-version');
+const findingModalEndpoint = document.getElementById('finding-modal-endpoint');
+const findingModalMethod = document.getElementById('finding-modal-method');
 const findingModalDescription = document.getElementById('finding-modal-description');
-
-const tmContentEl = document.getElementById('tm-content');
+const fmFieldsReasoning = document.getElementById('fm-fields-reasoning');
+const fmFieldsSca = document.getElementById('fm-fields-sca');
 
 const newAgentBtn = document.getElementById('new-agent-btn');
 const agentsListEl = document.getElementById('agents-list');
@@ -840,19 +1163,23 @@ const agentModalDropzone = document.getElementById('agent-modal-dropzone');
 let ws = null;
 let agentsList = [];
 let findings = [];               // list-item shape from GET /api/findings
-let selectedFindingId = null;
-let findingsGroupBy = 'status';
+let findingsTypeFilter = 'all';  // 'all' | 'reasoning' | 'sca'
+let findingsScanFilter = 'all';  // 'all' or a scan id — restricts the table to one scan's findings
+let findingsSort = { key: 'severity', dir: 'asc' };
+let currentFindingDetailId = null;
 let currentView = 'dashboard';
 const findingCache = new Map();  // findingId -> full finding record (from GET /api/findings/:id)
-const flows = new Map();         // findingId -> { el, stageRowEl, stages: [runId,...] }
-const stages = new Map();        // runId -> stage state
+const stages = new Map();        // runId -> findingId, just enough to correlate incoming WS messages
 
 let timelineEntries = [];        // flattened run history, newest first
 let timelineLoaded = false;
 let timelineFilter = 'all';
+let timelineUnseenDone = 0;      // completions since the user last viewed Timeline, for the nav badge
 
 let scansList = [];              // list-item shape from GET /api/scans
 let scansLoaded = false;
+let appThreatModelsList = [];    // list-item shape from GET /api/app-threat-models
+let appThreatModelsLoaded = false;
 const scanRuns = new Map();      // runId -> live scan run state (mirrors a stage's shape)
 const scanDetailCache = new Map(); // scanId -> full scan detail (with findings)
 
@@ -916,13 +1243,21 @@ async function loadAgents() {
     stageModalAgent.appendChild(opt);
   }
   renderScanAgentSelection();
+  renderScaAgentSelection();
 }
 
-function renderScanAgentSelection() {
-  scanAgentsList.innerHTML = '';
+// Shared by the Scans and SCA pages' "Run after scan" pill rows — same pill markup, just a
+// different container element and selected-agents Set per page.
+function renderAgentPillSelection(containerEl, selectedSet) {
+  containerEl.innerHTML = '';
   for (const agentName of agentsList) {
+    // Threat Model doesn't fit a per-finding "run after scan" pill the way Triage/Remediation
+    // do — a raw scan finding has no exploit-chain context yet for it to refine. Whole-app
+    // threat modeling is its own action on the Threat Model page's "New app threat model"
+    // form, not a per-finding auto-run choice.
+    if (agentName === 'threat_model') continue;
     const meta = agentMeta(agentName);
-    const isSelected = scanSelectedAgents.has(agentName);
+    const isSelected = selectedSet.has(agentName);
 
     const pill = document.createElement('button');
     pill.type = 'button';
@@ -932,19 +1267,98 @@ function renderScanAgentSelection() {
     pill.title = meta.role || `${meta.label} agent`;
     pill.innerHTML = `<span class="ap-dot"></span>${escapeHtml(meta.label)}`;
     pill.addEventListener('click', () => {
-      if (scanSelectedAgents.has(agentName)) scanSelectedAgents.delete(agentName);
-      else scanSelectedAgents.add(agentName);
-      renderScanAgentSelection();
+      if (selectedSet.has(agentName)) selectedSet.delete(agentName);
+      else selectedSet.add(agentName);
+      renderAgentPillSelection(containerEl, selectedSet);
     });
 
-    scanAgentsList.appendChild(pill);
+    containerEl.appendChild(pill);
   }
+}
+
+function renderScanAgentSelection() {
+  renderAgentPillSelection(scanAgentsList, scanSelectedAgents);
   updateScanStartLabel();
+}
+
+function renderScaAgentSelection() {
+  renderAgentPillSelection(scaAgentsList, scaSelectedAgents);
 }
 
 function updateScanStartLabel() {
   scanStartBtn.textContent = 'Start scan';
 }
+
+function renderScanTypeSelection() {
+  scanTypeListEl.innerHTML = '';
+  for (const key of ['reasoning', 'custom']) {
+    const meta = SCAN_TYPE_META[key];
+    const isSelected = scanType === key;
+
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'scan-type-pill' + (isSelected ? ' selected' : '');
+    pill.style.setProperty('--pill-color', meta.color);
+    pill.style.setProperty('--pill-bg', hexToRgba(meta.color, .14));
+    pill.title = meta.caption;
+    pill.innerHTML = `${icon(meta.icon)}${escapeHtml(meta.label)}`;
+    pill.addEventListener('click', () => {
+      scanType = key;
+      renderScanTypeSelection();
+      if (key === 'custom' && scanInstructionWrap.hidden) {
+        scanInstructionWrap.hidden = false;
+        scanNoteToggleBtn.textContent = '− instructions';
+        scanInstructionInput.focus();
+      }
+    });
+
+    scanTypeListEl.appendChild(pill);
+  }
+}
+
+document.querySelectorAll('#scan-scope-toggle .group-toggle-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    scanScope = btn.dataset.scope;
+    document.querySelectorAll('#scan-scope-toggle .group-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    scanBaseBranchWrap.hidden = scanScope !== 'diff';
+    if (scanScope === 'diff') scanBaseBranchInput.focus();
+  });
+});
+
+document.querySelectorAll('#sca-scope-toggle .group-toggle-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    scaScope = btn.dataset.scope;
+    document.querySelectorAll('#sca-scope-toggle .group-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    scaBaseBranchWrap.hidden = scaScope !== 'diff';
+    if (scaScope === 'diff') scaBaseBranchInput.focus();
+  });
+});
+
+function startAppThreatModel() {
+  const targetPath = atmPathInput.value.trim();
+  if (!targetPath) {
+    alert('Enter a target directory path.');
+    return;
+  }
+  const branch = atmBranchInput.value.trim();
+  const app = atmAppInput.value.trim();
+  const instruction = atmInstructionInput.value.trim();
+  const runId = uid();
+  const startTime = Date.now();
+
+  const run = {
+    runId, toolCount: 0, fileCount: 0, tokenCount: 0, lastContextTokens: 0, startTime,
+    toolsEl: null, filesEl: null, tokensEl: null, elapsedEl: null, contextBarFillEl: null, contextBarLabelEl: null,
+    elapsedTimer: null,
+  };
+  appThreatModelRuns.set(runId, run);
+  run.elapsedTimer = setInterval(() => updateAppThreatModelElapsed(run), 1000);
+
+  upsertAppThreatModel({ id: null, runId, path: targetPath, app: app || null, branch: branch || null, instruction, status: 'running', verdict: null, error: null, startedAt: startTime, finishedAt: null });
+  ws.send(JSON.stringify({ type: 'app_threat_model', runId, path: targetPath, app, branch, instruction }));
+}
+
+atmStartBtn.addEventListener('click', startAppThreatModel);
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -966,6 +1380,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
   btn.addEventListener('click', () => showView(btn.dataset.view));
 });
 document.getElementById('dash-timeline-link').addEventListener('click', () => showView('timeline'));
+document.getElementById('dash-scans-link').addEventListener('click', () => showView('scans'));
 
 const NAV_COLLAPSE_KEY = 'appsecops-nav-collapsed';
 const navEl = document.getElementById('global-nav');
@@ -985,21 +1400,31 @@ document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
   btn.title = btn.querySelector('span').textContent;
 });
 
-function showView(view) {
+function showView(view, opts = {}) {
   currentView = view;
   document.getElementById('view-dashboard').hidden = view !== 'dashboard';
+  document.getElementById('view-scans').hidden = view !== 'scans';
+  document.getElementById('view-sca').hidden = view !== 'sca';
   document.getElementById('view-timeline').hidden = view !== 'timeline';
   document.getElementById('view-settings').hidden = view !== 'settings';
   document.getElementById('view-findings').hidden = view !== 'findings';
+  document.getElementById('view-finding-detail').hidden = view !== 'finding-detail';
   document.getElementById('view-threatmodel').hidden = view !== 'threatmodel';
   document.getElementById('view-agents').hidden = view !== 'agents';
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === view));
 
+  if (opts.skipInit) return;
+
   if (view === 'dashboard') renderDashboard();
-  if (view === 'timeline') { if (!timelineLoaded) loadTimeline(); else renderTimeline(); }
+  if (view === 'timeline') {
+    timelineUnseenDone = 0;
+    renderNavBadges();
+    if (!timelineLoaded) loadTimeline(); else renderTimeline();
+  }
+  if (view === 'findings') renderFindingsView();
+  if (view === 'threatmodel') openThreatModelView();
   if (view === 'settings') renderSettings();
   if (view === 'agents') loadAgentsView();
-  if (view === 'threatmodel') openThreatModelView();
 }
 
 // ---------- dashboard ----------
@@ -1080,8 +1505,6 @@ function renderDashboard() {
     `;
     agentsEl.appendChild(row);
   }
-
-  document.getElementById('dash-footer-text').textContent = `${findings.length} findings · ${totalRuns} total runs`;
 }
 
 // ---------- sidebar status (compact, always visible regardless of view) ----------
@@ -1098,6 +1521,7 @@ function renderNavStatus() {
     line(knownAvailable < KNOWN_AGENTS.length, `${knownAvailable}/${KNOWN_AGENTS.length} agents ready`),
     line(runningScanCount > 0, `${scansList.length} scan${scansList.length === 1 ? '' : 's'}${runningScanCount ? ` · ${runningScanCount} running` : ''}`),
   ].join('');
+  renderNavBadges();
 }
 
 // ---------- timeline ----------
@@ -1187,8 +1611,8 @@ function renderTimeline() {
       <div style="display:flex; align-items:flex-start; gap:10px; width:100%;">
         <span class="tl-icon" style="color:${meta.color};">${icon(meta.icon)}</span>
         <div class="tl-main">
+          <span class="tl-kind" style="color:${meta.color};">${escapeHtml(meta.label)} Agent</span>
           <div class="tl-top">
-            <span class="tl-kind" style="background:${hexToRgba(meta.color, .16)}; color:${meta.color};">${escapeHtml(meta.label)}</span>
             <span class="tl-title${isScan ? ' path-text' : ''}">${escapeHtml(title)}</span>
             <span class="badge ${badge.cls}">${escapeHtml(badge.text)}</span>
           </div>
@@ -1212,13 +1636,10 @@ function renderTimeline() {
           detail = await fetch(`/api/scans/${entry.scanId}`).then((r) => r.json());
           scanDetailCache.set(entry.scanId, detail);
         }
-        renderScanFindingsBody(body, detail.findings);
+        renderScanFindingsBody(body, detail.findings, entry.scanId);
       });
     } else {
-      row.addEventListener('click', async () => {
-        showView('findings');
-        await selectFinding(entry.findingId);
-      });
+      row.addEventListener('click', () => openFindingDetail(entry.findingId));
     }
     listEl.appendChild(row);
   }
@@ -1226,15 +1647,79 @@ function renderTimeline() {
 
 function upsertTimelineEntry(entry) {
   const idx = timelineEntries.findIndex((e) => e.runId === entry.runId);
+  const priorStatus = idx >= 0 ? timelineEntries[idx].status : null;
   if (idx >= 0) timelineEntries[idx] = { ...timelineEntries[idx], ...entry };
   else timelineEntries.unshift(entry);
+
+  const newStatus = idx >= 0 ? timelineEntries[idx].status : timelineEntries[0].status;
+  if (priorStatus === 'running' && newStatus !== 'running' && currentView !== 'timeline') {
+    timelineUnseenDone++;
+  }
+
   if (currentView === 'timeline') renderTimeline();
   if (currentView === 'threatmodel') renderThreatModelView();
+  renderNavBadges();
 }
 
-// ---------- threat model ----------
+// Yellow/flashing while any run is in progress, green once one finishes and
+// the user hasn't looked at Timeline yet; a red count of open findings on
+// Findings — both live in the sidebar so they're visible from every view.
+function renderNavBadges() {
+  const timelineBadge = document.getElementById('nav-badge-timeline');
+  const runningCount = timelineEntries.filter((e) => e.status === 'running').length;
+  if (runningCount > 0) {
+    timelineBadge.hidden = false;
+    timelineBadge.className = 'nav-badge running';
+    timelineBadge.title = `${runningCount} run${runningCount === 1 ? '' : 's'} in progress`;
+  } else if (timelineUnseenDone > 0) {
+    timelineBadge.hidden = false;
+    timelineBadge.className = 'nav-badge completed';
+    timelineBadge.title = `${timelineUnseenDone} run${timelineUnseenDone === 1 ? '' : 's'} completed`;
+  } else {
+    timelineBadge.hidden = true;
+  }
+
+  const findingsBadge = document.getElementById('nav-badge-findings');
+  const openCount = findings.filter((f) => f.status !== 'closed').length;
+  if (openCount > 0) {
+    findingsBadge.hidden = false;
+    findingsBadge.textContent = String(openCount);
+    findingsBadge.title = `${openCount} open finding${openCount === 1 ? '' : 's'}`;
+  } else {
+    findingsBadge.hidden = true;
+  }
+
+  const scansBadge = document.getElementById('nav-badge-scans');
+  const runningScanCount = scansList.filter((s) => s.status === 'running' && s.scanType !== 'sca').length;
+  if (runningScanCount > 0) {
+    scansBadge.hidden = false;
+    scansBadge.className = 'nav-badge running';
+    scansBadge.title = `${runningScanCount} scan${runningScanCount === 1 ? '' : 's'} running`;
+  } else {
+    scansBadge.hidden = true;
+  }
+
+  const scaBadge = document.getElementById('nav-badge-sca');
+  const runningScaCount = scansList.filter((s) => s.status === 'running' && s.scanType === 'sca').length;
+  if (runningScaCount > 0) {
+    scaBadge.hidden = false;
+    scaBadge.className = 'nav-badge running';
+    scaBadge.title = `${runningScaCount} SCA scan${runningScaCount === 1 ? '' : 's'} running`;
+  } else {
+    scaBadge.hidden = true;
+  }
+}
+
+// ---------- threat model (radial OWASP map + per-finding attack-path flow) ----------
 // Read-only, cross-finding view derived entirely from timelineEntries (no dedicated
-// endpoint) — every finding with a completed Threat Model run, grouped by verdict.owasp.
+// endpoint) — every finding with a completed Threat Model run, grouped by verdict.owasp
+// and laid out as a hub-and-spoke SVG diagram instead of a card grid: center = "App",
+// spokes = OWASP categories (sized by finding count, colored by worst severity in that
+// category), leaves = individual findings (colored by their own severity). Clicking a
+// leaf renders that finding's attack path as a 4-box flow (Attacker -> Preconditions ->
+// Attack Path -> Blast Radius) using the exact prose the Threat Model agent wrote —
+// no new agent capability needed, this is purely a different way to look at data the
+// agent already produces.
 
 async function openThreatModelView() {
   if (!timelineLoaded) await loadTimeline();
@@ -1250,64 +1735,399 @@ function latestThreatModelEntries() {
   return [...byFinding.values()].filter((e) => e.verdict && ['confirmed', 'needs_review'].includes(e.verdict.verdict));
 }
 
+function worstSeverity(entries) {
+  let worst = null;
+  for (const e of entries) {
+    const sev = e.verdict.severity_confirmed;
+    if (!sev) continue;
+    if (worst === null || (SEV_ORDER_MAP[sev] ?? 99) < (SEV_ORDER_MAP[worst] ?? 99)) worst = sev;
+  }
+  return worst || 'informational';
+}
+
+function buildThreatModelTree(categories) {
+  const catsHtml = categories.map(([category, list]) => {
+    const catSev = worstSeverity(list);
+    const leavesHtml = list.map((entry) => {
+      const sev = entry.verdict.severity_confirmed || 'informational';
+      return `<div class="tm-tree-box tm-tree-leaf-box sev-${sev}" data-finding-id="${escapeHtml(entry.findingId)}" title="${escapeHtml(entry.findingTitle)}">${escapeHtml(entry.findingTitle)}</div>`;
+    }).join('');
+    return `
+      <div class="tm-tree-branch">
+        <div class="tm-tree-box tm-tree-cat-box sev-${catSev}" title="${escapeHtml(category)}">
+          <div class="tm-tree-cat-label">${escapeHtml(category)}</div>
+          <div class="tm-tree-cat-count">${list.length} finding${list.length === 1 ? '' : 's'}</div>
+        </div>
+        <div class="tm-tree-leaves">${leavesHtml}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="tm-tree">
+      <div class="tm-tree-root-wrap"><div class="tm-tree-box tm-tree-root-box">App</div></div>
+      <div class="tm-tree-cats">${catsHtml}</div>
+    </div>
+  `;
+}
+
+// Same tree shape as buildThreatModelTree(), grouping by OWASP category, but built from a
+// flat `top_risks` array (plain {title, severity, owasp, cwe} objects, no nested `.verdict`)
+// instead of per-finding timeline entries — the app-level threat model has no individual
+// findings to hang leaf boxes off of, just its own risk list. Reuses the exact same `.tm-tree-*`
+// CSS classes since they're purely presentational.
+function worstRiskSeverity(risks) {
+  let worst = null;
+  for (const r of risks) {
+    if (!r.severity) continue;
+    if (worst === null || (SEV_ORDER_MAP[r.severity] ?? 99) < (SEV_ORDER_MAP[worst] ?? 99)) worst = r.severity;
+  }
+  return worst || 'informational';
+}
+
+function buildAppThreatModelTree(risks) {
+  const groups = new Map();
+  risks.forEach((risk, i) => {
+    const key = risk.owasp || 'Unclassified';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ ...risk, riskIndex: i });
+  });
+  const categories = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  const catsHtml = categories.map(([category, list]) => {
+    const catSev = worstRiskSeverity(list);
+    const leavesHtml = list.map((risk) => {
+      const sev = risk.severity || 'informational';
+      return `<div class="tm-tree-box tm-tree-leaf-box sev-${sev}" data-risk-index="${risk.riskIndex}" title="${escapeHtml(risk.title || '')}">${escapeHtml(risk.title || '')}</div>`;
+    }).join('');
+    return `
+      <div class="tm-tree-branch">
+        <div class="tm-tree-box tm-tree-cat-box sev-${catSev}" title="${escapeHtml(category)}">
+          <div class="tm-tree-cat-label">${escapeHtml(category)}</div>
+          <div class="tm-tree-cat-count">${list.length} risk${list.length === 1 ? '' : 's'}</div>
+        </div>
+        <div class="tm-tree-leaves">${leavesHtml}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="tm-tree">
+      <div class="tm-tree-root-wrap"><div class="tm-tree-box tm-tree-root-box">App</div></div>
+      <div class="tm-tree-cats">${catsHtml}</div>
+    </div>
+  `;
+}
+
+function allThreatModelEntriesForFinding(findingId) {
+  // timelineEntries is newest-first already, so this stays newest-first too.
+  return timelineEntries.filter((e) => e.kind === 'threat_model' && e.findingId === findingId && e.verdict);
+}
+
 function renderThreatModelView() {
   const entries = latestThreatModelEntries();
-  if (!entries.length) {
-    tmContentEl.innerHTML = '<div class="hint">No findings have a confirmed Threat Model run yet — right-click a finding on the Findings board and choose "Run Threat Model…".</div>';
+  const contentEl = document.getElementById('tm-content');
+
+  const groups = new Map();
+  for (const e of entries) {
+    const key = e.verdict.owasp || null;
+    const label = key || 'Unclassified';
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(e);
+  }
+  const categories = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  const diagramHtml = entries.length
+    ? `<div class="tm-diagram-wrap">${buildThreatModelTree(categories)}</div>`
+    : '<div class="hint" style="padding:30px 4px;">No findings have a confirmed Threat Model run yet — open a finding and use its "Agent Runs" menu to run Threat Model.</div>';
+
+  contentEl.innerHTML = `
+    ${renderAppThreatModelSection()}
+    ${diagramHtml}
+    <div id="tm-detail-panel" class="tm-detail-panel"><div class="hint">Click a finding node above to see its attack path.</div></div>
+  `;
+
+  contentEl.querySelectorAll('[data-finding-id]').forEach((el) => {
+    el.addEventListener('click', () => selectThreatModelFinding(el.dataset.findingId));
+  });
+  // Only the summary bar toggles the accordion — the expanded body is a child of .atm-row,
+  // but risk cards/leaf boxes inside it aren't listening on .atm-row-summary so they never
+  // trigger a collapse when clicked.
+  contentEl.querySelectorAll('.atm-row-summary').forEach((el) => {
+    el.addEventListener('click', () => toggleAppThreatModelRow(el.closest('.atm-row').dataset.atmRunId));
+  });
+  contentEl.querySelectorAll('[data-risk-index]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const scope = el.closest('.atm-row-body');
+      if (!scope) return;
+      const idx = el.dataset.riskIndex;
+      scope.querySelectorAll('[data-risk-index]').forEach((e2) => e2.classList.toggle('selected', e2.dataset.riskIndex === idx));
+      const card = scope.querySelector(`.atm-risk-card[data-risk-index="${idx}"]`);
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+  reattachAppThreatModelLiveRefs();
+  updateTmViewingLabel();
+}
+
+// ---------- app-level (whole-directory) threat models ----------
+// Independent of the per-finding radial map above: these are holistic, architecture-level
+// runs (agents/app_threat_model.md) fired from the "New app threat model" form on this same
+// page. Not tied to any finding, so they get their own list + detail panel rather than a leaf
+// node on the OWASP diagram.
+//
+// Live stats: like scan cards, a running row shows tool/file/token counts, elapsed time, and
+// a context-window fill bar (`appThreatModelRuns`, runId -> tracking object, mirrors
+// `scanRuns`). The tricky part is that `renderThreatModelView()` can rebuild `#tm-content`
+// from scratch at any time (e.g. any timeline update while this view is open, per
+// upsertTimelineEntry) — including while a run is live. Rather than avoid that rebuild
+// entirely, `appThreatModelRowHtml()` bakes the tracking object's *current* counters directly
+// into the fresh HTML string (so a rebuild never visually resets progress to zero), and
+// `reattachAppThreatModelLiveRefs()` (called at the end of every renderThreatModelView()) then
+// re-queries the fresh DOM and re-points the tracking object's cached element refs at it, so
+// the next stream-json event's direct DOM mutation (handleAppThreatModelRawEvent, no
+// re-render) lands on the currently-attached node instead of a stale detached one.
+const appThreatModelRuns = new Map(); // runId -> { toolCount, fileCount, tokenCount, lastContextTokens, startTime, elapsedTimer, ...cached DOM refs }
+
+function updateAppThreatModelElapsed(run) {
+  if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);
+}
+
+function stopAppThreatModelElapsedTimer(run) {
+  if (run.elapsedTimer) {
+    clearInterval(run.elapsedTimer);
+    run.elapsedTimer = null;
+  }
+  updateAppThreatModelElapsed(run);
+}
+
+function handleAppThreatModelRawEvent(run, event) {
+  trackRunToolActivity(run, event);
+  trackRunTokens(run, event);
+}
+
+// Which app-level run's row is expanded — a real accordion (one at a time), not a separate
+// detail panel elsewhere on the page. Persists across renderThreatModelView() rebuilds since
+// appThreatModelRowHtml() reads it directly when building each row's markup.
+let expandedAtmRunId = null;
+
+function toggleAppThreatModelRow(runId) {
+  expandedAtmRunId = expandedAtmRunId === runId ? null : runId;
+  renderThreatModelView();
+}
+
+// Shows which run's content is currently expanded in the view header, since two rows for the
+// same path (a re-run) look identical at a glance otherwise — easy to lose track of which one
+// you're looking at.
+function updateTmViewingLabel() {
+  const label = document.getElementById('tm-viewing-label');
+  const record = expandedAtmRunId ? appThreatModelsList.find((r) => r.runId === expandedAtmRunId) : null;
+  if (!record) {
+    label.hidden = true;
     return;
   }
+  label.hidden = false;
+  label.textContent = `Viewing scan: ${record.path}${record.app ? ' · ' + record.app : ''} — ${formatRelativeTime(record.startedAt)}`;
+}
 
-  const groups = new Map(); // owasp category -> entries[]
-  for (const e of entries) {
-    const key = e.verdict.owasp || 'Unclassified';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(e);
+function appThreatModelRowHtml(r) {
+  const statusCls = r.status === 'running' ? 'in_review' : r.status === 'error' ? 'high' : r.status === 'cancelled' ? 'high' : 'closed';
+  const statusText = r.status === 'running' ? 'Running' : r.status === 'error' ? 'Error' : r.status === 'cancelled' ? 'Cancelled' : 'Done';
+  const topRisks = r.verdict && Array.isArray(r.verdict.top_risks) ? r.verdict.top_risks : [];
+  let worstSev = null;
+  for (const risk of topRisks) {
+    if (!risk.severity) continue;
+    if (worstSev === null || (SEV_ORDER_MAP[risk.severity] ?? 99) < (SEV_ORDER_MAP[worstSev] ?? 99)) worstSev = risk.severity;
   }
-  const sortedGroups = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
 
-  tmContentEl.innerHTML = '';
-  for (const [category, groupEntries] of sortedGroups) {
-    const asvsValues = [...new Set(groupEntries.map((e) => e.verdict.asvs).filter(Boolean))];
-
-    const section = document.createElement('div');
-    section.className = 'tm-section';
-    section.innerHTML = `
-      <div class="tm-section-header">
-        <span class="tm-section-title">${escapeHtml(category)}</span>
-        <span class="tm-section-count">${groupEntries.length} finding${groupEntries.length === 1 ? '' : 's'}</span>
-        ${asvsValues.map((v) => `<span class="tm-asvs-chip">${escapeHtml(v)}</span>`).join('')}
+  const run = appThreatModelRuns.get(r.runId);
+  let liveStatsHtml = '';
+  if (r.status === 'running' && run) {
+    const contextPct = Math.min(100, Math.round(((run.lastContextTokens || 0) / CONTEXT_WINDOW_TOKENS) * 100));
+    const contextCls = contextPct >= 85 ? ' danger' : contextPct >= 60 ? ' warn' : '';
+    liveStatsHtml = `
+      <div class="scan-stats atm-live-stats">
+        <span class="stat"><b class="atm-tools">${run.toolCount}</b> checks</span>
+        <span class="stat"><b class="atm-files">${run.fileCount}</b> files read</span>
+        <span class="stat"><b class="atm-tokens">${formatTokenCount(run.tokenCount)}</b> tokens</span>
+        <span class="stat"><b class="atm-elapsed">${formatElapsed(Date.now() - run.startTime)}</b> elapsed</span>
       </div>
-      <div class="tm-cards"></div>
+      <div class="context-bar-wrap atm-context-wrap">
+        <div class="context-bar"><div class="context-bar-fill atm-context-fill${contextCls}" style="width:${contextPct}%;"></div></div>
+        <span class="context-bar-label atm-context-label">${contextPct}% of context window</span>
+      </div>
     `;
-    const cardsEl = section.querySelector('.tm-cards');
-    for (const e of groupEntries) {
-      const v = e.verdict;
-      const card = document.createElement('div');
-      card.className = 'tm-card';
-      card.style.setProperty('--card-color', SEV_COLOR_VAR[v.severity_confirmed] || 'var(--border)');
-      const tags = [v.asvs, v.cwe].filter(Boolean);
-      card.innerHTML = `
-        <div class="tm-card-title">${escapeHtml(e.findingTitle)}</div>
-        <div class="tm-card-badges">
-          ${v.severity_confirmed ? `<span class="badge ${escapeHtml(v.severity_confirmed)}">${escapeHtml(v.severity_confirmed)}</span>` : ''}
-          ${v.confidence ? `<span class="badge ${escapeHtml(v.confidence)}">${escapeHtml(v.confidence)}</span>` : ''}
-          ${v.priority ? `<span class="badge ${escapeHtml(v.priority)}">${escapeHtml(v.priority)}</span>` : ''}
-        </div>
-        ${tags.length ? `<div class="tm-card-tags">${tags.map((t) => `<span class="tm-card-tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
-        <div class="tm-card-flow">
-          ${v.preconditions ? `<div><b>Preconditions:</b> ${escapeHtml(v.preconditions)}</div>` : ''}
-          ${v.attack_narrative ? `<div><b>Attack path:</b> ${escapeHtml(v.attack_narrative)}</div>` : ''}
-          ${v.blast_radius ? `<div><b>Blast radius:</b> ${escapeHtml(v.blast_radius)}</div>` : ''}
-        </div>
-      `;
-      card.addEventListener('click', async () => {
-        showView('findings');
-        await selectFinding(e.findingId);
-      });
-      cardsEl.appendChild(card);
-    }
-    tmContentEl.appendChild(section);
   }
+
+  const isExpanded = r.runId === expandedAtmRunId;
+  const bodyHtml = isExpanded ? `<div class="atm-row-body">${renderAppThreatModelDetail(r)}</div>` : '';
+
+  return `
+    <div class="atm-row${isExpanded ? ' expanded' : ''}" data-atm-run-id="${escapeHtml(r.runId)}">
+      <div class="atm-row-summary">
+        <span class="sev-dot ${escapeHtml(worstSev || 'informational')}"${worstSev ? '' : ' style="opacity:.3;"'}></span>
+        <div class="atm-row-main">
+          <div class="atm-row-title">${escapeHtml(truncate(r.path, 56))}${r.app ? ' · ' + escapeHtml(r.app) : ''}</div>
+          <div class="atm-row-sub">${escapeHtml(formatRelativeTime(r.startedAt))}</div>
+          ${liveStatsHtml}
+        </div>
+        <span class="badge ${statusCls}">${escapeHtml(statusText)}</span>
+      </div>
+      ${bodyHtml}
+    </div>
+  `;
+}
+
+function reattachAppThreatModelLiveRefs() {
+  for (const run of appThreatModelRuns.values()) {
+    const rowEl = document.querySelector(`.atm-row[data-atm-run-id="${run.runId}"]`);
+    if (!rowEl) continue;
+    run.toolsEl = rowEl.querySelector('.atm-tools');
+    run.filesEl = rowEl.querySelector('.atm-files');
+    run.tokensEl = rowEl.querySelector('.atm-tokens');
+    run.elapsedEl = rowEl.querySelector('.atm-elapsed');
+    run.contextBarFillEl = rowEl.querySelector('.atm-context-fill');
+    run.contextBarLabelEl = rowEl.querySelector('.atm-context-label');
+  }
+}
+
+function renderAppThreatModelSection() {
+  if (!appThreatModelsList.length) return '';
+  const sorted = appThreatModelsList.slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  const rows = sorted.map((r) => appThreatModelRowHtml(r)).join('');
+
+  return `
+    <div class="atm-section">
+      <div class="atm-section-title">App-level Threat Models</div>
+      <div class="atm-list">${rows}</div>
+    </div>
+  `;
+}
+
+function renderAppThreatModelDetail(record) {
+  if (record.status === 'running') {
+    return '<div class="hint" style="padding:14px 4px;">Still running…</div>';
+  }
+  if (record.status === 'cancelled') {
+    return '<div class="fd-verdict-reasoning" style="padding:14px 4px;">Cancelled — no report produced.</div>';
+  }
+  if (record.status === 'error' || !record.verdict) {
+    return `<div class="fd-verdict-reasoning" style="padding:14px 4px;">${escapeHtml(record.error || 'Run failed — no report produced.')}</div>`;
+  }
+  const v = record.verdict;
+  const trustBoundariesHtml = (v.trust_boundaries || []).map((b) => `
+    <div class="atm-detail-item"><b>${escapeHtml(b.name || '')}</b><div>${escapeHtml(b.description || '')}</div></div>
+  `).join('') || '<div class="hint">None identified.</div>';
+  const dataFlowsHtml = (v.data_flows || []).map((d) => `
+    <div class="atm-detail-item"><b>${escapeHtml(d.name || '')}</b><div>${escapeHtml(d.description || '')}</div></div>
+  `).join('') || '<div class="hint">None identified.</div>';
+  const risks = v.top_risks || [];
+  const risksHtml = risks.map((risk, i) => `
+    <div class="atm-risk-card" id="atm-risk-${i}" data-risk-index="${i}">
+      <div class="atm-risk-top">
+        <span class="badge ${escapeHtml(risk.severity || 'informational')}">${escapeHtml(risk.severity || 'informational')}</span>
+        <b>${escapeHtml(risk.title || '')}</b>
+      </div>
+      <div class="fd-verdict-reasoning">${escapeHtml(risk.description || '')}</div>
+      ${risk.owasp || risk.cwe ? `<div class="tm-detail-badges" style="margin-top:6px;">${risk.owasp ? `<span class="scan-type-chip scope-chip">${escapeHtml(risk.owasp)}</span>` : ''}${risk.cwe ? `<span class="scan-type-chip scope-chip">${escapeHtml(risk.cwe)}</span>` : ''}</div>` : ''}
+    </div>
+  `).join('') || '<div class="hint">No structural risks flagged.</div>';
+  const recommendationsHtml = (v.recommendations || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('') || '<li class="hint">None given.</li>';
+  const diagramHtml = risks.length ? `<div class="tm-diagram-wrap">${buildAppThreatModelTree(risks)}</div>` : '';
+
+  return `
+    ${diagramHtml}
+    <div class="fd-section-title">Summary</div>
+    <div class="fd-prose" style="margin-bottom:14px;">${escapeHtml(v.summary || '—')}</div>
+    <div class="fd-section-title">Trust boundaries</div>
+    <div style="margin-bottom:14px;">${trustBoundariesHtml}</div>
+    <div class="fd-section-title">Data flows</div>
+    <div style="margin-bottom:14px;">${dataFlowsHtml}</div>
+    <div class="fd-section-title">Top risks</div>
+    <div style="margin-bottom:14px;">${risksHtml}</div>
+    <div class="fd-section-title">Recommendations</div>
+    <ul class="atm-recs">${recommendationsHtml}</ul>
+  `;
+}
+
+// findingId: which finding's attack path to show. runId: optional, defaults to its latest run.
+function selectThreatModelFinding(findingId, runId) {
+  const runs = allThreatModelEntriesForFinding(findingId);
+  if (!runs.length) return;
+  document.querySelectorAll('.tm-tree-leaf-box').forEach((el) => el.classList.toggle('selected', el.dataset.findingId === findingId));
+  renderThreatModelDetail(findingId, runId || runs[0].runId);
+}
+
+function renderThreatModelDetail(findingId, runId) {
+  const runs = allThreatModelEntriesForFinding(findingId);
+  const entry = runs.find((e) => e.runId === runId) || runs[0];
+  if (!entry) return;
+  const inMap = Array.from(document.querySelectorAll('.tm-tree-leaf-box')).some((el) => el.dataset.findingId === findingId);
+  document.getElementById('tm-detail-panel').innerHTML = renderAttackPathFlow(entry, runs, inMap);
+  document.getElementById('tm-run-select')?.addEventListener('change', (e) => renderThreatModelDetail(findingId, e.target.value));
+  document.getElementById('tm-view-finding-btn')?.addEventListener('click', () => openFindingDetail(findingId));
+}
+
+// Navigates to the Threat Model screen and opens one finding's attack path directly —
+// used from a finding's "View in Threat Model" run-card link, which may point at an
+// older run than the one currently shown on the map (or one whose verdict fell out of
+// the map entirely, e.g. a later false_positive re-run superseded it).
+async function openThreatModelForFinding(findingId, runId) {
+  showView('threatmodel', { skipInit: true });
+  if (!timelineLoaded) await loadTimeline();
+  renderThreatModelView();
+  selectThreatModelFinding(findingId, runId);
+}
+
+function renderAttackPathFlow(entry, runs, inMap) {
+  const v = entry.verdict;
+  const badges = [
+    v.severity_confirmed ? `<span class="badge ${escapeHtml(v.severity_confirmed)}">${escapeHtml(v.severity_confirmed)}</span>` : '',
+    v.confidence ? `<span class="badge ${escapeHtml(v.confidence)}">${escapeHtml(v.confidence)}</span>` : '',
+    v.priority ? `<span class="badge ${escapeHtml(v.priority)}">${escapeHtml(v.priority)}</span>` : '',
+    v.asvs ? `<span class="scan-type-chip scope-chip">${escapeHtml(v.asvs)}</span>` : '',
+    v.cwe ? `<span class="scan-type-chip scope-chip">${escapeHtml(v.cwe)}</span>` : '',
+  ].filter(Boolean).join('');
+
+  const runSelectHtml = runs.length > 1 ? `
+    <div class="tm-run-select-wrap">
+      <label for="tm-run-select">Run</label>
+      <select id="tm-run-select">
+        ${runs.map((r) => `<option value="${escapeHtml(r.runId)}" ${r.runId === entry.runId ? 'selected' : ''}>${escapeHtml(r.startedAt ? formatRelativeTime(r.startedAt) : 'unknown time')} — ${escapeHtml(r.verdict.verdict || 'unknown')}</option>`).join('')}
+      </select>
+    </div>
+  ` : '';
+
+  const notInMapHtml = inMap ? '' : `<div class="hint tm-not-in-map-hint">Not shown on the map above — this run's verdict is "${escapeHtml(v.verdict)}".</div>`;
+
+  return `
+    <div class="tm-detail-title">${escapeHtml(entry.findingTitle)}</div>
+    ${notInMapHtml}
+    ${runSelectHtml}
+    <div class="tm-detail-badges">${badges}</div>
+    <div class="tm-flow">
+      <div class="tm-flow-box" style="--box-color:var(--muted);">
+        <div class="tm-flow-label">Attacker</div>
+        <div class="tm-flow-text">Anyone able to reach the vulnerable code path below</div>
+      </div>
+      <div class="tm-flow-arrow">→</div>
+      <div class="tm-flow-box" style="--box-color:var(--accent);">
+        <div class="tm-flow-label">Preconditions</div>
+        <div class="tm-flow-text">${escapeHtml(v.preconditions || '—')}</div>
+      </div>
+      <div class="tm-flow-arrow">→</div>
+      <div class="tm-flow-box" style="--box-color:var(--warn);">
+        <div class="tm-flow-label">Attack Path</div>
+        <div class="tm-flow-text">${escapeHtml(v.attack_narrative || '—')}</div>
+      </div>
+      <div class="tm-flow-arrow">→</div>
+      <div class="tm-flow-box" style="--box-color:var(--err);">
+        <div class="tm-flow-label">Blast Radius</div>
+        <div class="tm-flow-text">${escapeHtml(v.blast_radius || '—')}</div>
+      </div>
+    </div>
+    <button class="secondary tm-view-finding-btn" id="tm-view-finding-btn" type="button">View finding →</button>
+  `;
 }
 
 // ---------- scans ----------
@@ -1325,12 +2145,35 @@ async function loadScans() {
   if (currentView === 'dashboard') renderDashboard();
 }
 
-function renderScanFindingsBody(body, scanFindings) {
+async function loadAppThreatModels() {
+  const res = await fetch('/api/app-threat-models');
+  appThreatModelsList = await res.json();
+  appThreatModelsLoaded = true;
+  if (currentView === 'threatmodel') renderThreatModelView();
+}
+
+// Patches an in-flight or newly-started app-level threat model record by runId, adding it
+// if this is the first message seen for it (mirrors upsertTimelineEntry's find-or-unshift).
+function upsertAppThreatModel(patch) {
+  const idx = appThreatModelsList.findIndex((r) => r.runId === patch.runId);
+  if (idx >= 0) appThreatModelsList[idx] = { ...appThreatModelsList[idx], ...patch };
+  else appThreatModelsList.unshift(patch);
+  if (currentView === 'threatmodel') renderThreatModelView();
+}
+
+function renderScanFindingsBody(body, scanFindings, scanId) {
   if (!scanFindings.length) {
     body.innerHTML = '<div class="hint" style="padding:10px 14px;">No findings produced by this scan.</div>';
     return;
   }
   body.innerHTML = '';
+  if (scanId) {
+    const linkRow = document.createElement('div');
+    linkRow.style.cssText = 'padding:2px 14px 8px;';
+    linkRow.innerHTML = '<button class="link-btn" type="button">View all in Findings →</button>';
+    linkRow.querySelector('button').addEventListener('click', (e) => { e.stopPropagation(); openFindingsFilteredByScan(scanId); });
+    body.appendChild(linkRow);
+  }
   for (const f of scanFindings) {
     const item = document.createElement('div');
     item.className = 'finding-row';
@@ -1342,40 +2185,46 @@ function renderScanFindingsBody(body, scanFindings) {
         <div class="finding-row-meta"><span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span></div>
       </div>
     `;
-    item.addEventListener('click', async () => {
-      showView('findings');
-      await selectFinding(f.id);
-    });
+    item.addEventListener('click', () => openFindingDetail(f.id));
     body.appendChild(item);
   }
 }
 
-function makeScanCard(runId, targetPath) {
+function makeScanCard(runId, targetPath, meta, containerEl) {
+  const typeMeta = SCAN_TYPE_META[meta.scanType] || SCAN_TYPE_META.reasoning;
+  const metaTags = [
+    `<span class="scan-type-chip" style="color:${typeMeta.color}; background:${hexToRgba(typeMeta.color, .16)};">${escapeHtml(typeMeta.label)}</span>`,
+    `<span class="scan-type-chip scope-chip">${meta.scope === 'diff' ? `Diff vs ${escapeHtml(meta.baseBranch)}` : 'Full scan'}</span>`,
+  ];
+  if (meta.branch) metaTags.push(`<span class="scan-meta-text">${icon('branch')}${escapeHtml(meta.branch)}</span>`);
+  if (meta.app) metaTags.push(`<span class="scan-meta-text">${escapeHtml(meta.app)}</span>`);
+
   const cardEl = document.createElement('article');
   cardEl.className = 'stage-card scan-card status-running';
   cardEl.dataset.runId = runId;
   cardEl.innerHTML = `
     <div class="stage-header">
-      <span class="stage-agent">${icon('radar')}<span class="path-text">${escapeHtml(targetPath)}</span></span>
-      <span class="status-dot running"></span>
-      <span class="status-text">Starting…</span>
+      <span class="stage-agent">${icon(typeMeta.icon)}<span class="path-text">${escapeHtml(targetPath)}</span></span>
     </div>
+    <div class="scan-meta-row">${metaTags.join('')}</div>
     <div class="scan-stats">
+      <span class="stat scan-status-stat"><span class="status-dot running"></span><span class="status-text">Starting…</span></span>
+      <span class="stat"><b class="ss-tokens">0</b> tokens</span>
       <span class="stat"><b class="ss-tools">0</b> checks</span>
       <span class="stat"><b class="ss-files">0</b> files read</span>
       <span class="stat"><b class="ss-elapsed">0:00</b> elapsed</span>
+    </div>
+    <div class="context-bar-wrap">
+      <div class="context-bar"><div class="context-bar-fill ss-context-fill"></div></div>
+      <span class="context-bar-label ss-context-label">0% of context</span>
     </div>
     <div class="scan-error-msg" hidden></div>
     <div class="scan-sev-chips"><span class="hint">No candidates yet</span></div>
     <div class="scan-live-findings"></div>
     <div class="scan-results" hidden></div>
-    <details class="stage-raw">
-      <summary>Raw stream-json</summary>
-      <pre></pre>
-    </details>
     <div class="scan-actions"></div>
   `;
-  scanLiveContainer.prepend(cardEl);
+  containerEl.prepend(cardEl);
   return cardEl;
 }
 
@@ -1390,6 +2239,13 @@ function updateScanCardActions(run) {
     btn.addEventListener('click', () => cancelScanRun(run));
     el.appendChild(btn);
   } else {
+    if (run.scanId && run.status === 'done') {
+      const viewBtn = document.createElement('button');
+      viewBtn.className = 'secondary';
+      viewBtn.textContent = 'View in Findings →';
+      viewBtn.addEventListener('click', () => openFindingsFilteredByScan(run.scanId));
+      el.appendChild(viewBtn);
+    }
     const btn = document.createElement('button');
     btn.className = 'secondary';
     btn.textContent = 'Delete';
@@ -1434,10 +2290,7 @@ function renderScanCardResults(run, scanFindings) {
         <div class="scan-result-why">${escapeHtml(truncate(f.description || '', 160))}</div>
       </div>
     `;
-    item.addEventListener('click', async () => {
-      showView('findings');
-      await selectFinding(f.id);
-    });
+    item.addEventListener('click', () => openFindingDetail(f.id));
     run.resultsEl.appendChild(item);
   }
 }
@@ -1502,7 +2355,13 @@ function trackScanCandidates(run, event) {
   if (found) renderScanSevChips(run);
 }
 
-function trackScanToolActivity(run, event) {
+// Shared by scan cards and app-level threat model rows — both invoke `claude -p` against a
+// whole directory and want the same live stats, unlike per-finding runs (deliberately quiet,
+// see "No live per-finding streaming view" in CLAUDE.md). Both kinds of `run` tracking objects
+// use the same field names (toolCount/toolsEl/fileCount/filesEl/tokenCount/tokensEl/
+// contextBarFillEl/contextBarLabelEl) so these functions don't need to know which kind they're
+// updating.
+function trackRunToolActivity(run, event) {
   if (event.type !== 'assistant' || !event.message || !Array.isArray(event.message.content)) return;
   let sawTool = false;
   for (const block of event.message.content) {
@@ -1516,38 +2375,68 @@ function trackScanToolActivity(run, event) {
   if (run.filesEl) run.filesEl.textContent = String(run.fileCount);
 }
 
+function formatTokenCount(n) {
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(n);
+}
+
+// Approximate context window size used only for the fill-bar warning — this app has no way
+// to query the actual configured limit from here, so it assumes the standard Claude context
+// window. The bar is meant as an early "your scope might be too broad" signal, not a precise
+// meter.
+const CONTEXT_WINDOW_TOKENS = 200000;
+
+function updateContextBar(run, contextTokens) {
+  if (!run.contextBarFillEl) return;
+  const pct = Math.min(100, Math.round((contextTokens / CONTEXT_WINDOW_TOKENS) * 100));
+  run.contextBarFillEl.style.width = pct + '%';
+  run.contextBarFillEl.classList.toggle('warn', pct >= 60 && pct < 85);
+  run.contextBarFillEl.classList.toggle('danger', pct >= 85);
+  if (run.contextBarLabelEl) run.contextBarLabelEl.textContent = `${pct}% of context window`;
+}
+
+function trackRunTokens(run, event) {
+  if (event.type !== 'assistant' || !event.message || !event.message.usage) return;
+  const u = event.message.usage;
+  run.tokenCount += (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+  if (run.tokensEl) run.tokensEl.textContent = formatTokenCount(run.tokenCount);
+
+  // The context window holds the latest turn's input (including cached prefix), not the
+  // running sum of every turn's input — summing would double-count the growing history that
+  // gets resent each turn. run.tokenCount above is a different, cumulative "work done" metric.
+  run.lastContextTokens = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+  updateContextBar(run, run.lastContextTokens);
+}
+
 function handleScanRawEvent(run, event) {
-  run.rawEvents.push(event);
-  if (run.rawPreEl) run.rawPreEl.textContent = run.rawEvents.map((e) => JSON.stringify(e)).join('\n');
-  trackScanToolActivity(run, event);
+  trackRunToolActivity(run, event);
+  trackRunTokens(run, event);
   trackScanCandidates(run, event);
 }
 
-function startScan() {
-  const targetPath = scanPathInput.value.trim();
-  if (!targetPath) {
-    alert('Enter a target directory path.');
-    return;
-  }
-  const instruction = scanInstructionInput.value.trim();
+// Shared by the Scans and SCA pages — both kick off the exact same underlying WS 'scan'
+// message and live-card machinery, just against different containers with a fixed scanType
+// for SCA (no scan-type pill needed there since it's the whole point of that page).
+function beginScanRun(targetPath, instruction, scanMeta, containerEl) {
   const runId = uid();
-
-  const cardEl = makeScanCard(runId, targetPath);
+  const cardEl = makeScanCard(runId, targetPath, scanMeta, containerEl);
   const startedAt = Date.now();
   const run = {
     runId, path: targetPath, instruction,
     status: 'running',
     cardEl,
-    rawDetailsEl: cardEl.querySelector('.stage-raw'),
-    rawPreEl: cardEl.querySelector('.stage-raw pre'),
-    rawEvents: [],
     startTime: startedAt,
     toolCount: 0,
     fileCount: 0,
+    tokenCount: 0,
     sevCounts: { critical: 0, high: 0, medium: 0, low: 0, informational: 0 },
     toolsEl: cardEl.querySelector('.ss-tools'),
     filesEl: cardEl.querySelector('.ss-files'),
+    tokensEl: cardEl.querySelector('.ss-tokens'),
     elapsedEl: cardEl.querySelector('.ss-elapsed'),
+    contextBarFillEl: cardEl.querySelector('.ss-context-fill'),
+    contextBarLabelEl: cardEl.querySelector('.ss-context-label'),
+    lastContextTokens: 0,
     errorEl: cardEl.querySelector('.scan-error-msg'),
     chipsEl: cardEl.querySelector('.scan-sev-chips'),
     findingsEl: cardEl.querySelector('.scan-live-findings'),
@@ -1558,18 +2447,65 @@ function startScan() {
   scanRuns.set(runId, run);
   run.elapsedTimer = setInterval(() => updateScanElapsed(run), 1000);
   updateScanCardActions(run);
-  scansList.unshift({ id: null, runId, path: targetPath, instruction, status: 'running', error: null, findingIds: [], startedAt, finishedAt: null });
-  upsertTimelineEntry({ kind: 'scan', runId, path: targetPath, instruction, status: 'running', findingCount: 0, startedAt, finishedAt: null });
+  scansList.unshift({ id: null, runId, path: targetPath, instruction, ...scanMeta, status: 'running', error: null, findingIds: [], startedAt, finishedAt: null });
+  upsertTimelineEntry({ kind: 'scan', runId, path: targetPath, instruction, ...scanMeta, status: 'running', findingCount: 0, startedAt, finishedAt: null });
   renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
 
-  ws.send(JSON.stringify({ type: 'scan', runId, path: targetPath, instruction }));
+  ws.send(JSON.stringify({ type: 'scan', runId, path: targetPath, instruction, ...scanMeta }));
+  return runId;
+}
+
+function startScan() {
+  const targetPath = scanPathInput.value.trim();
+  if (!targetPath) {
+    alert('Enter a target directory path.');
+    return;
+  }
+  const instruction = scanInstructionInput.value.trim();
+  if (scanType === 'custom' && !instruction) {
+    alert('Custom reasoning pass needs instructions — describe what you want this pass to focus on.');
+    return;
+  }
+  const branch = scanBranchInput.value.trim();
+  const app = scanAppInput.value.trim();
+  const baseBranch = scanBaseBranchInput.value.trim();
+  if (scanScope === 'diff' && !baseBranch) {
+    alert('Enter a base branch to diff against (e.g. main).');
+    return;
+  }
+
+  const scanMeta = { branch, app, scanType, scope: scanScope, baseBranch: scanScope === 'diff' ? baseBranch : null };
+  beginScanRun(targetPath, instruction, scanMeta, scanLiveContainer);
   scanInstructionInput.value = '';
   scanInstructionWrap.hidden = true;
   scanNoteToggleBtn.textContent = '+ instructions';
 }
 
+function startScaScan() {
+  const targetPath = scaPathInput.value.trim();
+  if (!targetPath) {
+    alert('Enter a target directory path.');
+    return;
+  }
+  const instruction = scaInstructionInput.value.trim();
+  const branch = scaBranchInput.value.trim();
+  const app = scaAppInput.value.trim();
+  const baseBranch = scaBaseBranchInput.value.trim();
+  if (scaScope === 'diff' && !baseBranch) {
+    alert('Enter a base branch to diff against (e.g. main).');
+    return;
+  }
+
+  const scanMeta = { branch, app, scanType: 'sca', scope: scaScope, baseBranch: scaScope === 'diff' ? baseBranch : null };
+  beginScanRun(targetPath, instruction, scanMeta, scaLiveContainer);
+  scaInstructionInput.value = '';
+  scaInstructionWrap.hidden = true;
+  scaNoteToggleBtn.textContent = '+ instructions';
+}
+
 scanStartBtn.addEventListener('click', startScan);
+scaStartBtn.addEventListener('click', startScaScan);
 
 const scanInstructionWrap = document.getElementById('scan-instruction-wrap');
 const scanNoteToggleBtn = document.getElementById('scan-note-toggle-btn');
@@ -1577,6 +2513,14 @@ scanNoteToggleBtn.addEventListener('click', () => {
   scanInstructionWrap.hidden = !scanInstructionWrap.hidden;
   scanNoteToggleBtn.textContent = scanInstructionWrap.hidden ? '+ instructions' : '− instructions';
   if (!scanInstructionWrap.hidden) scanInstructionInput.focus();
+});
+
+const scaInstructionWrap = document.getElementById('sca-instruction-wrap');
+const scaNoteToggleBtn = document.getElementById('sca-note-toggle-btn');
+scaNoteToggleBtn.addEventListener('click', () => {
+  scaInstructionWrap.hidden = !scaInstructionWrap.hidden;
+  scaNoteToggleBtn.textContent = scaInstructionWrap.hidden ? '+ instructions' : '− instructions';
+  if (!scaInstructionWrap.hidden) scaInstructionInput.focus();
 });
 
 function handleScanServerMessage(msg) {
@@ -1630,12 +2574,44 @@ function handleScanServerMessage(msg) {
   }
 }
 
-// ---------- findings kanban ----------
+// App-level threat models have no dedicated live-feed card (unlike scans) — they're a
+// lightweight background action fired from a single toggle, so all we do here is keep
+// appThreatModelsList in sync; the Threat Model screen's "App-level Threat Models" section
+// is the only place that renders them, and only re-renders while it's the active view.
+function handleAppThreatModelServerMessage(msg) {
+  const run = appThreatModelRuns.get(msg.runId);
+
+  if (msg.type === 'app-threat-model-started') {
+    upsertAppThreatModel({ runId: msg.runId, id: msg.id });
+    return;
+  }
+  // The hot path — fires many times per run. Mutate the live row's cached DOM refs directly,
+  // no upsertAppThreatModel()/re-render here, or the list would flicker/reflow constantly.
+  if (msg.type === 'app-threat-model-event') {
+    if (run) handleAppThreatModelRawEvent(run, msg.event);
+    return;
+  }
+  if (msg.type === 'app-threat-model-stderr') {
+    return;
+  }
+  if (msg.type === 'app-threat-model-error') {
+    if (run) stopAppThreatModelElapsedTimer(run);
+    upsertAppThreatModel({ runId: msg.runId, id: msg.id, status: 'error', error: msg.message, finishedAt: Date.now() });
+    return;
+  }
+  if (msg.type === 'app-threat-model-done') {
+    if (run) stopAppThreatModelElapsedTimer(run);
+    upsertAppThreatModel({ runId: msg.runId, id: msg.id, status: msg.code === 0 && msg.verdict ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
+    return;
+  }
+}
+
+// ---------- findings: type tabs + table ----------
 
 async function loadFindings() {
   const res = await fetch('/api/findings');
   findings = await res.json();
-  renderKanban();
+  renderFindingsView();
   renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
 }
@@ -1643,377 +2619,473 @@ async function loadFindings() {
 function statusLabel(status) {
   return { new: 'Not started', in_review: 'In review', remediation_ready: 'Remediation ready', closed: 'Closed' }[status] || status;
 }
-
-const KANBAN_STATUS_COLUMNS = ['new', 'in_review', 'remediation_ready', 'closed'];
-const KANBAN_SEVERITY_COLUMNS = ['critical', 'high', 'medium', 'low', 'informational'];
-const STATUS_COLOR_VAR = { new: 'var(--muted)', in_review: 'var(--warn)', remediation_ready: 'var(--ok)', closed: 'var(--muted)' };
-const SEV_COLOR_VAR = { critical: 'var(--crit)', high: 'var(--err)', medium: 'var(--warn)', low: 'var(--ok)', informational: 'var(--muted)' };
 function severityLabel(sev) { return sev.charAt(0).toUpperCase() + sev.slice(1); }
 
-function renderKanban() {
-  kanbanBoardEl.innerHTML = '';
-  findingsSubtitleEl.textContent = `${findings.length} finding${findings.length === 1 ? '' : 's'} · grouped by ${findingsGroupBy}`;
+const SEV_ORDER_MAP = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
+const STATUS_ORDER_MAP = { new: 0, in_review: 1, remediation_ready: 2, closed: 3 };
 
-  if (!findings.length) {
-    kanbanBoardEl.innerHTML = '<div class="hint" style="padding:30px 4px;">No findings yet — click "+ Add" to create one, or start a scan from the Dashboard.</div>';
+const FINDINGS_TYPE_LABEL = { all: 'All', reasoning: 'Reasoning', sca: 'SCA' };
+const FINDINGS_COLUMNS = {
+  all: [
+    { key: 'severity', label: 'Severity', sortable: true },
+    { key: 'type', label: 'Type' },
+    { key: 'title', label: 'Title', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'runs', label: 'Runs' },
+  ],
+  // A reasoning-scan finding can be file-based (a code pattern) or endpoint-based (an
+  // attack-surface observation) — the merged 'location' cell shows whichever it has, since
+  // there's no longer a separate SAST/DAST split to hang two different columns off of.
+  reasoning: [
+    { key: 'severity', label: 'Severity', sortable: true },
+    { key: 'title', label: 'Title', sortable: true },
+    { key: 'location', label: 'Location' },
+    { key: 'rule', label: 'Rule / CWE' },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'runs', label: 'Runs' },
+  ],
+  sca: [
+    { key: 'severity', label: 'Severity', sortable: true },
+    { key: 'title', label: 'Title', sortable: true },
+    { key: 'package', label: 'Package' },
+    { key: 'fix', label: 'Fixed in' },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'runs', label: 'Runs' },
+  ],
+};
+
+function findingsSortValue(f, key) {
+  if (key === 'severity') return SEV_ORDER_MAP[f.severity] ?? 99;
+  if (key === 'status') return STATUS_ORDER_MAP[f.status] ?? 99;
+  if (key === 'title') return f.title.toLowerCase();
+  return '';
+}
+
+function findingsScanScoped() {
+  if (findingsScanFilter === 'all') return findings;
+  return findings.filter((f) => f.sourceScanId === findingsScanFilter);
+}
+
+function renderFindingsView() {
+  renderFindingsScanFilter();
+  const scanScoped = findingsScanScoped();
+  findingsSubtitleEl.textContent = `${scanScoped.length} finding${scanScoped.length === 1 ? '' : 's'}`
+    + (findingsScanFilter !== 'all' ? ` · filtered to 1 scan` : '');
+  renderFindingsTypeTabs(scanScoped);
+  renderFindingsTable();
+}
+
+// Only scans that actually produced findings still on record are worth offering as a filter —
+// a scan that found nothing (or whose findings were all deleted) would just be a dead-end option.
+function renderFindingsScanFilter() {
+  const scansWithFindings = scansList.filter((s) => s.id && findings.some((f) => f.sourceScanId === s.id));
+  scansWithFindings.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+
+  findingsScanFilterEl.innerHTML = '<option value="all">All scans</option>' + scansWithFindings.map((s) => {
+    const label = `${s.path}${s.app ? ' · ' + s.app : ''} — ${formatRelativeTime(s.startedAt)}`;
+    return `<option value="${escapeHtml(s.id)}">${escapeHtml(truncate(label, 64))}</option>`;
+  }).join('');
+
+  // findingsScanFilter (set by the dropdown's own change handler, or programmatically by
+  // openFindingsFilteredByScan()) is the single source of truth — the <select>'s DOM value is
+  // a render target, never read back as state. Reading `findingsScanFilterEl.value` here as a
+  // fallback was the bug: the element's value defaults to the truthy string "all" until the
+  // user touches it, so `el.value || findingsScanFilter` always picked "all" and silently
+  // discarded any filter set via a "View in Findings" link instead of the dropdown itself.
+  if (!scansWithFindings.some((s) => s.id === findingsScanFilter)) findingsScanFilter = 'all';
+  findingsScanFilterEl.value = findingsScanFilter;
+}
+
+function renderFindingsTypeTabs(scanScoped) {
+  findingsTypeTabsEl.innerHTML = '';
+  for (const key of ['all', 'reasoning', 'sca']) {
+    const count = key === 'all' ? scanScoped.length : scanScoped.filter((f) => f.scanType === key).length;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'group-toggle-btn' + (findingsTypeFilter === key ? ' active' : '');
+    btn.innerHTML = `${escapeHtml(FINDINGS_TYPE_LABEL[key])} <span class="gt-count">${count}</span>`;
+    btn.addEventListener('click', () => {
+      findingsTypeFilter = key;
+      renderFindingsView();
+    });
+    findingsTypeTabsEl.appendChild(btn);
+  }
+}
+
+function findingsCellHtml(f, key) {
+  switch (key) {
+    case 'severity':
+      return `<div class="ft-sev-cell"><span class="sev-dot ${f.severity}"></span>${escapeHtml(severityLabel(f.severity))}</div>`;
+    case 'type': {
+      const m = SCAN_TYPE_META[f.scanType] || SCAN_TYPE_META.reasoning;
+      return `<span class="scan-type-chip" style="color:${m.color}; background:${hexToRgba(m.color, .16)};">${escapeHtml(m.label)}</span>`;
+    }
+    case 'title':
+      return `<div class="ft-title">${escapeHtml(f.title)}</div>`;
+    case 'file':
+      return f.file ? `<span class="ft-mono">${escapeHtml(f.file)}</span>` : '<span class="hint">—</span>';
+    case 'location':
+      if (f.file) return `<span class="ft-mono">${escapeHtml(f.file)}</span>`;
+      if (f.endpoint) return `<span class="ft-mono">${escapeHtml(f.endpoint)}${f.method ? ' (' + escapeHtml(f.method.toUpperCase()) + ')' : ''}</span>`;
+      return '<span class="hint">—</span>';
+    case 'rule':
+      return f.rule ? escapeHtml(f.rule) : '<span class="hint">—</span>';
+    case 'package':
+      return f.packageName ? `${escapeHtml(f.packageName)}${f.packageVersion ? ` <span class="ft-mono">@${escapeHtml(f.packageVersion)}</span>` : ''}` : '<span class="hint">—</span>';
+    case 'fix':
+      return f.fixedVersion ? `<span class="ft-mono">${escapeHtml(f.fixedVersion)}</span>` : '<span class="hint">—</span>';
+    case 'endpoint':
+      return f.endpoint ? `<span class="ft-mono">${escapeHtml(f.endpoint)}</span>` : '<span class="hint">—</span>';
+    case 'method':
+      return f.method ? escapeHtml(f.method.toUpperCase()) : '<span class="hint">—</span>';
+    case 'status':
+      return `<span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span>`;
+    case 'runs': {
+      if (!f.runCount) return '<span class="hint">No runs yet</span>';
+      const latest = f.latestRun;
+      if (!latest) return `${f.runCount} run${f.runCount === 1 ? '' : 's'}`;
+      const verdictSuffix = latest.verdict && latest.verdict.verdict ? ` (${latest.verdict.verdict})` : '';
+      return `${f.runCount} run${f.runCount === 1 ? '' : 's'} · ${escapeHtml(agentMeta(latest.agent).label)}${escapeHtml(verdictSuffix)}`;
+    }
+    default:
+      return '';
+  }
+}
+
+function renderFindingsTable() {
+  const columns = FINDINGS_COLUMNS[findingsTypeFilter] || FINDINGS_COLUMNS.all;
+
+  findingsTableHeadEl.innerHTML = '';
+  const headRow = document.createElement('tr');
+  for (const col of columns) {
+    const th = document.createElement('th');
+    th.textContent = col.label;
+    if (col.sortable) {
+      th.classList.add('sortable');
+      if (findingsSort.key === col.key) {
+        th.classList.add('sorted');
+        const arrow = document.createElement('span');
+        arrow.className = 'sort-arrow';
+        arrow.textContent = findingsSort.dir === 'asc' ? '↑' : '↓';
+        th.appendChild(arrow);
+      }
+      th.addEventListener('click', () => {
+        findingsSort = findingsSort.key === col.key
+          ? { key: col.key, dir: findingsSort.dir === 'asc' ? 'desc' : 'asc' }
+          : { key: col.key, dir: 'asc' };
+        renderFindingsTable();
+      });
+    }
+    headRow.appendChild(th);
+  }
+  findingsTableHeadEl.appendChild(headRow);
+
+  const scanScoped = findingsScanScoped();
+  const rows = (findingsTypeFilter === 'all' ? scanScoped.slice() : scanScoped.filter((f) => f.scanType === findingsTypeFilter));
+  rows.sort((a, b) => {
+    const va = findingsSortValue(a, findingsSort.key);
+    const vb = findingsSortValue(b, findingsSort.key);
+    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return findingsSort.dir === 'asc' ? cmp : -cmp;
+  });
+
+  findingsTableBodyEl.innerHTML = '';
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = columns.length;
+    td.className = 'ft-empty';
+    td.textContent = scanScoped.length
+      ? 'No findings match this type.'
+      : findingsScanFilter !== 'all'
+        ? 'No findings from this scan.'
+        : 'No findings yet — click "+ Add" to create one, or start a scan from the Dashboard.';
+    tr.appendChild(td);
+    findingsTableBodyEl.appendChild(tr);
     return;
   }
 
-  const bySeverity = findingsGroupBy === 'severity';
-  const columns = bySeverity ? KANBAN_SEVERITY_COLUMNS : KANBAN_STATUS_COLUMNS;
-  const colColor = bySeverity ? SEV_COLOR_VAR : STATUS_COLOR_VAR;
-  const colLabel = bySeverity ? severityLabel : statusLabel;
-  const keyOf = bySeverity ? (f) => f.severity : (f) => f.status;
-
-  for (const col of columns) {
-    const bucket = findings.filter((f) => keyOf(f) === col);
-    const colEl = document.createElement('div');
-    colEl.className = 'kanban-column';
-    colEl.style.setProperty('--col-color', colColor[col] || 'var(--muted)');
-    colEl.innerHTML = `
-      <div class="kanban-col-header">
-        <span class="kanban-col-dot"></span>
-        <span class="kanban-col-title">${escapeHtml(colLabel(col))}</span>
-        <span class="kanban-col-count">${bucket.length}</span>
-      </div>
-      <div class="kanban-cards"></div>
-    `;
-    const cardsEl = colEl.querySelector('.kanban-cards');
-    if (!bucket.length) {
-      cardsEl.innerHTML = '<div class="kanban-empty">None</div>';
-    } else {
-      for (const f of bucket) cardsEl.appendChild(makeKanbanCard(f, bySeverity));
-    }
-    kanbanBoardEl.appendChild(colEl);
+  for (const f of rows) {
+    const tr = document.createElement('tr');
+    tr.dataset.findingId = f.id;
+    tr.innerHTML = columns.map((col) => `<td>${findingsCellHtml(f, col.key)}</td>`).join('');
+    tr.addEventListener('click', () => openFindingDetail(f.id));
+    tr.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openFindingContextMenu(e.clientX, e.clientY, f.id);
+    });
+    findingsTableBodyEl.appendChild(tr);
   }
 }
-
-function makeKanbanCard(f, bySeverity) {
-  const card = document.createElement('div');
-  card.className = 'kanban-card';
-  card.style.setProperty('--card-color', SEV_COLOR_VAR[f.severity] || 'var(--border)');
-  card.dataset.findingId = f.id;
-  const runInfo = f.runCount
-    ? `${f.runCount} run${f.runCount === 1 ? '' : 's'}${f.latestRun ? ' · ' + agentMeta(f.latestRun.agent).label : ''}`
-    : 'No runs yet';
-  const otherBadgeCls = bySeverity ? f.status : f.severity;
-  const otherBadgeText = bySeverity ? statusLabel(f.status) : severityLabel(f.severity);
-  card.innerHTML = `
-    <div class="kanban-card-title">${escapeHtml(f.title)}</div>
-    <div class="kanban-card-meta">
-      <span class="sev-dot ${f.severity}"></span>
-      <span class="badge ${otherBadgeCls}">${escapeHtml(otherBadgeText)}</span>
-      <span class="hint">${escapeHtml(runInfo)}</span>
-    </div>
-    ${f.file ? `<div class="kanban-card-file">${escapeHtml(f.file)}</div>` : ''}
-  `;
-  card.addEventListener('click', () => selectFinding(f.id));
-  card.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    openFindingContextMenu(e.clientX, e.clientY, f.id);
-  });
-  return card;
-}
-
-document.querySelectorAll('#findings-group-toggle .group-toggle-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    findingsGroupBy = btn.dataset.group;
-    document.querySelectorAll('#findings-group-toggle .group-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    renderKanban();
-  });
-});
 
 function updateFindingListItem(findingId, patch) {
   const item = findings.find((f) => f.id === findingId);
   if (item) Object.assign(item, patch);
-  renderKanban();
+  if (currentView === 'findings') renderFindingsTable();
+  if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
   if (currentView === 'dashboard') renderDashboard();
 }
 
-// ---------- finding detail / selection ----------
+// ---------- finding loading (used to build context for a fresh agent run) ----------
 
-// Seeded/scan-produced descriptions follow a loose "Scanner: X\nRule: Y\n\n
-// Snippet:\n\n  <code>\n\nDescription: <prose>" convention (see seedFindings()
-// in server.js and agents/scan.md). Split it so the vulnerable code renders
-// as a real code block instead of one undifferentiated pre-formatted blob —
-// an AppSec tester triaging a finding wants the snippet immediately visible,
-// not one click away. Free-text findings (added via "+ Add") won't match;
-// they fall back to plain prose with no snippet section.
-function parseFindingDescription(desc) {
-  if (!desc) return { snippet: null, prose: '' };
-  const m = desc.match(/\n\nSnippet:\n\n([\s\S]*?)\n\nDescription:\s*([\s\S]*)$/);
-  if (m) return { snippet: m[1].trimEnd(), prose: m[2].trim() };
-  return { snippet: null, prose: desc };
-}
-
-function latestVerdictRun(finding) {
-  for (let i = finding.runs.length - 1; i >= 0; i--) {
-    if (finding.runs[i].verdict) return finding.runs[i];
-  }
-  return null;
-}
-
-// A summary strip of the most recent agent's verdict, shown right under the
-// header — so the current risk read (confirmed severity, confidence,
-// priority, framework mapping) is visible at a glance without opening the
-// stage-card pipeline below.
-function renderVerdictStrip(finding) {
-  const run = latestVerdictRun(finding);
-  if (!run) { fhVerdictStrip.hidden = true; fhVerdictStrip.innerHTML = ''; return; }
-  const v = run.verdict;
-
-  const items = [];
-  const addBadge = (label, key) => {
-    if (v[key]) items.push(`<span class="vs-item"><span class="vs-label">${label}</span><span class="badge ${escapeHtml(v[key])}">${escapeHtml(v[key])}</span></span>`);
-  };
-  addBadge('Verdict', 'verdict');
-  addBadge('Severity', 'severity_confirmed');
-  addBadge('Confidence', 'confidence');
-  addBadge('Priority', 'priority');
-
-  const frameworks = [];
-  if (v.owasp) frameworks.push(v.owasp);
-  if (v.asvs) frameworks.push(v.asvs);
-  if (v.cwe) frameworks.push(v.cwe);
-  if (Array.isArray(v.nist_800_53)) frameworks.push(...v.nist_800_53);
-  else if (v.nist_800_53) frameworks.push(v.nist_800_53);
-
-  fhVerdictStrip.innerHTML = `
-    <span class="vs-source">${escapeHtml(agentMeta(run.agent).label)} verdict</span>
-    ${items.join('')}
-    ${frameworks.length ? `<span class="vs-frameworks">${frameworks.map((f) => `<span class="chip">${escapeHtml(f)}</span>`).join('')}</span>` : ''}
-  `;
-  fhVerdictStrip.hidden = false;
-}
-
-fhCopyCodeBtn.addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText(fhCode.textContent);
-    fhCopyCodeBtn.textContent = 'Copied';
-    setTimeout(() => { fhCopyCodeBtn.textContent = 'Copy'; }, 1200);
-  } catch (e) { /* clipboard unavailable, ignore */ }
-});
-
-async function selectFinding(findingId) {
-  selectedFindingId = findingId;
-
-  let finding = findingCache.get(findingId);
-  if (!finding) {
-    const res = await fetch(`/api/findings/${findingId}`);
-    if (!res.ok) return;
-    finding = await res.json();
-    findingCache.set(findingId, finding);
-  }
-
-  findingDetailOverlay.hidden = false;
-
-  fhTitle.textContent = finding.title;
-  fhSeverity.textContent = finding.severity;
-  fhSeverity.className = 'badge ' + finding.severity;
-  fhStatus.textContent = statusLabel(finding.status);
-  fhStatus.className = 'badge ' + finding.status;
-
-  const sourceScan = finding.sourceScanId ? scansList.find((s) => s.id === finding.sourceScanId) : null;
-  fhMeta.innerHTML = [
-    finding.rule ? `Rule: ${escapeHtml(finding.rule)}` : '',
-    finding.file ? `File: ${escapeHtml(finding.file)}` : '',
-    sourceScan ? `<button type="button" class="scan-link-btn" id="fh-scan-link">Found by scan of ${escapeHtml(sourceScan.path)}</button>` : '',
-  ].filter(Boolean).join('<span></span>');
-  const scanLinkBtn = document.getElementById('fh-scan-link');
-  if (scanLinkBtn) scanLinkBtn.addEventListener('click', () => { closeFindingDetailModal(); showView('timeline'); });
-
-  const parsed = parseFindingDescription(finding.description);
-  if (parsed.snippet) {
-    fhCodeBlock.hidden = false;
-    fhCode.textContent = parsed.snippet;
-  } else {
-    fhCodeBlock.hidden = true;
-    fhCode.textContent = '';
-  }
-  fhProse.textContent = parsed.prose;
-
-  renderVerdictStrip(finding);
-
-  ensureFlow(findingId, finding);
-  for (const [id, flow] of flows.entries()) {
-    flow.el.hidden = id !== findingId;
-  }
+async function ensureFindingCached(findingId) {
+  if (findingCache.has(findingId)) return findingCache.get(findingId);
+  const res = await fetch(`/api/findings/${findingId}`);
+  if (!res.ok) return null;
+  const finding = await res.json();
+  findingCache.set(findingId, finding);
+  return finding;
 }
 
 function buildBaseContext(finding) {
+  const latestRun = finding.runs && finding.runs.length ? finding.runs[finding.runs.length - 1] : null;
   const parts = [
     `Title: ${finding.title}`,
+    `Type: ${finding.scanType || 'reasoning'}`,
     `Severity (as reported by scanner): ${finding.severity}`,
     finding.rule ? `Rule: ${finding.rule}` : '',
     finding.file ? `File: ${finding.file}` : '',
+    finding.packageName ? `Package: ${finding.packageName}${finding.packageVersion ? '@' + finding.packageVersion : ''}` : '',
+    finding.fixedVersion ? `Fixed version: ${finding.fixedVersion}` : '',
+    finding.endpoint ? `Endpoint: ${finding.endpoint}${finding.method ? ' (' + finding.method + ')' : ''}` : '',
     `Description:\n${finding.description}`,
+    finding.code ? `Code:\n${finding.code}` : '',
+    latestRun && latestRun.verdict ? `Prior ${agentMeta(latestRun.agent).label} verdict:\n${JSON.stringify(latestRun.verdict, null, 2)}` : '',
   ];
   return parts.filter(Boolean).join('\n');
 }
 
-function ensureFlow(findingId, finding) {
-  if (flows.has(findingId)) return flows.get(findingId);
+// ---------- finding detail (full page) ----------
 
-  const flowEl = document.createElement('div');
-  flowEl.className = 'stage-row';
-  flowEl.dataset.findingId = findingId;
-  flowContainer.appendChild(flowEl);
+const fdBodyEl = document.getElementById('fd-body');
+const VERDICT_BADGE_FIELDS = ['verdict', 'severity_confirmed', 'confidence', 'priority'];
+const VERDICT_SKIP_FIELDS = new Set([...VERDICT_BADGE_FIELDS, 'reasoning', 'next_agent']);
 
-  const flow = { el: flowEl, stageRowEl: flowEl, stages: [] };
-  flows.set(findingId, flow);
-
-  // Rehydrate any runs already persisted server-side (from an earlier
-  // selection this session, or created before this page loaded). Live
-  // activity feed isn't retained across reload — only the final verdict.
-  for (const run of finding.runs || []) {
-    rehydrateStage(findingId, run);
+async function openFindingDetail(findingId) {
+  currentFindingDetailId = findingId;
+  showView('finding-detail');
+  fdBodyEl.innerHTML = '<div class="hint" style="padding:30px 4px;">Loading…</div>';
+  const res = await fetch(`/api/findings/${findingId}`);
+  if (!res.ok) {
+    fdBodyEl.innerHTML = '<div class="hint" style="padding:30px 4px;">Finding not found.</div>';
+    return;
   }
-
-  return flow;
+  const finding = await res.json();
+  findingCache.set(findingId, finding);
+  renderFindingDetail(findingId);
 }
 
-// ---------- stage creation & rehydration ----------
+function renderFindingDetail(findingId) {
+  const finding = findingCache.get(findingId);
+  if (!finding || currentFindingDetailId !== findingId) return;
 
-// Only the agent's own prose (its analysis, in its own words) is surfaced
-// here — tool calls, tool results, and thinking-token chatter are dropped
-// from the visible card entirely. They're still captured in rawEvents for
-// the collapsed "Raw stream-json" toggle, so nothing is actually lost, it's
-// just not in the AppSec tester's way by default.
-function appendAnalysisParagraph(stage, text, cls) {
-  if (stage.analysisEmpty) { stage.analysisEl.innerHTML = ''; stage.analysisEmpty = false; }
-  const p = document.createElement('p');
-  if (cls) p.className = cls;
-  p.textContent = text;
-  stage.analysisEl.appendChild(p);
-  stage.analysisEl.scrollTop = stage.analysisEl.scrollHeight;
-}
+  document.getElementById('fd-title').textContent = finding.title;
+  document.getElementById('fd-subtitle').textContent =
+    `${finding.runs.length} agent run${finding.runs.length === 1 ? '' : 's'} · created ${new Date(finding.createdAt).toLocaleString()}`;
 
-function renderAnalysisFromFullText(stage, fullText) {
-  const fenceIdx = fullText.indexOf('```');
-  const prose = (fenceIdx >= 0 ? fullText.slice(0, fenceIdx) : fullText).trim();
-  if (!prose) return;
-  for (const para of prose.split(/\n{2,}/)) {
-    const trimmed = para.trim();
-    if (trimmed) appendAnalysisParagraph(stage, trimmed);
-  }
-}
+  const typeMeta = SCAN_TYPE_META[finding.scanType] || SCAN_TYPE_META.reasoning;
 
-function handleRawEvent(stage, event) {
-  stage.rawEvents.push(event);
-  stage.rawPreEl.textContent = stage.rawEvents.map((e) => JSON.stringify(e)).join('\n');
-
-  if (event.type === 'assistant' && event.message && Array.isArray(event.message.content)) {
-    for (const block of event.message.content) {
-      if (block.type === 'text' && block.text.trim()) {
-        const fenceIdx = block.text.indexOf('```');
-        const prose = (fenceIdx >= 0 ? block.text.slice(0, fenceIdx) : block.text).trim();
-        if (prose) appendAnalysisParagraph(stage, prose);
-      }
-    }
-  }
-  // tool_use / tool_result / system / thinking / rate_limit events are
-  // intentionally not rendered — see the comment above.
-}
-
-function makeStageCard(findingId, runId, agent) {
-  const flow = flows.get(findingId);
-  if (flow.stages.length > 0) {
-    const connector = document.createElement('div');
-    connector.className = 'connector';
-    connector.textContent = '↓';
-    flow.stageRowEl.appendChild(connector);
-  }
-
-  const cardEl = document.createElement('article');
-  cardEl.className = 'stage-card status-running';
-  cardEl.dataset.runId = runId;
-  cardEl.dataset.findingId = findingId;
-  cardEl.innerHTML = `
-    <div class="stage-header">
-      <span class="stage-agent"></span>
-      <span class="status-dot running"></span>
-      <span class="status-text">Running…</span>
-      <button class="stage-menu-btn" title="Stage actions">${icon('dots')}</button>
+  const badgesHtml = `
+    <div class="fd-badges">
+      <span class="badge ${finding.severity}">${escapeHtml(severityLabel(finding.severity))}</span>
+      <span class="badge ${finding.status}">${escapeHtml(statusLabel(finding.status))}</span>
+      <span class="scan-type-chip" style="color:${typeMeta.color}; background:${hexToRgba(typeMeta.color, .16)};">${escapeHtml(typeMeta.label)}</span>
     </div>
-    <div class="stage-body">
-      <div class="stage-section-title">Analysis</div>
-      <div class="stage-analysis-text"><p class="muted">Waiting for the agent to start…</p></div>
-    </div>
-    <details class="stage-raw">
-      <summary>Raw stream-json</summary>
-      <pre></pre>
-    </details>
-    <div class="stage-verdict"></div>
-    <div class="stage-actions"></div>
   `;
-  flow.stageRowEl.appendChild(cardEl);
-  flow.stages.push(runId);
-  cardEl.querySelector('.stage-agent').innerHTML = icon(agentMeta(agent).icon) + '<span>' + escapeHtml(agentMeta(agent).label) + '</span>';
 
-  cardEl.querySelector('.stage-menu-btn').addEventListener('click', (e) => {
-    const rect = e.target.getBoundingClientRect();
-    openContextMenu(rect.left, rect.bottom, runId);
-  });
-  cardEl.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    openContextMenu(e.clientX, e.clientY, runId);
-  });
+  const sourceScan = finding.sourceScanId ? scansList.find((s) => s.id === finding.sourceScanId) : null;
+  const scanSourceHtml = sourceScan ? `
+    <div class="fd-scan-source">
+      Found by scan of <span class="mono">${escapeHtml(truncate(sourceScan.path, 60))}</span>
+      <button class="link-btn" type="button" data-action="view-source-scan">View all findings from this scan →</button>
+    </div>
+  ` : '';
 
-  return cardEl;
-}
-
-function rehydrateStage(findingId, run) {
-  const cardEl = makeStageCard(findingId, run.runId, run.agent);
-  const stage = {
-    runId: run.runId, findingId, agent: run.agent, context: run.context, instruction: run.instruction,
-    status: run.status,
-    cardEl,
-    analysisEl: cardEl.querySelector('.stage-analysis-text'),
-    analysisEmpty: true,
-    rawDetailsEl: cardEl.querySelector('.stage-raw'),
-    rawPreEl: cardEl.querySelector('.stage-raw pre'),
-    verdictEl: cardEl.querySelector('.stage-verdict'),
-    actionsEl: cardEl.querySelector('.stage-actions'),
-    rawEvents: [],
-    fullText: run.fullText || '',
-    verdict: run.verdict || null,
-  };
-  stages.set(run.runId, stage);
-
-  if (run.status === 'running') {
-    appendAnalysisParagraph(stage, 'Reconnected after page load — live activity isn’t retained, this will update once the run finishes.', 'muted');
-  } else {
-    setStageStatus(stage, run.status, run.status === 'done' ? 'Completed' : run.status === 'cancelled' ? 'Cancelled' : 'Error');
-    if (run.instruction) appendAnalysisParagraph(stage, `Instruction: ${run.instruction}`, 'muted');
-    if (run.fullText) renderAnalysisFromFullText(stage, run.fullText);
-    renderVerdict(stage);
-    renderActions(stage);
+  const metaItems = [];
+  if (finding.scanType === 'sca') {
+    if (finding.packageName) metaItems.push(['Package', finding.packageName + (finding.packageVersion ? '@' + finding.packageVersion : ''), true]);
+    if (finding.fixedVersion) metaItems.push(['Fixed in', finding.fixedVersion, true]);
   }
+  // A reasoning-scan finding can be file-based (code pattern) or endpoint-based (attack
+  // surface), or occasionally both — no longer gated behind a separate DAST scanType, since
+  // that per-finding distinction now lives purely in which optional fields are present.
+  if (finding.endpoint) metaItems.push(['Endpoint', finding.endpoint, true]);
+  if (finding.method) metaItems.push(['Method', finding.method.toUpperCase(), true]);
+  if (finding.file) metaItems.push(['File', finding.file, true]);
+  if (finding.rule) metaItems.push(['Rule / CWE', finding.rule, false]);
+
+  const metaHtml = metaItems.length ? `
+    <div class="fd-meta-grid">
+      ${metaItems.map(([label, value, mono]) => `
+        <div class="fd-meta-item">
+          <div class="fd-meta-label">${escapeHtml(label)}</div>
+          <div class="fd-meta-value${mono ? ' mono' : ''}">${escapeHtml(value)}</div>
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  const descriptionHtml = `
+    <div class="fd-section">
+      <div class="fd-section-title">Description</div>
+      <div class="fd-prose">${escapeHtml(finding.description)}</div>
+    </div>
+  `;
+
+  const codeHtml = finding.code ? `
+    <div class="fd-section">
+      <div class="fd-section-title">Code</div>
+      <div class="fd-code-wrap">
+        <button class="secondary fd-copy-btn" type="button" data-action="copy-code">Copy</button>
+        <pre class="code-block"><code>${highlightCode(finding.code)}</code></pre>
+      </div>
+    </div>
+  ` : '';
+
+  const runsHtml = `
+    <div class="fd-section">
+      <div class="fd-section-title">Agent runs</div>
+      ${finding.runs.length
+        ? finding.runs.slice().reverse().map(runCardHtml).join('')
+        : '<div class="fd-runs-empty">No agent runs yet — use the buttons above to start one.</div>'}
+    </div>
+  `;
+
+  fdBodyEl.innerHTML = badgesHtml + scanSourceHtml + metaHtml + descriptionHtml + codeHtml + runsHtml;
+
+  const copyBtn = fdBodyEl.querySelector('[data-action="copy-code"]');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(finding.code).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      });
+    });
+  }
+
+  const viewSourceScanBtn = fdBodyEl.querySelector('[data-action="view-source-scan"]');
+  if (viewSourceScanBtn) {
+    viewSourceScanBtn.addEventListener('click', () => openFindingsFilteredByScan(finding.sourceScanId));
+  }
+
+  fdBodyEl.querySelectorAll('[data-action="view-threat-model"]').forEach((btn) => {
+    btn.addEventListener('click', () => openThreatModelForFinding(findingId, btn.dataset.runId));
+  });
+
+  renderFindingDetailActions(finding);
 }
 
+function openFindingsFilteredByScan(scanId) {
+  findingsScanFilter = scanId;
+  showView('findings');
+}
+
+function runCardHtml(run) {
+  const meta = agentMeta(run.agent);
+  const timeStr = run.startedAt ? formatRelativeTime(run.startedAt) : '';
+  const statusCls = run.status === 'running' ? 'in_review' : (run.status === 'error' || run.status === 'cancelled') ? 'high' : 'closed';
+  const statusText = run.status === 'running' ? 'Running' : run.status === 'error' ? 'Error' : run.status === 'cancelled' ? 'Cancelled' : 'Done';
+
+  let verdictHtml = '';
+  if (run.verdict && typeof run.verdict === 'object') {
+    const v = run.verdict;
+    const badgeFields = VERDICT_BADGE_FIELDS.filter((k) => v[k]);
+    const otherFields = Object.keys(v).filter((k) => !VERDICT_SKIP_FIELDS.has(k) && v[k] != null && v[k] !== '' && !(Array.isArray(v[k]) && !v[k].length));
+    verdictHtml = `
+      ${badgeFields.length ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">${badgeFields.map((k) => `<span class="badge ${escapeHtml(String(v[k]))}">${escapeHtml(String(v[k]))}</span>`).join('')}</div>` : ''}
+      ${v.reasoning ? `<div class="fd-verdict-reasoning">${escapeHtml(v.reasoning)}</div>` : ''}
+      ${otherFields.length ? `
+        <div class="fd-verdict-grid" style="margin-top:8px;">
+          ${otherFields.map((k) => `<div class="fd-verdict-item"><b>${escapeHtml(k)}:</b>${escapeHtml(Array.isArray(v[k]) ? v[k].join(', ') : String(v[k]))}</div>`).join('')}
+        </div>
+      ` : ''}
+    `;
+  } else if (run.status === 'error') {
+    verdictHtml = '<div class="fd-verdict-reasoning">Run failed — no verdict produced.</div>';
+  } else if (run.status === 'running') {
+    verdictHtml = '<div class="fd-verdict-reasoning">Still running…</div>';
+  }
+
+  const viewInThreatModelHtml = (run.agent === 'threat_model' && run.verdict && typeof run.verdict === 'object')
+    ? `<button class="secondary fd-view-tm-btn" type="button" data-action="view-threat-model" data-run-id="${escapeHtml(run.runId)}">View in Threat Model →</button>`
+    : '';
+
+  return `
+    <div class="fd-run-card">
+      <div class="fd-run-head">
+        <span class="fd-run-agent" style="color:${meta.color};">${icon(meta.icon)}${escapeHtml(meta.label)}</span>
+        <span class="badge ${statusCls}">${escapeHtml(statusText)}</span>
+        <span class="fd-run-time">${escapeHtml(timeStr)}</span>
+      </div>
+      ${verdictHtml}
+      ${viewInThreatModelHtml}
+    </div>
+  `;
+}
+
+function renderFindingDetailActions(finding) {
+  const actionsEl = document.getElementById('fd-header-actions');
+  actionsEl.innerHTML = '';
+  const btn = document.createElement('button');
+  btn.className = 'secondary';
+  btn.textContent = 'Agent Runs ▾';
+  btn.disabled = !agentsList.length;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const rect = btn.getBoundingClientRect();
+    openFindingContextMenu(rect.left, rect.bottom + 4, finding.id);
+  });
+  actionsEl.appendChild(btn);
+}
+
+document.getElementById('fd-back-btn').addEventListener('click', () => showView('findings'));
+
+// ---------- syntax highlighting (hand-rolled, no external deps — universal ----------
+// token classes across C-like/Python/etc. syntaxes, not a full per-language grammar) ----------
+
+const HL_KEYWORDS = new Set([
+  'function', 'const', 'let', 'var', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue',
+  'import', 'export', 'from', 'as', 'default', 'class', 'extends', 'implements', 'interface', 'new', 'delete', 'typeof',
+  'instanceof', 'try', 'catch', 'finally', 'throw', 'async', 'await', 'yield', 'static', 'public', 'private', 'protected',
+  'void', 'null', 'true', 'false', 'undefined', 'this', 'super', 'in', 'of',
+  'def', 'elif', 'pass', 'lambda', 'with', 'is', 'not', 'and', 'or', 'None', 'True', 'False', 'self', 'raise', 'except',
+  'global', 'nonlocal', 'assert',
+  'func', 'package', 'go', 'chan', 'defer', 'select', 'range', 'struct', 'type', 'map', 'nil',
+  'namespace', 'using', 'fn', 'impl', 'pub', 'mut', 'match', 'loop', 'enum', 'trait', 'mod',
+  'int', 'string', 'bool', 'float', 'double', 'char', 'long', 'short', 'unsigned', 'const', 'include', 'define',
+]);
+const HL_TOKEN_RE = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_$][A-Za-z0-9_$]*\b)/g;
+
+function highlightCode(code) {
+  let out = '';
+  let lastIndex = 0;
+  HL_TOKEN_RE.lastIndex = 0;
+  let m;
+  while ((m = HL_TOKEN_RE.exec(code))) {
+    if (m.index > lastIndex) out += escapeHtml(code.slice(lastIndex, m.index));
+    const [full, comment, string, number, word] = m;
+    if (comment) out += `<span class="tok-comment">${escapeHtml(comment)}</span>`;
+    else if (string) out += `<span class="tok-string">${escapeHtml(string)}</span>`;
+    else if (number) out += `<span class="tok-number">${escapeHtml(number)}</span>`;
+    else if (word && HL_KEYWORDS.has(word)) out += `<span class="tok-keyword">${escapeHtml(word)}</span>`;
+    else out += escapeHtml(full);
+    lastIndex = m.index + full.length;
+  }
+  if (lastIndex < code.length) out += escapeHtml(code.slice(lastIndex));
+  return out;
+}
+
+// Launching a run doesn't render a live per-event stream — that UI (Analysis/
+// Conclusion per stage) was removed along with the old finding-detail panel.
+// Results land in Timeline and update both the Findings table and, if this
+// finding's detail page is open, its Agent runs section, via
+// refreshFindingAfterRun() -> updateFindingListItem(); this just tracks
+// enough state to correlate incoming WS messages back to the right run.
 function startStage(findingId, agent, context, instruction) {
   const finding = findingCache.get(findingId);
   const runId = uid();
 
-  makeStageCard(findingId, runId, agent);
-  const cardEl = flows.get(findingId).stageRowEl.querySelector(`[data-run-id="${runId}"]`);
-
-  const stageState = {
-    runId, findingId, agent, context, instruction,
-    status: 'running',
-    cardEl,
-    analysisEl: cardEl.querySelector('.stage-analysis-text'),
-    analysisEmpty: true,
-    rawDetailsEl: cardEl.querySelector('.stage-raw'),
-    rawPreEl: cardEl.querySelector('.stage-raw pre'),
-    verdictEl: cardEl.querySelector('.stage-verdict'),
-    actionsEl: cardEl.querySelector('.stage-actions'),
-    rawEvents: [],
-    fullText: '',
-    verdict: null,
-  };
-  stages.set(runId, stageState);
+  stages.set(runId, findingId);
 
   const startedAt = Date.now();
   upsertTimelineEntry({
@@ -2021,58 +3093,59 @@ function startStage(findingId, agent, context, instruction) {
     status: 'running', instruction, verdict: null, startedAt, finishedAt: null,
   });
 
+  // Optimistically drop a "running" placeholder into the cached finding's run
+  // history so the detail page (if open on this finding) shows it starting
+  // immediately, rather than staying blank until the run actually finishes.
+  if (finding) {
+    finding.runs.push({ runId, agent, status: 'running', verdict: null, startedAt, finishedAt: null });
+    if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
+  }
+
   ws.send(JSON.stringify({ type: 'run', runId, findingId, agent, context, instruction }));
-  cardEl.scrollIntoView({ behavior: 'smooth', inline: 'end', block: 'nearest' });
   return runId;
 }
 
 // ---------- websocket message handling ----------
 
 function handleServerMessage(msg) {
+  if (msg.type && msg.type.indexOf('app-threat-model') === 0) {
+    handleAppThreatModelServerMessage(msg);
+    return;
+  }
   if (msg.type && msg.type.indexOf('scan') === 0) {
     handleScanServerMessage(msg);
     return;
   }
 
-  const stage = msg.runId ? stages.get(msg.runId) : null;
+  const findingId = msg.runId ? stages.get(msg.runId) : null;
 
-  if (msg.type === 'error' && !stage) {
+  if (msg.type === 'error' && !findingId) {
     alert(msg.message);
     return;
   }
-  if (!stage) return;
+  if (!findingId) return;
 
   if (msg.type === 'started') return;
-
-  if (msg.type === 'event') {
-    handleRawEvent(stage, msg.event);
-    return;
-  }
+  if (msg.type === 'event') return; // no live viewing UI to feed anymore
   if (msg.type === 'stderr') {
-    return; // CLI-internal chatter, not actionable — still in the raw stream-json toggle
+    return; // CLI-internal chatter, not actionable
   }
   if (msg.type === 'error') {
-    appendAnalysisParagraph(stage, msg.message, 'err-line');
-    setStageStatus(stage, 'error', 'Error');
-    upsertTimelineEntry({ runId: stage.runId, status: 'error', finishedAt: Date.now() });
-    refreshFindingAfterRun(stage.findingId);
+    upsertTimelineEntry({ runId: msg.runId, status: 'error', finishedAt: Date.now() });
+    refreshFindingAfterRun(findingId);
     return;
   }
   if (msg.type === 'done') {
-    stage.fullText = msg.fullText;
-    stage.verdict = msg.verdict;
-    setStageStatus(stage, msg.code === 0 ? 'done' : 'error', `Exited (code ${msg.code})`);
-    renderVerdict(stage);
-    renderActions(stage);
-    upsertTimelineEntry({ runId: stage.runId, status: msg.code === 0 ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
-    refreshFindingAfterRun(stage.findingId);
+    upsertTimelineEntry({ runId: msg.runId, status: msg.code === 0 ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
+    refreshFindingAfterRun(findingId);
     return;
   }
 }
 
 async function refreshFindingAfterRun(findingId) {
-  // Re-pull the finding so the sidebar's status/severity badge and run
-  // count reflect the just-finished run without a full page reload.
+  // Re-pull the finding so the Findings table row and (if open) the finding
+  // detail page's Agent runs section reflect the just-finished run without
+  // a full page reload.
   const res = await fetch(`/api/findings/${findingId}`);
   if (!res.ok) return;
   const finding = await res.json();
@@ -2082,13 +3155,9 @@ async function refreshFindingAfterRun(findingId) {
     runCount: finding.runs.length,
     latestRun: finding.runs.length ? (({ agent, status, verdict }) => ({ agent, status, verdict }))(finding.runs[finding.runs.length - 1]) : null,
   });
-  if (selectedFindingId === findingId) {
-    fhStatus.textContent = statusLabel(finding.status);
-    fhStatus.className = 'badge ' + finding.status;
-    renderVerdictStrip(finding);
-  }
 }
 
+// Still used by scan cards (cardEl/status-dot/status-text are their DOM too).
 function setStageStatus(stage, status, text) {
   stage.status = status;
   stage.cardEl.classList.remove('status-running', 'status-done', 'status-error');
@@ -2096,80 +3165,13 @@ function setStageStatus(stage, status, text) {
   const dot = stage.cardEl.querySelector('.status-dot');
   dot.classList.remove('running', 'done', 'error', 'cancelled');
   dot.classList.add(status);
-  stage.cardEl.querySelector('.status-text').textContent = text;
-}
-
-function renderVerdict(stage) {
-  if (!stage.verdict) {
-    stage.verdictEl.innerHTML = '<div class="stage-section-title">Conclusion</div><p class="hint">No JSON verdict block found in the response.</p>';
-    return;
-  }
-  const rows = Object.entries(stage.verdict).map(([k, v]) => {
-    const isBadgeField = ['verdict', 'severity_confirmed', 'confidence', 'priority'].includes(k);
-    let valueHtml;
-    if (isBadgeField && typeof v === 'string') {
-      valueHtml = `<span class="badge ${v}">${escapeHtml(v)}</span>`;
-    } else {
-      valueHtml = escapeHtml(typeof v === 'string' ? v : JSON.stringify(v));
-    }
-    return `<div class="k">${escapeHtml(k)}</div><div class="v">${valueHtml}</div>`;
-  }).join('');
-  stage.verdictEl.innerHTML = `<div class="stage-section-title">Conclusion</div><div class="vgrid">${rows}</div>`;
-}
-
-function renderActions(stage) {
-  stage.actionsEl.innerHTML = '';
-  const nextAgent = stage.verdict && stage.verdict.next_agent;
-  if (nextAgent && nextAgent !== 'null' && agentsList.includes(nextAgent)) {
-    const btn = document.createElement('button');
-    btn.textContent = `Continue → ${agentMeta(nextAgent).label}`;
-    btn.addEventListener('click', () => openStageModal('continue', stage.runId));
-    stage.actionsEl.appendChild(btn);
-  } else if (nextAgent && nextAgent !== 'null') {
-    const btn = document.createElement('button');
-    btn.className = 'secondary';
-    btn.disabled = true;
-    btn.textContent = `Next: ${nextAgent} (not yet available)`;
-    stage.actionsEl.appendChild(btn);
-  }
-  const branchBtn = document.createElement('button');
-  branchBtn.className = 'secondary';
-  branchBtn.textContent = 'Branch to agent…';
-  branchBtn.addEventListener('click', () => openStageModal('branch', stage.runId));
-  stage.actionsEl.appendChild(branchBtn);
+  const statusText = stage.cardEl.querySelector('.status-text');
+  statusText.classList.remove('running', 'done', 'error', 'cancelled');
+  statusText.classList.add(status);
+  statusText.textContent = text;
 }
 
 // ---------- context menus ----------
-
-function openContextMenu(x, y, runId) {
-  const stage = stages.get(runId);
-  if (!stage) return;
-
-  const nextAgent = stage.verdict && stage.verdict.next_agent;
-  const canContinue = stage.status !== 'running' && nextAgent && nextAgent !== 'null' && agentsList.includes(nextAgent);
-  const canRerun = stage.status !== 'running';
-  const canCancel = stage.status === 'running';
-
-  contextMenuEl.innerHTML = '';
-  const addItem = (label, disabled, onClick) => {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.disabled = !!disabled;
-    btn.addEventListener('click', () => { closeContextMenu(); onClick(); });
-    contextMenuEl.appendChild(btn);
-  };
-
-  addItem(canContinue ? `Add instructions & continue → ${agentMeta(nextAgent).label}` : 'Continue to next agent (not ready)', !canContinue, () => openStageModal('continue', runId));
-  addItem('Re-run this agent with new instructions', !canRerun, () => openStageModal('rerun', runId));
-  addItem('Branch to a different agent…', !canRerun, () => openStageModal('branch', runId));
-  const hr = document.createElement('hr');
-  contextMenuEl.appendChild(hr);
-  addItem('Cancel run', !canCancel, () => {
-    ws.send(JSON.stringify({ type: 'cancel', runId }));
-  });
-
-  positionAndShowMenu(x, y);
-}
 
 function openFindingContextMenu(x, y, findingId) {
   contextMenuEl.innerHTML = '';
@@ -2181,30 +3183,21 @@ function openFindingContextMenu(x, y, findingId) {
     contextMenuEl.appendChild(btn);
   };
 
-  // Every path here opens the stage modal rather than running an agent
-  // immediately — the AppSec tester reviews context/instructions and
-  // explicitly clicks "Start stage" before anything executes, so there's
-  // always a deliberate action behind a run, not an implicit auto-fix.
-  const hasTriage = agentsList.includes('triage');
-  addItem('Run Triage…', !hasTriage, async () => {
-    await selectFinding(findingId);
-    const finding = findingCache.get(findingId);
-    openFreshStageModal(findingId, 'triage', buildBaseContext(finding));
-  });
-
-  const hasThreatModel = agentsList.includes('threat_model');
-  addItem('Run Threat Model…', !hasThreatModel, async () => {
-    await selectFinding(findingId);
-    const finding = findingCache.get(findingId);
-    openFreshStageModal(findingId, 'threat_model', buildBaseContext(finding));
-  });
-
-  const hasRemediation = agentsList.includes('remediation');
-  addItem('Run Remediation…', !hasRemediation, async () => {
-    await selectFinding(findingId);
-    const finding = findingCache.get(findingId);
-    openFreshStageModal(findingId, 'remediation', buildBaseContext(finding));
-  });
+  // One menu item per agent declared on the Agents screen (agentsList — built-in
+  // plus any custom agents; 'scan' is already filtered out server-side). Every
+  // path here opens the stage modal rather than running an agent immediately —
+  // the AppSec tester reviews context/instructions and explicitly clicks
+  // "Start stage" before anything executes, so there's always a deliberate
+  // action behind a run, not an implicit auto-fix.
+  if (!agentsList.length) {
+    addItem('No agents available', true, () => {});
+  }
+  for (const agentName of agentsList) {
+    addItem(`Run ${agentMeta(agentName).label}…`, false, async () => {
+      const finding = await ensureFindingCached(findingId);
+      if (finding) openFreshStageModal(findingId, agentName, buildBaseContext(finding));
+    });
+  }
 
   positionAndShowMenu(x, y);
 }
@@ -2224,40 +3217,12 @@ document.addEventListener('click', (e) => {
   if (!contextMenuEl.hidden && !contextMenuEl.contains(e.target)) closeContextMenu();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeContextMenu(); closeStageModal(); closeFindingModal(); closeFindingDetailModal(); }
+  if (e.key === 'Escape') { closeContextMenu(); closeStageModal(); closeFindingModal(); }
 });
 
 // ---------- stage modal (continue / re-run / branch / fresh run w/ instructions) ----------
 
 let stageModalState = null;
-
-function openStageModal(mode, runId) {
-  const stage = stages.get(runId);
-  if (!stage) return;
-
-  let title, agent, context;
-  if (mode === 'continue') {
-    title = `Continue → ${agentMeta(stage.verdict.next_agent).label}`;
-    agent = stage.verdict.next_agent;
-    context = `Prior agent: ${stage.agent}\nVerdict: ${JSON.stringify(stage.verdict, null, 2)}\n\nOriginal finding context:\n${stage.context}`;
-  } else if (mode === 'rerun') {
-    title = `Re-run ${agentMeta(stage.agent).label}`;
-    agent = stage.agent;
-    context = stage.context;
-  } else {
-    title = 'Branch to a different agent';
-    agent = stage.agent;
-    context = stage.context;
-  }
-
-  stageModalState = { findingId: stage.findingId };
-  stageModalTitle.textContent = title;
-  stageModalAgent.value = agentsList.includes(agent) ? agent : agentsList[0];
-  stageModalContext.value = context;
-  stageModalInstruction.value = '';
-  stageModalOverlay.hidden = false;
-  stageModalInstruction.focus();
-}
 
 function openFreshStageModal(findingId, agent, context) {
   stageModalState = { findingId };
@@ -2286,20 +3251,40 @@ document.getElementById('stage-modal-start').addEventListener('click', () => {
 
 // ---------- add-finding modal ----------
 
+function updateFindingModalTypeFields() {
+  const type = findingModalScanType.value;
+  fmFieldsReasoning.hidden = type !== 'reasoning';
+  fmFieldsSca.hidden = type !== 'sca';
+}
+
 function openFindingModal() {
   findingModalTitle.value = '';
+  findingModalScanType.value = 'reasoning';
   findingModalSeverity.value = 'medium';
   findingModalRule.value = '';
   findingModalFile.value = '';
+  findingModalCode.value = '';
+  findingModalPackage.value = '';
+  findingModalPackageVersion.value = '';
+  findingModalFixedVersion.value = '';
+  findingModalEndpoint.value = '';
+  findingModalMethod.value = '';
   findingModalDescription.value = '';
+  updateFindingModalTypeFields();
   findingModalOverlay.hidden = false;
   findingModalTitle.focus();
 }
 function closeFindingModal() { findingModalOverlay.hidden = true; }
 
+findingsScanFilterEl.addEventListener('change', (e) => {
+  findingsScanFilter = e.target.value;
+  renderFindingsView();
+});
+
 addFindingBtn.addEventListener('click', openFindingModal);
 document.getElementById('finding-modal-cancel').addEventListener('click', closeFindingModal);
 findingModalOverlay.addEventListener('click', (e) => { if (e.target === findingModalOverlay) closeFindingModal(); });
+findingModalScanType.addEventListener('change', updateFindingModalTypeFields);
 
 document.getElementById('finding-modal-save').addEventListener('click', async () => {
   const title = findingModalTitle.value.trim();
@@ -2313,9 +3298,16 @@ document.getElementById('finding-modal-save').addEventListener('click', async ()
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       title,
+      scanType: findingModalScanType.value,
       severity: findingModalSeverity.value,
       rule: findingModalRule.value.trim() || null,
       file: findingModalFile.value.trim() || null,
+      code: findingModalCode.value.trim() || null,
+      packageName: findingModalPackage.value.trim() || null,
+      packageVersion: findingModalPackageVersion.value.trim() || null,
+      fixedVersion: findingModalFixedVersion.value.trim() || null,
+      endpoint: findingModalEndpoint.value.trim() || null,
+      method: findingModalMethod.value.trim() || null,
       description,
     }),
   });
@@ -2328,8 +3320,7 @@ document.getElementById('finding-modal-save').addEventListener('click', async ()
   findingCache.set(finding.id, finding);
   closeFindingModal();
   await loadFindings();
-  showView('findings');
-  selectFinding(finding.id);
+  await openFindingDetail(finding.id);
 });
 
 // ---------- agents screen ----------
@@ -2460,18 +3451,6 @@ function renderAgentCards() {
   if (!agentDetailsCache.size) agentsListEl.innerHTML = '<div class="hint">No agents found.</div>';
 }
 
-// ---------- finding detail modal ----------
-
-function closeFindingDetailModal() { findingDetailOverlay.hidden = true; }
-document.getElementById('finding-detail-close').addEventListener('click', closeFindingDetailModal);
-findingDetailOverlay.addEventListener('click', (e) => { if (e.target === findingDetailOverlay) closeFindingDetailModal(); });
-document.getElementById('finding-detail-menu-btn').addEventListener('click', (e) => {
-  e.stopPropagation();
-  if (!selectedFindingId) return;
-  const rect = e.currentTarget.getBoundingClientRect();
-  openFindingContextMenu(rect.right, rect.bottom + 4, selectedFindingId);
-});
-
 // ---------- csv export ----------
 
 exportCsvBtn.addEventListener('click', () => {
@@ -2517,12 +3496,48 @@ function renderSettings() {
   `;
 }
 
+async function clearSession() {
+  if (!confirm('Clear this session? This permanently deletes every finding, scan, and app-level threat model on the server. This cannot be undone.')) return;
+  const res = await fetch('/api/session/clear', { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    alert(body.error || 'Failed to clear session.');
+    return;
+  }
+  // Reset every client-side cache/list to match the now-empty server, and tear down any
+  // still-ticking elapsed timers so they don't keep firing against removed DOM/records.
+  findings = [];
+  findingCache.clear();
+  scansList = [];
+  appThreatModelsList = [];
+  timelineEntries = [];
+  timelineLoaded = false;
+  scanDetailCache.clear();
+  for (const run of scanRuns.values()) stopScanElapsedTimer(run);
+  scanRuns.clear();
+  for (const run of appThreatModelRuns.values()) stopAppThreatModelElapsedTimer(run);
+  appThreatModelRuns.clear();
+  scanLiveContainer.innerHTML = '';
+  scaLiveContainer.innerHTML = '';
+  expandedAtmRunId = null;
+  timelineUnseenDone = 0;
+  renderNavStatus();
+  if (currentView === 'dashboard') renderDashboard();
+  if (currentView === 'findings') renderFindingsView();
+  if (currentView === 'timeline') renderTimeline();
+  if (currentView === 'threatmodel') renderThreatModelView();
+}
+
+document.getElementById('clear-session-btn').addEventListener('click', clearSession);
+
 // ---------- init ----------
 
 async function init() {
+  renderScanTypeSelection();
   await loadAgents();
   await loadFindings();
   await loadScans();
+  await loadAppThreatModels();
   await loadTimeline();
   showView('dashboard');
   connect();
