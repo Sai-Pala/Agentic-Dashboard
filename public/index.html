@@ -275,6 +275,34 @@
   .agent-pill:disabled { opacity: .4; cursor: not-allowed; }
   #scan-note-toggle-btn { margin-left: auto; font-size: 11px; }
 
+  .agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .agent-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .agent-card-top { display: flex; align-items: center; gap: 8px; }
+  .agent-card-name { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+  .agent-card-preview { font-size: 11.5px; color: var(--muted); line-height: 1.5; max-height: 3.2em; overflow: hidden; }
+  .agent-card-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .agent-card-actions button { font-size: 11px; padding: 5px 10px; }
+  .badge.core { background: rgba(109,108,104,.18); color: var(--muted); }
+  .dropzone { border: 1.5px dashed var(--border); border-radius: 8px; padding: 10px 12px; font-size: 11px; color: var(--muted); text-align: center; transition: border-color .15s, color .15s; }
+  .dropzone.dragover { border-color: var(--accent); color: var(--accent); }
+  #agent-modal-content { min-height: 220px; font-family: var(--mono); font-size: 12px; }
+  #agent-modal-overlay .modal { width: 620px; }
+
+  .tm-section { margin-bottom: 18px; }
+  .tm-section-header { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .tm-section-title { font-size: 13px; font-weight: 700; }
+  .tm-section-count { font-size: 10.5px; color: var(--muted); }
+  .tm-asvs-chip { font-size: 10px; padding: 2px 8px; border-radius: 20px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim); font-family: var(--mono); }
+  .tm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+  .tm-card { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--card-color, var(--border)); border-radius: 10px; padding: 11px 13px; cursor: pointer; display: flex; flex-direction: column; gap: 7px; }
+  .tm-card:hover { background: var(--panel-2); }
+  .tm-card-title { font-size: 12.5px; font-weight: 600; line-height: 1.4; }
+  .tm-card-badges { display: flex; gap: 5px; flex-wrap: wrap; }
+  .tm-card-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+  .tm-card-tag { font-size: 10px; padding: 1px 7px; border-radius: 20px; background: var(--panel-2); border: 1px solid var(--border-soft); color: var(--muted); font-family: var(--mono); }
+  .tm-card-flow { font-size: 11px; line-height: 1.5; color: var(--text-dim); }
+  .tm-card-flow b { color: var(--muted); font-weight: 600; }
+
   #scan-live-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
   #scan-live-container .stage-card { width: 100%; max-height: none; }
   .scan-stats { display: flex; align-items: center; gap: 16px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -338,7 +366,8 @@
   .kanban-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .kanban-card-file { font-size: 10.5px; color: var(--muted); font-family: var(--mono); margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .finding-modal { width: 900px; max-width: 95vw; position: relative; padding-top: 42px; }
+  #finding-detail-overlay { justify-content: flex-end; align-items: stretch; }
+  #finding-detail-overlay .finding-modal { width: 680px; max-width: 92vw; height: 100%; max-height: 100%; border-radius: 14px 0 0 14px; margin: 0; position: relative; padding-top: 42px; }
   .modal-close-btn, .finding-menu-btn {
     position: absolute; top: 12px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
     border-radius: 8px; width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: none;
@@ -351,19 +380,34 @@
   .finding-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .finding-header-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .finding-header-top h2 { font-size: 16px; margin: 0; font-weight: 600; }
-  .finding-header-meta { margin-top: 8px; font-size: 11.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
-  .finding-desc { margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
-  .finding-desc summary { padding: 7px 10px; font-size: 11.5px; color: var(--muted); cursor: pointer; }
-  .finding-desc pre { margin: 0; padding: 10px; border-top: 1px solid var(--border-soft); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; }
+  .finding-header-meta { margin-top: 8px; font-size: 11.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .finding-header-meta .scan-link-btn { background: none; border: none; padding: 0; color: var(--accent); font-size: 11.5px; cursor: pointer; box-shadow: none; text-decoration: underline; text-underline-offset: 2px; }
+  .finding-header-meta .scan-link-btn:hover { filter: none; box-shadow: none; color: var(--text); }
+
+  .finding-verdict-strip { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .vs-source { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--muted); }
+  .vs-item { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .vs-label { color: var(--muted); }
+  .vs-frameworks { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10.5px; font-family: var(--mono); background: var(--panel-3); color: var(--text-dim); border: 1px solid var(--border); }
+
+  details.finding-details { margin-top: 12px; }
+  details.finding-details summary { cursor: pointer; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+  details.finding-details summary:hover { color: var(--text-dim); }
+  .finding-body { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .finding-code { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); overflow: hidden; }
+  .finding-code-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--border-soft); }
+  .chip-btn { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; font-size: 10.5px; text-transform: none; letter-spacing: 0; font-weight: 600; cursor: pointer; box-shadow: none; }
+  .chip-btn:hover { color: var(--text); border-color: var(--text-dim); filter: none; box-shadow: none; }
+  .finding-code pre { margin: 0; padding: 10px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; color: var(--text-dim); }
+  .finding-prose { font-size: 12.5px; line-height: 1.6; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
 
   .flow-area { flex: 1; padding: 18px 22px; min-height: 0; overflow-y: auto; }
-  .cta-row { display: flex; align-items: center; gap: 12px; }
-  .cta-row > button { flex-shrink: 0; white-space: nowrap; }
 
-  .stage-row { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; padding: 4px 2px 14px; }
-  .connector { color: var(--muted); align-self: center; padding: 0 8px; font-size: 16px; flex-shrink: 0; }
+  .stage-row { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 4px 2px 14px; }
+  .connector { color: var(--muted); align-self: center; padding: 6px 0; font-size: 16px; flex-shrink: 0; }
 
-  .stage-card { width: 400px; flex-shrink: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; max-height: 600px; overflow: hidden; }
+  .stage-card { width: 100%; flex-shrink: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
   .stage-card.status-error { border-color: var(--err); }
   .stage-card.status-done { border-color: var(--border); }
 
@@ -378,7 +422,7 @@
   .stage-menu-btn { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; line-height: 1; cursor: pointer; display: flex; }
   .stage-menu-btn:hover { color: var(--text); border-color: var(--text-dim); }
 
-  .stage-body { padding: 10px; overflow-y: auto; flex: 1; min-height: 60px; }
+  .stage-body { padding: 10px; }
   .stage-section-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
   .stage-analysis-text { font-size: 12.5px; line-height: 1.6; color: var(--text-dim); display: flex; flex-direction: column; gap: 8px; }
   .stage-analysis-text p { margin: 0; }
@@ -440,6 +484,14 @@
   <button class="nav-item" data-view="findings">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.5h16M9.5 9.5V20"/></svg>
     <span>Findings</span>
+  </button>
+  <button class="nav-item" data-view="threatmodel">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/></svg>
+    <span>Threat Model</span>
+  </button>
+  <button class="nav-item" data-view="agents">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h7.5L19 8v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 15.5h6M9 18h3.5"/></svg>
+    <span>Agents</span>
   </button>
   <button id="nav-collapse-btn" title="Collapse sidebar">
     <svg class="icon" id="nav-collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>
@@ -551,6 +603,32 @@
   </div>
 </div>
 
+<div id="view-threatmodel" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>Threat Model</h1>
+      <div class="view-subtitle">Confirmed exploit paths, grouped by OWASP Top 10 category</div>
+    </div>
+  </div>
+  <div class="view-body">
+    <div id="tm-content"></div>
+  </div>
+</div>
+
+<div id="view-agents" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>Agents</h1>
+      <div class="view-subtitle">Custom per-finding pipeline agents, defined as markdown system prompts</div>
+    </div>
+    <button id="new-agent-btn">+ New agent</button>
+  </div>
+  <div class="view-body">
+    <div class="hint" style="margin-bottom:14px;">Every agent here is selectable from a finding's "Select flow…" menu and as a "Run after scan" pill on the Dashboard. Built-in pipeline agents (Triage, Threat Model, Remediation) can be edited but not deleted.</div>
+    <div class="agents-grid" id="agents-list"></div>
+  </div>
+</div>
+
 <div id="context-menu" hidden></div>
 
 <div class="modal-overlay" id="finding-detail-overlay" hidden>
@@ -569,16 +647,22 @@
           <span id="fh-status" class="badge"></span>
         </div>
         <div class="finding-header-meta" id="fh-meta"></div>
-        <details class="finding-desc">
-          <summary>Finding details</summary>
-          <pre id="fh-description"></pre>
+        <div class="finding-verdict-strip" id="fh-verdict-strip" hidden></div>
+        <details class="finding-details">
+          <summary>Code &amp; description</summary>
+          <div class="finding-body">
+            <div class="finding-code" id="fh-code-block" hidden>
+              <div class="finding-code-head">
+                <span>Vulnerable code</span>
+                <button class="chip-btn" id="fh-copy-code" type="button">Copy</button>
+              </div>
+              <pre id="fh-code"></pre>
+            </div>
+            <div class="finding-prose" id="fh-prose"></div>
+          </div>
         </details>
       </div>
       <div class="flow-area">
-        <div class="cta-row" id="fh-cta">
-          <button class="secondary" id="select-flow-btn">Select flow…</button>
-          <span class="hint">Choose which agent to run — Triage, Threat Model, or Remediation — and review the context before anything executes. Nothing runs automatically.</span>
-        </div>
         <div id="flow-container"></div>
       </div>
     </div>
@@ -643,6 +727,26 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="agent-modal-overlay" hidden>
+  <div class="modal">
+    <h3 id="agent-modal-title">New agent</h3>
+    <div>
+      <label for="agent-modal-name">Name (used as filename, becomes the option label if not a known agent)</label>
+      <input id="agent-modal-name" placeholder="e.g. dependency_audit" />
+    </div>
+    <div id="agent-modal-dropzone" class="dropzone">Drop a .md file here, or paste/type the system prompt below</div>
+    <div>
+      <label for="agent-modal-content">Markdown system prompt</label>
+      <textarea id="agent-modal-content" placeholder="# Role&#10;...&#10;&#10;End your response with exactly one fenced json block, e.g.:&#10;&#10;```json&#10;{ &quot;verdict&quot;: ... }&#10;```"></textarea>
+    </div>
+    <div class="hint">To match the taxonomy other agents use, keep severity/confidence/priority definitions and OWASP/CWE/NIST 800-53 mapping consistent with <span style="font-family:var(--mono)">agents/triage.md</span>, and close the response with one fenced ```json block.</div>
+    <div class="modal-actions">
+      <button class="secondary" id="agent-modal-cancel">Cancel</button>
+      <button id="agent-modal-save">Save agent</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ---------- icon system (hand-drawn monoline SVGs, no emoji anywhere in the UI) ----------
 
@@ -673,9 +777,13 @@ const AGENT_META = {
   threat_model: { label: 'Threat Model', icon: 'target', color: '#fb923c', role: 'Exploit path, preconditions, blast radius' },
   remediation: { label: 'Remediation', icon: 'wrench', color: '#2dd4bf', role: 'Concrete fix guidance, terminal stage' },
 };
-const TIMELINE_KINDS = ['scan', ...KNOWN_AGENTS];
 function agentMeta(name) {
   return AGENT_META[name] || { label: name, icon: 'gear', color: '#8f8a7b', role: '' };
+}
+// Health-check count: how many of the 3 built-in pipeline agents' files are present.
+// Distinct from agentsList.length, which also includes any custom agents.
+function knownAgentsAvailableCount() {
+  return KNOWN_AGENTS.filter((a) => agentsList.includes(a)).length;
 }
 
 // ---------- dom refs ----------
@@ -690,9 +798,11 @@ const fhTitle = document.getElementById('fh-title');
 const fhSeverity = document.getElementById('fh-severity');
 const fhStatus = document.getElementById('fh-status');
 const fhMeta = document.getElementById('fh-meta');
-const fhDescription = document.getElementById('fh-description');
-const fhCta = document.getElementById('fh-cta');
-const selectFlowBtn = document.getElementById('select-flow-btn');
+const fhVerdictStrip = document.getElementById('fh-verdict-strip');
+const fhCodeBlock = document.getElementById('fh-code-block');
+const fhCode = document.getElementById('fh-code');
+const fhProse = document.getElementById('fh-prose');
+const fhCopyCodeBtn = document.getElementById('fh-copy-code');
 const flowContainer = document.getElementById('flow-container');
 const contextMenuEl = document.getElementById('context-menu');
 
@@ -716,6 +826,16 @@ const findingModalSeverity = document.getElementById('finding-modal-severity');
 const findingModalRule = document.getElementById('finding-modal-rule');
 const findingModalFile = document.getElementById('finding-modal-file');
 const findingModalDescription = document.getElementById('finding-modal-description');
+
+const tmContentEl = document.getElementById('tm-content');
+
+const newAgentBtn = document.getElementById('new-agent-btn');
+const agentsListEl = document.getElementById('agents-list');
+const agentModalOverlay = document.getElementById('agent-modal-overlay');
+const agentModalTitle = document.getElementById('agent-modal-title');
+const agentModalName = document.getElementById('agent-modal-name');
+const agentModalContent = document.getElementById('agent-modal-content');
+const agentModalDropzone = document.getElementById('agent-modal-dropzone');
 
 let ws = null;
 let agentsList = [];
@@ -800,18 +920,16 @@ async function loadAgents() {
 
 function renderScanAgentSelection() {
   scanAgentsList.innerHTML = '';
-  for (const agentName of KNOWN_AGENTS) {
+  for (const agentName of agentsList) {
     const meta = agentMeta(agentName);
-    const available = agentsList.includes(agentName);
     const isSelected = scanSelectedAgents.has(agentName);
 
     const pill = document.createElement('button');
     pill.type = 'button';
     pill.className = 'agent-pill' + (isSelected ? ' selected' : '');
-    pill.disabled = !available;
     pill.style.setProperty('--pill-color', meta.color);
     pill.style.setProperty('--pill-bg', hexToRgba(meta.color, .14));
-    pill.title = available ? meta.role : `${meta.label} agent not available`;
+    pill.title = meta.role || `${meta.label} agent`;
     pill.innerHTML = `<span class="ap-dot"></span>${escapeHtml(meta.label)}`;
     pill.addEventListener('click', () => {
       if (scanSelectedAgents.has(agentName)) scanSelectedAgents.delete(agentName);
@@ -873,11 +991,15 @@ function showView(view) {
   document.getElementById('view-timeline').hidden = view !== 'timeline';
   document.getElementById('view-settings').hidden = view !== 'settings';
   document.getElementById('view-findings').hidden = view !== 'findings';
+  document.getElementById('view-threatmodel').hidden = view !== 'threatmodel';
+  document.getElementById('view-agents').hidden = view !== 'agents';
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === view));
 
   if (view === 'dashboard') renderDashboard();
   if (view === 'timeline') { if (!timelineLoaded) loadTimeline(); else renderTimeline(); }
   if (view === 'settings') renderSettings();
+  if (view === 'agents') loadAgentsView();
+  if (view === 'threatmodel') openThreatModelView();
 }
 
 // ---------- dashboard ----------
@@ -913,7 +1035,7 @@ function computeBriefing() {
     parts.push('No agents currently running');
   }
   parts.push(`${notTriaged} finding${notTriaged === 1 ? '' : 's'} awaiting remediation`);
-  parts.push(`${agentsList.length}/${KNOWN_AGENTS.length} pipeline agents available`);
+  parts.push(`${knownAgentsAvailableCount()}/${KNOWN_AGENTS.length} pipeline agents available`);
   return parts.join('. ') + '.';
 }
 
@@ -968,11 +1090,12 @@ function renderNavStatus() {
   const navStatusEl = document.getElementById('nav-status');
   const connected = statusEl.classList.contains('connected');
   const runningScanCount = scansList.filter((s) => s.status === 'running').length;
+  const knownAvailable = knownAgentsAvailableCount();
   const line = (warn, text) => `<div class="nav-status-line${warn ? ' warn' : ''}" title="${escapeHtml(text)}"><span class="s-dot"></span><span class="ns-text">${escapeHtml(text)}</span></div>`;
   navStatusEl.innerHTML = [
     line(!connected, connected ? 'Connected' : 'Disconnected'),
     line(false, `${findings.length} finding${findings.length === 1 ? '' : 's'}`),
-    line(agentsList.length < KNOWN_AGENTS.length, `${agentsList.length}/${KNOWN_AGENTS.length} agents ready`),
+    line(knownAvailable < KNOWN_AGENTS.length, `${knownAvailable}/${KNOWN_AGENTS.length} agents ready`),
     line(runningScanCount > 0, `${scansList.length} scan${scansList.length === 1 ? '' : 's'}${runningScanCount ? ` · ${runningScanCount} running` : ''}`),
   ].join('');
 }
@@ -999,7 +1122,7 @@ function renderTimelineFilters() {
     el.appendChild(pill);
   };
   makePill('all', 'All', null);
-  for (const kind of TIMELINE_KINDS) makePill(kind, agentMeta(kind).label, agentMeta(kind).color);
+  for (const kind of ['scan', ...agentsList]) makePill(kind, agentMeta(kind).label, agentMeta(kind).color);
 }
 
 function timelineStatusBadge(entry) {
@@ -1106,6 +1229,85 @@ function upsertTimelineEntry(entry) {
   if (idx >= 0) timelineEntries[idx] = { ...timelineEntries[idx], ...entry };
   else timelineEntries.unshift(entry);
   if (currentView === 'timeline') renderTimeline();
+  if (currentView === 'threatmodel') renderThreatModelView();
+}
+
+// ---------- threat model ----------
+// Read-only, cross-finding view derived entirely from timelineEntries (no dedicated
+// endpoint) — every finding with a completed Threat Model run, grouped by verdict.owasp.
+
+async function openThreatModelView() {
+  if (!timelineLoaded) await loadTimeline();
+  renderThreatModelView();
+}
+
+function latestThreatModelEntries() {
+  const byFinding = new Map(); // findingId -> most recent threat_model entry (list is newest-first)
+  for (const e of timelineEntries) {
+    if (e.kind !== 'threat_model' || !e.findingId) continue;
+    if (!byFinding.has(e.findingId)) byFinding.set(e.findingId, e);
+  }
+  return [...byFinding.values()].filter((e) => e.verdict && ['confirmed', 'needs_review'].includes(e.verdict.verdict));
+}
+
+function renderThreatModelView() {
+  const entries = latestThreatModelEntries();
+  if (!entries.length) {
+    tmContentEl.innerHTML = '<div class="hint">No findings have a confirmed Threat Model run yet — right-click a finding on the Findings board and choose "Run Threat Model…".</div>';
+    return;
+  }
+
+  const groups = new Map(); // owasp category -> entries[]
+  for (const e of entries) {
+    const key = e.verdict.owasp || 'Unclassified';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  }
+  const sortedGroups = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  tmContentEl.innerHTML = '';
+  for (const [category, groupEntries] of sortedGroups) {
+    const asvsValues = [...new Set(groupEntries.map((e) => e.verdict.asvs).filter(Boolean))];
+
+    const section = document.createElement('div');
+    section.className = 'tm-section';
+    section.innerHTML = `
+      <div class="tm-section-header">
+        <span class="tm-section-title">${escapeHtml(category)}</span>
+        <span class="tm-section-count">${groupEntries.length} finding${groupEntries.length === 1 ? '' : 's'}</span>
+        ${asvsValues.map((v) => `<span class="tm-asvs-chip">${escapeHtml(v)}</span>`).join('')}
+      </div>
+      <div class="tm-cards"></div>
+    `;
+    const cardsEl = section.querySelector('.tm-cards');
+    for (const e of groupEntries) {
+      const v = e.verdict;
+      const card = document.createElement('div');
+      card.className = 'tm-card';
+      card.style.setProperty('--card-color', SEV_COLOR_VAR[v.severity_confirmed] || 'var(--border)');
+      const tags = [v.asvs, v.cwe].filter(Boolean);
+      card.innerHTML = `
+        <div class="tm-card-title">${escapeHtml(e.findingTitle)}</div>
+        <div class="tm-card-badges">
+          ${v.severity_confirmed ? `<span class="badge ${escapeHtml(v.severity_confirmed)}">${escapeHtml(v.severity_confirmed)}</span>` : ''}
+          ${v.confidence ? `<span class="badge ${escapeHtml(v.confidence)}">${escapeHtml(v.confidence)}</span>` : ''}
+          ${v.priority ? `<span class="badge ${escapeHtml(v.priority)}">${escapeHtml(v.priority)}</span>` : ''}
+        </div>
+        ${tags.length ? `<div class="tm-card-tags">${tags.map((t) => `<span class="tm-card-tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+        <div class="tm-card-flow">
+          ${v.preconditions ? `<div><b>Preconditions:</b> ${escapeHtml(v.preconditions)}</div>` : ''}
+          ${v.attack_narrative ? `<div><b>Attack path:</b> ${escapeHtml(v.attack_narrative)}</div>` : ''}
+          ${v.blast_radius ? `<div><b>Blast radius:</b> ${escapeHtml(v.blast_radius)}</div>` : ''}
+        </div>
+      `;
+      card.addEventListener('click', async () => {
+        showView('findings');
+        await selectFinding(e.findingId);
+      });
+      cardsEl.appendChild(card);
+    }
+    tmContentEl.appendChild(section);
+  }
 }
 
 // ---------- scans ----------
@@ -1530,6 +1732,68 @@ function updateFindingListItem(findingId, patch) {
 
 // ---------- finding detail / selection ----------
 
+// Seeded/scan-produced descriptions follow a loose "Scanner: X\nRule: Y\n\n
+// Snippet:\n\n  <code>\n\nDescription: <prose>" convention (see seedFindings()
+// in server.js and agents/scan.md). Split it so the vulnerable code renders
+// as a real code block instead of one undifferentiated pre-formatted blob —
+// an AppSec tester triaging a finding wants the snippet immediately visible,
+// not one click away. Free-text findings (added via "+ Add") won't match;
+// they fall back to plain prose with no snippet section.
+function parseFindingDescription(desc) {
+  if (!desc) return { snippet: null, prose: '' };
+  const m = desc.match(/\n\nSnippet:\n\n([\s\S]*?)\n\nDescription:\s*([\s\S]*)$/);
+  if (m) return { snippet: m[1].trimEnd(), prose: m[2].trim() };
+  return { snippet: null, prose: desc };
+}
+
+function latestVerdictRun(finding) {
+  for (let i = finding.runs.length - 1; i >= 0; i--) {
+    if (finding.runs[i].verdict) return finding.runs[i];
+  }
+  return null;
+}
+
+// A summary strip of the most recent agent's verdict, shown right under the
+// header — so the current risk read (confirmed severity, confidence,
+// priority, framework mapping) is visible at a glance without opening the
+// stage-card pipeline below.
+function renderVerdictStrip(finding) {
+  const run = latestVerdictRun(finding);
+  if (!run) { fhVerdictStrip.hidden = true; fhVerdictStrip.innerHTML = ''; return; }
+  const v = run.verdict;
+
+  const items = [];
+  const addBadge = (label, key) => {
+    if (v[key]) items.push(`<span class="vs-item"><span class="vs-label">${label}</span><span class="badge ${escapeHtml(v[key])}">${escapeHtml(v[key])}</span></span>`);
+  };
+  addBadge('Verdict', 'verdict');
+  addBadge('Severity', 'severity_confirmed');
+  addBadge('Confidence', 'confidence');
+  addBadge('Priority', 'priority');
+
+  const frameworks = [];
+  if (v.owasp) frameworks.push(v.owasp);
+  if (v.asvs) frameworks.push(v.asvs);
+  if (v.cwe) frameworks.push(v.cwe);
+  if (Array.isArray(v.nist_800_53)) frameworks.push(...v.nist_800_53);
+  else if (v.nist_800_53) frameworks.push(v.nist_800_53);
+
+  fhVerdictStrip.innerHTML = `
+    <span class="vs-source">${escapeHtml(agentMeta(run.agent).label)} verdict</span>
+    ${items.join('')}
+    ${frameworks.length ? `<span class="vs-frameworks">${frameworks.map((f) => `<span class="chip">${escapeHtml(f)}</span>`).join('')}</span>` : ''}
+  `;
+  fhVerdictStrip.hidden = false;
+}
+
+fhCopyCodeBtn.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(fhCode.textContent);
+    fhCopyCodeBtn.textContent = 'Copied';
+    setTimeout(() => { fhCopyCodeBtn.textContent = 'Copy'; }, 1200);
+  } catch (e) { /* clipboard unavailable, ignore */ }
+});
+
 async function selectFinding(findingId) {
   selectedFindingId = findingId;
 
@@ -1548,19 +1812,32 @@ async function selectFinding(findingId) {
   fhSeverity.className = 'badge ' + finding.severity;
   fhStatus.textContent = statusLabel(finding.status);
   fhStatus.className = 'badge ' + finding.status;
+
+  const sourceScan = finding.sourceScanId ? scansList.find((s) => s.id === finding.sourceScanId) : null;
   fhMeta.innerHTML = [
     finding.rule ? `Rule: ${escapeHtml(finding.rule)}` : '',
     finding.file ? `File: ${escapeHtml(finding.file)}` : '',
+    sourceScan ? `<button type="button" class="scan-link-btn" id="fh-scan-link">Found by scan of ${escapeHtml(sourceScan.path)}</button>` : '',
   ].filter(Boolean).join('<span></span>');
-  fhDescription.textContent = finding.description;
+  const scanLinkBtn = document.getElementById('fh-scan-link');
+  if (scanLinkBtn) scanLinkBtn.addEventListener('click', () => { closeFindingDetailModal(); showView('timeline'); });
+
+  const parsed = parseFindingDescription(finding.description);
+  if (parsed.snippet) {
+    fhCodeBlock.hidden = false;
+    fhCode.textContent = parsed.snippet;
+  } else {
+    fhCodeBlock.hidden = true;
+    fhCode.textContent = '';
+  }
+  fhProse.textContent = parsed.prose;
+
+  renderVerdictStrip(finding);
 
   ensureFlow(findingId, finding);
   for (const [id, flow] of flows.entries()) {
     flow.el.hidden = id !== findingId;
   }
-
-  const hasStages = flows.get(findingId).stages.length > 0;
-  fhCta.hidden = hasStages;
 }
 
 function buildBaseContext(finding) {
@@ -1643,7 +1920,7 @@ function makeStageCard(findingId, runId, agent) {
   if (flow.stages.length > 0) {
     const connector = document.createElement('div');
     connector.className = 'connector';
-    connector.textContent = '→';
+    connector.textContent = '↓';
     flow.stageRowEl.appendChild(connector);
   }
 
@@ -1679,6 +1956,7 @@ function makeStageCard(findingId, runId, agent) {
   });
   cardEl.addEventListener('contextmenu', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     openContextMenu(e.clientX, e.clientY, runId);
   });
 
@@ -1736,8 +2014,6 @@ function startStage(findingId, agent, context, instruction) {
     verdict: null,
   };
   stages.set(runId, stageState);
-
-  fhCta.hidden = true;
 
   const startedAt = Date.now();
   upsertTimelineEntry({
@@ -1809,6 +2085,7 @@ async function refreshFindingAfterRun(findingId) {
   if (selectedFindingId === findingId) {
     fhStatus.textContent = statusLabel(finding.status);
     fhStatus.className = 'badge ' + finding.status;
+    renderVerdictStrip(finding);
   }
 }
 
@@ -2055,6 +2332,134 @@ document.getElementById('finding-modal-save').addEventListener('click', async ()
   selectFinding(finding.id);
 });
 
+// ---------- agents screen ----------
+
+// name -> {name, content, isBuiltIn}. Populated by loadAgentsView(), patched in place by
+// save/delete so mutations don't need to re-fetch every other agent's content.
+const agentDetailsCache = new Map();
+let agentModalEditingName = null; // null = create mode, else the agent being edited
+
+function openAgentModal(name, content) {
+  agentModalEditingName = name || null;
+  agentModalTitle.textContent = name ? `Edit ${name}` : 'New agent';
+  agentModalName.value = name || '';
+  agentModalName.disabled = !!name;
+  agentModalContent.value = content || '';
+  agentModalOverlay.hidden = false;
+  (name ? agentModalContent : agentModalName).focus();
+}
+function closeAgentModal() { agentModalOverlay.hidden = true; }
+
+newAgentBtn.addEventListener('click', () => openAgentModal());
+document.getElementById('agent-modal-cancel').addEventListener('click', closeAgentModal);
+agentModalOverlay.addEventListener('click', (e) => { if (e.target === agentModalOverlay) closeAgentModal(); });
+
+agentModalDropzone.addEventListener('dragover', (e) => { e.preventDefault(); agentModalDropzone.classList.add('dragover'); });
+agentModalDropzone.addEventListener('dragleave', () => agentModalDropzone.classList.remove('dragover'));
+agentModalDropzone.addEventListener('dragend', () => agentModalDropzone.classList.remove('dragover'));
+agentModalDropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  agentModalDropzone.classList.remove('dragover');
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    agentModalContent.value = reader.result;
+    if (!agentModalEditingName && !agentModalName.value.trim()) {
+      agentModalName.value = file.name.replace(/\.md$/i, '');
+    }
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('agent-modal-save').addEventListener('click', async () => {
+  const content = agentModalContent.value;
+  if (!content.trim()) { alert('Agent content must not be empty.'); return; }
+  let res, name;
+  if (agentModalEditingName) {
+    name = agentModalEditingName;
+    res = await fetch(`/api/agents/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+  } else {
+    name = agentModalName.value.trim();
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      alert('Agent name must only contain letters, numbers, "_" and "-".');
+      return;
+    }
+    res = await fetch('/api/agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, content }),
+    });
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    alert(body.error || 'Failed to save agent.');
+    return;
+  }
+  closeAgentModal();
+  agentDetailsCache.set(name, { name, content, isBuiltIn: agentDetailsCache.get(name)?.isBuiltIn || false });
+  await loadAgents();
+  if (currentView === 'agents') renderAgentCards();
+});
+
+async function deleteAgent(name) {
+  if (!confirm(`Delete agent "${name}"? This removes agents/${name}.md.`)) return;
+  const res = await fetch(`/api/agents/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    alert(body.error || 'Failed to delete agent.');
+    return;
+  }
+  agentDetailsCache.delete(name);
+  await loadAgents();
+  renderAgentCards();
+}
+
+async function loadAgentsView() {
+  agentsListEl.innerHTML = '<div class="hint">Loading…</div>';
+  const results = await Promise.all(agentsList.map(async (name) => {
+    const r = await fetch(`/api/agents/${encodeURIComponent(name)}`);
+    return r.ok ? r.json() : null; // dropped rather than guessed — isBuiltIn is server-authoritative
+  }));
+  agentDetailsCache.clear();
+  for (const a of results.filter(Boolean)) agentDetailsCache.set(a.name, a);
+  renderAgentCards();
+}
+
+function renderAgentCards() {
+  agentsListEl.innerHTML = '';
+  for (const name of agentsList) {
+    const a = agentDetailsCache.get(name);
+    if (!a) continue;
+    const meta = agentMeta(a.name);
+    const firstLine = a.content.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('#')) || '';
+    const card = document.createElement('div');
+    card.className = 'agent-card';
+    card.innerHTML = `
+      <div class="agent-card-top">
+        ${icon(meta.icon)}
+        <span class="agent-card-name">${escapeHtml(a.name)}</span>
+        ${a.isBuiltIn ? '<span class="badge core">Core</span>' : ''}
+      </div>
+      <div class="agent-card-preview">${escapeHtml(truncate(firstLine, 140))}</div>
+      <div class="agent-card-actions">
+        <button class="secondary" data-action="edit">Edit</button>
+        <button class="secondary" data-action="delete"${a.isBuiltIn ? ' disabled title="Built-in pipeline agents can\'t be deleted"' : ''}>Delete</button>
+      </div>
+    `;
+    card.querySelector('[data-action="edit"]').addEventListener('click', () => openAgentModal(a.name, a.content));
+    if (!a.isBuiltIn) {
+      card.querySelector('[data-action="delete"]').addEventListener('click', () => deleteAgent(a.name));
+    }
+    agentsListEl.appendChild(card);
+  }
+  if (!agentDetailsCache.size) agentsListEl.innerHTML = '<div class="hint">No agents found.</div>';
+}
+
 // ---------- finding detail modal ----------
 
 function closeFindingDetailModal() { findingDetailOverlay.hidden = true; }
@@ -2065,15 +2470,6 @@ document.getElementById('finding-detail-menu-btn').addEventListener('click', (e)
   if (!selectedFindingId) return;
   const rect = e.currentTarget.getBoundingClientRect();
   openFindingContextMenu(rect.right, rect.bottom + 4, selectedFindingId);
-});
-
-// ---------- select-flow CTA ----------
-
-selectFlowBtn.addEventListener('click', () => {
-  if (!selectedFindingId) return;
-  const finding = findingCache.get(selectedFindingId);
-  const defaultAgent = agentsList.includes('triage') ? 'triage' : agentsList[0];
-  openFreshStageModal(selectedFindingId, defaultAgent, buildBaseContext(finding));
 });
 
 // ---------- csv export ----------
@@ -2117,7 +2513,7 @@ function renderSettings() {
   env.innerHTML = `
     <div class="hint">Findings and scans are stored in-memory on the server and reset whenever it restarts — there's no database yet.</div>
     <div class="hint">Scans run <code>claude</code> against whatever directory path you give them, using this machine's own filesystem permissions — this app does not sandbox or restrict which directories can be scanned. Only point it at directories you trust reading.</div>
-    <div class="hint">${escapeHtml(agentsList.length)}/${KNOWN_AGENTS.length} pipeline agents available · ${escapeHtml(String(scansList.length))} scan${scansList.length === 1 ? '' : 's'} run this session.</div>
+    <div class="hint">${knownAgentsAvailableCount()}/${KNOWN_AGENTS.length} pipeline agents available · ${agentsList.length} agent${agentsList.length === 1 ? '' : 's'} total (including custom) · ${escapeHtml(String(scansList.length))} scan${scansList.length === 1 ? '' : 's'} run this session.</div>
   `;
 }
 

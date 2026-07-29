@@ -11,6 +11,14 @@ const AGENTS_DIR = path.join(__dirname, 'agents');
 const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 const RUN_ID_RE = /^[a-zA-Z0-9_-]+$/;
 const SEVERITIES = ['critical', 'high', 'medium', 'low', 'informational'];
+// Shipped with the app and load-bearing for other hardcoded UI (the scan flow,
+// the Dashboard's pipeline health panel) — editable, but not deletable via the
+// Agents screen.
+const BUILTIN_AGENTS = ['triage', 'threat_model', 'remediation', 'scan'];
+
+function agentFilePath(name) {
+  return path.join(AGENTS_DIR, `${name}.md`);
+}
 
 const app = express();
 app.use(express.json());
@@ -22,6 +30,54 @@ app.get('/api/agents', (req, res) => {
   // against a directory via the dedicated Scans flow, not the stage/branch UI.
   const names = files.map((f) => f.replace(/\.md$/, '')).filter((n) => n !== 'scan');
   res.json(names);
+});
+
+app.get('/api/agents/:name', (req, res) => {
+  const { name } = req.params;
+  if (!AGENT_NAME_RE.test(name)) return res.status(400).json({ error: 'Invalid agent name.' });
+  const filePath = agentFilePath(name);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Agent not found.' });
+  const content = fs.readFileSync(filePath, 'utf8');
+  res.json({ name, content, isBuiltIn: BUILTIN_AGENTS.includes(name) });
+});
+
+app.post('/api/agents', (req, res) => {
+  const { name, content } = req.body || {};
+  if (typeof name !== 'string' || !AGENT_NAME_RE.test(name)) {
+    return res.status(400).json({ error: 'Agent name must match ^[a-zA-Z0-9_-]+$.' });
+  }
+  if (typeof content !== 'string' || !content.trim()) {
+    return res.status(400).json({ error: 'Agent content must not be empty.' });
+  }
+  const filePath = agentFilePath(name);
+  if (fs.existsSync(filePath)) return res.status(409).json({ error: 'An agent with this name already exists.' });
+  fs.writeFileSync(filePath, content, 'utf8');
+  res.status(201).json({ name });
+});
+
+app.put('/api/agents/:name', (req, res) => {
+  const { name } = req.params;
+  const { content } = req.body || {};
+  if (!AGENT_NAME_RE.test(name)) return res.status(400).json({ error: 'Invalid agent name.' });
+  if (typeof content !== 'string' || !content.trim()) {
+    return res.status(400).json({ error: 'Agent content must not be empty.' });
+  }
+  const filePath = agentFilePath(name);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Agent not found.' });
+  fs.writeFileSync(filePath, content, 'utf8');
+  res.json({ name });
+});
+
+app.delete('/api/agents/:name', (req, res) => {
+  const { name } = req.params;
+  if (!AGENT_NAME_RE.test(name)) return res.status(400).json({ error: 'Invalid agent name.' });
+  if (BUILTIN_AGENTS.includes(name)) {
+    return res.status(403).json({ error: 'Built-in pipeline agents cannot be deleted.' });
+  }
+  const filePath = agentFilePath(name);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Agent not found.' });
+  fs.unlinkSync(filePath);
+  res.json({ ok: true });
 });
 
 // ---------- in-memory findings store ----------
@@ -363,7 +419,7 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    const agentPath = path.join(AGENTS_DIR, `${agentName}.md`);
+    const agentPath = agentFilePath(agentName);
     if (!fs.existsSync(agentPath)) {
       send({ type: 'error', runId, message: `Unknown agent: ${agentName}` });
       return;
