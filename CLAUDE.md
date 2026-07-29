@@ -11,14 +11,16 @@ global left nav (Dashboard / Timeline / Findings), plus Settings tucked in the n
 
 - **Dashboard** — the scan kickoff form lives here (there is no separate Scans view; "combine
   Scans into Dashboard, let me kick off scans from the main screen" was an explicit design
-  request), followed by stat tiles (in progress, not started, in review, remediation ready,
-  total findings, total agent runs), a computed one-line briefing (surfaces a running scan
-  first, then a running agent, then idle), an Agents panel (the 3 per-finding pipeline
-  agents only — Scan is deliberately not listed there, see below), and a Status panel that
-  now includes a scan count line. Starting a scan appends a live card to
-  `#scan-live-container` on this same view (same condensed-feed machinery as a stage card)
-  and optimistically pushes into both `scansList` and `timelineEntries` so the briefing and
-  Timeline update before the server round-trip completes.
+  request): a target-directory input, a row of toggleable agent pills ("run after scan") plus
+  an "+ instructions" textarea toggle, and a Start button — followed by stat tiles (in
+  progress, not started, in review, remediation ready, total findings, total agent runs) and
+  an Agents panel (the 3 per-finding pipeline agents only — Scan is deliberately not listed
+  there, see below). The connection/findings-count/agents-ready/scans-count status that used
+  to live in a dedicated Dashboard panel now lives in the sidebar instead (`#nav-status`,
+  rendered by `renderNavStatus()`) so it's visible from every view, not just Dashboard.
+  Starting a scan appends a live card to `#scan-live-container` (2-column grid) on this same
+  view and optimistically pushes into both `scansList` and `timelineEntries` so the briefing
+  and Timeline update before the server round-trip completes.
 - **Timeline** — every scan *and* every per-finding agent run, newest first, date-grouped,
   filterable by a `kind` tag (`scan` / `triage` / `threat_model` / `remediation`,
   color-coded via `AGENT_META` in `index.html`). Updates live via `upsertTimelineEntry()` —
@@ -27,10 +29,14 @@ global left nav (Dashboard / Timeline / Findings), plus Settings tucked in the n
   rows instead navigate to that finding in Findings on click. `GET /api/timeline`
   server-side now merges `findings` runs and `scans` into one array tagged with `kind`
   before sorting by `startedAt` — see `handleScanMessage`'s sibling code in that endpoint.
-- **Findings** — master-detail view: pick a finding on the left, see its agent pipeline
-  render as connected stage cards on the right, each with a condensed human-readable
-  activity feed (raw `stream-json` is available behind a toggle, not shown by default). An
-  "Export" button (`GET /api/findings/export.csv`) downloads all findings + latest verdicts.
+- **Findings** — Kanban board (`renderKanban()`), not a sidebar: findings render as cards in
+  columns grouped either by status or by severity (toggle at the top of the view,
+  `findingsGroupBy`). Clicking a card opens a modal (`#finding-detail-overlay`) with the
+  finding's full detail and its agent pipeline rendered as connected stage cards, each
+  showing a curated **Analysis** (the agent's own reasoning prose) / **Conclusion** (the
+  parsed verdict) summary — raw `stream-json` is available behind a collapsed toggle, not
+  shown by default. An "Export" button (`GET /api/findings/export.csv`) downloads all
+  findings + latest verdicts.
 - **Settings** — a nav-footer entry (not a top-level nav item, deliberately tucked away),
   with a Dark/Light theme toggle (`applyTheme()`, persisted to `localStorage` under
   `appsecops-theme`, applied flash-free by an inline `<script>` at the very top of `<head>`
@@ -38,17 +44,22 @@ global left nav (Dashboard / Timeline / Findings), plus Settings tucked in the n
   plainly, in-product, that scans run with this machine's own filesystem permissions and
   are not sandboxed to any directory allowlist.
 
-**Pipeline shape**: `Scan → Findings → Remediation` is the main path. A fresh finding's
-default action (the big CTA button, and the top item in its right-click menu) runs
-**Remediation directly** — Triage and Threat Model are optional "Expand analysis" actions
-available via right-click on any finding, not gates in front of Remediation. This means
-`remediation.md` has to be able to stand on its own: if there's no prior Triage/Threat Model
-verdict in its context, it does Triage's confirm/severity/framework-mapping call itself
-before writing fix guidance (see the "check your context before you start" section at the
-top of `agents/remediation.md`). `agents/scan.md` is a fourth agent file but is *not* a
-per-finding pipeline agent — `GET /api/agents` filters it out of the Triage/Threat
-Model/Remediation list on purpose (see "not yet built" below on where else new agents need
-wiring).
+**Pipeline shape**: `Scan → Findings → Remediation` is the conceptual path, but **no agent
+ever runs automatically** — every run requires an explicit, reviewable action so there's
+always an audit trail before anything executes against a finding (an earlier version
+defaulted straight to Remediation on click, which read as auto-fixing without review — this
+was a deliberate correction). A fresh finding's CTA is **"Select flow…"**, which opens the
+same stage modal used everywhere else (agent dropdown + editable context + optional
+instructions, `openFreshStageModal()`); the right-click menu offers "Run Triage…" / "Run
+Threat Model…" / "Run Remediation…" as equally-weighted shortcuts into that same modal —
+none of them run instantly, and none is "the default" over the others. Because a tester can
+jump straight to Remediation without Triage or Threat Model ever having run,
+`remediation.md` has to be able to stand on its own: if there's no prior verdict in its
+context, it does Triage's confirm/severity/framework-mapping call itself before writing fix
+guidance (see the "check your context before you start" section at the top of
+`agents/remediation.md`). `agents/scan.md` is a fourth agent file but is *not* a per-finding
+pipeline agent — `GET /api/agents` filters it out of the Triage/Threat Model/Remediation
+list on purpose (see "not yet built" below on where else new agents need wiring).
 
 ## Commands
 
@@ -62,13 +73,15 @@ Before invoking, `claude auth status` must succeed (the server spawns the CLI
 non-interactively and does not handle auth itself).
 
 To exercise the pipeline manually: open `http://localhost:4500` (lands on Dashboard), enter a
-directory path on this machine under "New scan" and click "Start Scan" — watch its live feed
-right there, then check Findings once it completes (or expand the row in Timeline). Pick a
-finding on the left and either click "Run Remediation" or right-click it for "Run Remediation
-with instructions…" / "Expand analysis: Triage…" / "Expand analysis: Threat Model…". Once a
-stage finishes, right-click its card (or use the ⋮ menu) to continue to the next agent, re-run
-with new instructions, or branch to a different agent. There is no automated test for the
-WebSocket flow — verification is manual, through the browser.
+directory path on this machine under "New scan" and click "Start scan" — watch its live card
+right there, then check Findings once it completes (or expand the row in Timeline). Click a
+finding's card on the Kanban board to open its detail modal, then click "Select flow…" (or
+right-click the card / use the ⋮ menu in the modal) to pick an agent — Triage, Threat Model,
+or Remediation — review the context/instructions, and explicitly start it; nothing runs
+without that step. Once a stage finishes, right-click its card (or use its ⋮ menu) to
+continue to the next agent, re-run with new instructions, or branch to a different agent.
+There is no automated test for the WebSocket flow — verification is manual, through the
+browser.
 
 ## Architecture
 
@@ -78,12 +91,14 @@ server.js          Express + ws. In-memory findings store (seeded with sample da
                     plus a WebSocket handler that spawns `claude -p` per agent run (or
                     per scan), relays stream-json lines live, and extracts the final JSON
                     block from the accumulated assistant text.
-public/index.html   The dashboard: global nav (plus a Settings entry in the nav footer),
-                    the scan kickoff form + live scan card on the Dashboard view itself,
-                    findings sidebar (severity dot + status badge), a per-finding pipeline
-                    of stage cards connected left-to-right, a condensed activity feed per
-                    stage (raw log collapsed by default), a right-click context menu, and
-                    modals for adding a finding / running a stage with custom instructions.
+public/index.html   The dashboard: global nav (status summary + Settings entry in the nav
+                    footer), the scan kickoff form + live scan card on the Dashboard view
+                    itself, a Findings Kanban board (grouped by status or severity) with a
+                    detail modal per finding, a per-finding pipeline of stage cards
+                    connected left-to-right inside that modal (each showing an Analysis /
+                    Conclusion summary, raw stream-json collapsed by default), a right-click
+                    context menu, and modals for adding a finding / running a stage with
+                    custom instructions.
 agents/*.md         Agent system prompts (passed via --append-system-prompt). Plain
                     markdown, no code — this is the only place agent-specific analysis
                     logic lives. New *per-finding* agent = new .md file, no server
@@ -164,15 +179,21 @@ changes in an agent's `.md` need no frontend change unless new behavior should k
 a new field specifically (e.g. `renderActions()` keys off `next_agent`,
 `deriveStatus()` in `server.js` keys off `verdict`/`next_agent`).
 
-**Condensed feed, not raw stream**: `handleRawEvent()` in `index.html` turns raw
-`stream-json` events into short human-readable lines — tool calls become one-liners
-("Grep \"pattern\""), assistant prose is shown as-is, `thinking_tokens` events collapse
-into a single live-updating "Thinking… (~N tokens)" pill instead of one line per tick,
-and `system`/`rate_limit_event`/`thinking`-content events are dropped from the visible
-feed entirely (still captured in the per-stage "Raw stream-json" `<details>` toggle for
-debugging). `post_turn_summary` events surface `status_detail` as a highlighted summary
-line — that field already reads as a one-sentence high-level recap, so it's used
-directly rather than re-derived.
+**Analysis / Conclusion, not a raw stream**: `handleRawEvent()` in `index.html` (per-finding
+stage cards) does not render a blow-by-blow activity feed — tool calls, tool results, and
+thinking-token events are captured only into the per-stage "Raw stream-json" `<details>`
+toggle (collapsed by default). The only thing surfaced live is the agent's own prose
+(assistant `text` content blocks, stripped of the trailing fenced JSON), appended as
+paragraphs under an "Analysis" heading via `appendAnalysisParagraph()`; once the run
+finishes, `renderVerdict()` renders the parsed JSON verdict under a "Conclusion" heading.
+This replaced an earlier design that showed every tool call/result plus a live
+"Thinking… (~N tokens)" pill — that read as noise rather than the two things an AppSec
+tester actually wants: what was found, and why. Scan cards (`handleScanRawEvent()` in
+`index.html`, driven by `agents/scan.md`'s narration contract) use a separate but similarly
+curated convention: `agents/scan.md` is instructed to prefix each candidate finding with a
+literal `[severity]` tag as it's spotted, which `trackScanCandidates()` parses via
+`SEV_TAG_RE` to build a live list of candidates and running severity counts — also with the
+raw stream captured only in that card's own collapsed toggle, never rendered inline.
 
 **Taxonomy convention**: severity/confidence/priority definitions live inside
 each agent's `.md` file and must stay byte-identical across agents (copy, don't

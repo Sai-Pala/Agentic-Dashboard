@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <title>AppSec Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
   (function () {
     try {
@@ -15,29 +18,37 @@
 <style>
   :root {
     color-scheme: dark;
-    --bg: #191918;
-    --panel: #212020;
-    --panel-2: #292827;
-    --panel-3: #322f2e;
-    --border: #35332f;
-    --border-soft: #262524;
-    --text: #eeece9;
-    --text-dim: #b6b2a9;
-    --muted: #83807a;
-    --accent: #d97757;
-    --accent-contrast: #191918;
-    --accent-soft: rgba(217, 119, 87, .14);
-    --ok: #87a878;
-    --ok-soft: rgba(135, 168, 120, .14);
-    --warn: #d3a05e;
-    --warn-soft: rgba(211, 160, 94, .14);
-    --err: #c76a5c;
-    --err-soft: rgba(199, 106, 92, .14);
-    --crit: #a8453b;
-    --crit-soft: rgba(168, 69, 59, .17);
-    --scan: #6ba3c9;
-    --scan-soft: rgba(107, 163, 201, .14);
-    --font: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --bg: #000000;
+    --panel: #0b0b0b;
+    --panel-2: #151515;
+    --panel-3: #1f1f1f;
+    --border: #2b2b2b;
+    --border-soft: #191919;
+    --text: #f5f5f3;
+    --text-dim: #aeada8;
+    --muted: #6d6c68;
+    --accent: #3b82f6;
+    --accent-contrast: #ffffff;
+    --accent-soft: rgba(59, 130, 246, .16);
+    --ok: #4ade80;
+    --ok-soft: rgba(74, 222, 128, .14);
+    --warn: #fbbf24;
+    --warn-soft: rgba(251, 191, 36, .14);
+    --err: #f87171;
+    --err-soft: rgba(248, 113, 113, .14);
+    --crit: #ff3b30;
+    --crit-soft: rgba(255, 59, 48, .18);
+    --scan: #38bdf8;
+    --scan-soft: rgba(56, 189, 248, .14);
+    --path: #38bdf8;
+    --path-soft: rgba(56, 189, 248, .12);
+    --triage: #a78bfa;
+    --triage-soft: rgba(167, 139, 250, .14);
+    --threat: #fb923c;
+    --threat-soft: rgba(251, 146, 60, .14);
+    --remediation: #2dd4bf;
+    --remediation-soft: rgba(45, 212, 191, .14);
+    --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
     font-family: var(--font);
   }
@@ -55,6 +66,16 @@
     --accent: #bd5b3a;
     --accent-contrast: #ffffff;
     --accent-soft: rgba(189, 91, 58, .1);
+    --path: #0369a1;
+    --path-soft: rgba(3, 105, 161, .1);
+    --scan: #0369a1;
+    --scan-soft: rgba(3, 105, 161, .1);
+    --triage: #7c3aed;
+    --triage-soft: rgba(124, 58, 237, .1);
+    --threat: #c2610c;
+    --threat-soft: rgba(194, 97, 12, .1);
+    --remediation: #0f9c8f;
+    --remediation-soft: rgba(15, 156, 143, .1);
   }
   * { box-sizing: border-box; }
   body {
@@ -72,28 +93,51 @@
 
   /* ---------- global nav ---------- */
   #global-nav {
-    width: 200px; flex-shrink: 0;
+    width: 200px; flex-shrink: 0; position: relative;
     background: var(--panel); border-right: 1px solid var(--border);
     display: flex; flex-direction: column; padding: 16px 10px;
+    transition: width .15s ease;
   }
+  #global-nav.collapsed { width: 58px; padding: 16px 8px; }
+  #nav-collapse-btn {
+    position: absolute; top: 18px; right: -11px; z-index: 5;
+    width: 22px; height: 22px; padding: 0; border-radius: 50%;
+    background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center; box-shadow: none;
+  }
+  #nav-collapse-btn:hover { color: var(--text); border-color: var(--text-dim); box-shadow: none; }
+  #nav-collapse-btn .icon { width: 12px; height: 12px; }
   .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: .02em; padding: 6px 8px 20px; color: var(--text-dim); }
   .nav-brand .icon { color: var(--accent); }
+  #global-nav.collapsed .nav-brand { justify-content: center; padding: 6px 0 20px; }
   .nav-item {
     display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
     background: none; color: var(--muted); font-weight: 500; font-size: 12.5px; text-align: left;
     width: 100%; margin-bottom: 1px; border: none;
   }
+  #global-nav.collapsed .nav-item { justify-content: center; padding: 9px; }
+  #global-nav.collapsed .nav-item span, #global-nav.collapsed .nav-brand span { display: none; }
   .nav-item .icon { color: var(--muted); }
   .nav-item:hover { background: var(--panel-2); color: var(--text-dim); }
   .nav-item.active { background: var(--panel-2); color: var(--text); }
   .nav-item.active .icon { color: var(--accent); }
-  .nav-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 8px; }
+  .nav-status { margin-top: auto; padding: 10px 8px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 6px; }
+  .nav-status-line { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); overflow: hidden; }
+  .nav-status-line .s-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+  .nav-status-line.warn .s-dot { background: var(--warn); }
+  .nav-status-line .ns-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #global-nav.collapsed .nav-status-line .ns-text { display: none; }
+  #global-nav.collapsed .nav-status-line { justify-content: center; }
+  .nav-footer { padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 8px; }
+  #nav-collapse-icon { transition: transform .15s ease; }
+  #global-nav.collapsed #nav-collapse-icon { transform: rotate(180deg); }
+  #global-nav.collapsed #status { width: 9px; height: 9px; padding: 0; border-radius: 50%; font-size: 0; margin: 0 auto; }
 
   #status {
     font-size: 10.5px; padding: 4px 8px; border-radius: 20px; border: 1px solid var(--border);
     color: var(--muted); text-align: center; text-transform: uppercase; letter-spacing: .04em; font-weight: 600;
   }
-  #status.connected { color: var(--ok); border-color: var(--border); background: var(--ok-soft); }
+  #status.connected { color: var(--ok); border-color: var(--border); background: var(--ok-soft); box-shadow: 0 0 10px -3px var(--ok); }
   #status.disconnected { color: var(--err); border-color: var(--border); background: var(--err-soft); }
 
   /* ---------- views ---------- */
@@ -111,17 +155,27 @@
     width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
     border-radius: 8px; padding: 7px 9px; font-size: 13px; font-family: inherit;
   }
-  select:focus, textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+  select:focus, textarea:focus, input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   textarea { resize: vertical; font-family: var(--mono); font-size: 12px; }
   button {
     background: var(--accent); color: var(--accent-contrast); border: none; border-radius: 8px;
     padding: 8px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 0 0 rgba(255,122,82,0); transition: box-shadow .15s ease, filter .15s ease;
   }
-  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button:hover:not(:disabled) { filter: brightness(1.08); box-shadow: 0 0 16px -4px var(--accent); }
   button:disabled { opacity: .45; cursor: not-allowed; }
   button.secondary { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border); }
-  button.secondary:hover:not(:disabled) { filter: none; background: var(--panel-3); color: var(--text); }
+  button.secondary:hover:not(:disabled) { filter: none; background: var(--panel-3); color: var(--text); box-shadow: none; }
   .hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  /* ---------- highlighted path / directory text ---------- */
+  .path-text {
+    font-family: var(--mono); color: var(--path); background: var(--path-soft);
+    padding: 1px 6px; border-radius: 5px; font-size: 11.5px; word-break: break-all;
+  }
+  input.path-input { font-family: var(--mono); color: var(--path); }
+  input.path-input::placeholder { font-family: var(--font); color: var(--muted); }
+  input.path-input:focus { border-color: var(--path); box-shadow: 0 0 0 3px var(--path-soft); }
 
   /* ---------- dashboard ---------- */
   .briefing {
@@ -132,18 +186,20 @@
 
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
   .stat-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; }
-  .stat-tile .stat-icon { color: var(--muted); margin-bottom: 10px; }
+  .stat-tile .stat-icon {
+    color: var(--muted); margin-bottom: 10px; width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; background: var(--panel-3);
+  }
   .stat-tile .stat-value { font-size: 22px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
   .stat-tile .stat-label { font-size: 11px; color: var(--muted); margin-top: 5px; }
   .stat-tile .stat-sub { font-size: 10.5px; margin-top: 3px; color: var(--muted); }
-  .stat-tile.accent-warn .stat-icon { color: var(--warn); }
+  .stat-tile.accent-warn .stat-icon { color: var(--warn); background: var(--warn-soft); }
   .stat-tile.accent-warn .stat-sub { color: var(--warn); }
-  .stat-tile.accent-ok .stat-icon { color: var(--ok); }
+  .stat-tile.accent-ok .stat-icon { color: var(--ok); background: var(--ok-soft); }
   .stat-tile.accent-ok .stat-sub { color: var(--ok); }
-  .stat-tile.accent-accent .stat-icon { color: var(--accent); }
+  .stat-tile.accent-accent .stat-icon { color: var(--accent); background: var(--accent-soft); }
   .stat-tile.accent-accent .stat-sub { color: var(--accent); }
 
-  .dash-columns { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; align-items: start; }
   .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .panel-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
 
@@ -187,7 +243,6 @@
     display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px;
     border-left: 2px solid var(--border); background: var(--panel); margin-bottom: 5px; cursor: pointer;
   }
-  .timeline-row:hover { background: var(--panel-2); }
   .timeline-row .tl-icon { margin-top: 2px; color: var(--muted); }
   .tl-main { flex: 1; min-width: 0; }
   .tl-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
@@ -197,19 +252,50 @@
   #timeline-empty { color: var(--muted); font-size: 12.5px; padding: 40px 0; text-align: center; }
 
   /* ---------- scan kickoff (lives on the Dashboard) ---------- */
-  .scan-form { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .scan-form { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 12px; }
   .scan-form-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
-  .scan-form-row { display: flex; gap: 10px; align-items: flex-end; }
-  .scan-form-row > div { flex: 1; }
-  .scan-form-row button { flex-shrink: 0; margin-bottom: 1px; }
-  #scan-note-btn { position: relative; }
-  #scan-note-btn.has-note::after { content: ''; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-  #scan-live-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
-  #scan-live-container .stage-card { width: 100%; }
+  .scan-top-row { display: flex; gap: 10px; align-items: flex-end; }
+  .scan-start-btn {
+    flex-shrink: 0; margin-bottom: 1px; background: var(--ok-soft); color: var(--ok);
+    border: 1px solid rgba(74, 222, 128, .35); box-shadow: none;
+  }
+  .scan-start-btn:hover:not(:disabled) { background: var(--ok); color: #06210f; filter: none; box-shadow: 0 0 16px -4px var(--ok); }
+  .scan-agents-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .scan-agents-caption { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; flex-shrink: 0; }
+  #scan-agents-list { display: flex; gap: 6px; flex-wrap: wrap; }
+  .agent-pill {
+    display: flex; align-items: center; gap: 6px; padding: 5px 11px 5px 9px; border-radius: 20px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
+    font-size: 11.5px; font-weight: 600; cursor: pointer; box-shadow: none; white-space: nowrap;
+  }
+  .agent-pill:hover:not(:disabled) { filter: none; box-shadow: none; background: var(--panel-3); }
+  .agent-pill .ap-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .agent-pill.selected { background: var(--pill-bg); border-color: var(--pill-color); color: var(--pill-color); }
+  .agent-pill.selected .ap-dot { background: var(--pill-color); box-shadow: 0 0 5px -1px var(--pill-color); }
+  .agent-pill:disabled { opacity: .4; cursor: not-allowed; }
+  #scan-note-toggle-btn { margin-left: auto; font-size: 11px; }
+
+  #scan-live-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
+  #scan-live-container .stage-card { width: 100%; max-height: none; }
   .scan-stats { display: flex; align-items: center; gap: 16px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .scan-stats .stat b { color: var(--text-dim); font-weight: 600; }
-  .scan-sparkline { display: block; width: 100%; height: 32px; box-sizing: border-box; border-bottom: 1px solid var(--border-soft); }
-  .scan-sparkline polyline { fill: none; stroke: var(--scan); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+  .scan-error-msg { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11.5px; color: var(--err); }
+  .scan-sev-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); min-height: 15px; }
+  .sev-chip { font-size: 10.5px; font-weight: 700; text-transform: capitalize; padding: 2px 8px; border-radius: 20px; }
+  .scan-live-findings { padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
+  .scan-live-findings:not(:empty) { border-bottom: 1px solid var(--border-soft); }
+  .scan-live-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; font-size: 11.5px; line-height: 1.4; }
+  .scan-live-row .sev-dot { margin-top: 4px; flex-shrink: 0; }
+  .scan-live-row .scan-live-text { color: var(--text-dim); min-width: 0; }
+  .scan-results { padding: 6px; display: flex; flex-direction: column; gap: 3px; border-bottom: 1px solid var(--border-soft); max-height: 220px; overflow-y: auto; }
+  .scan-result-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+  .scan-result-row:hover { background: var(--panel-3); }
+  .scan-result-row .sev-dot { margin-top: 4px; }
+  .scan-result-main { min-width: 0; flex: 1; }
+  .scan-result-title { font-size: 12px; font-weight: 600; line-height: 1.35; }
+  .scan-result-why { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+  .scan-actions { padding: 8px 10px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-soft); }
+  .scan-actions button { font-size: 11.5px; padding: 5px 10px; }
 
   /* ---------- timeline scan rows (expandable inline) ---------- */
   .tl-kind { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; background: var(--panel-3); color: var(--muted); margin-right: 6px; }
@@ -217,21 +303,11 @@
   .timeline-row-body { border-top: 1px solid var(--border-soft); margin: 8px -12px -10px; padding: 8px 12px 2px; }
 
   /* ---------- settings ---------- */
-  .settings-row { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-  .theme-toggle { display: inline-flex; gap: 6px; }
   #settings-env { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 
-  /* ---------- findings view (sidebar + detail) ---------- */
-  #findings-layout { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; }
-  aside#findings-sidebar { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
-  .sidebar-header { padding: 14px 16px 10px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-  .sidebar-header h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0; }
-  .sidebar-header button { padding: 5px 10px; font-size: 12px; }
-
-  #findings-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+  /* ---------- findings row bits (reused by scan-result rows too) ---------- */
   .finding-row { display: flex; align-items: flex-start; gap: 8px; padding: 9px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; border-left: 2px solid transparent; }
   .finding-row:hover { background: var(--panel); }
-  .finding-row.selected { background: var(--panel-2); border-left-color: var(--accent); }
   .sev-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
   .sev-dot.critical { background: var(--crit); }
   .sev-dot.high { background: var(--err); }
@@ -240,10 +316,37 @@
   .finding-row-main { min-width: 0; flex: 1; }
   .finding-row-title { font-size: 12.5px; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .finding-row-meta { margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  #findings-empty { padding: 20px 16px; color: var(--muted); font-size: 12px; }
 
-  main#detail { overflow-y: auto; padding: 0; display: flex; flex-direction: column; min-height: 0; }
-  #empty-state { color: var(--muted); font-size: 13px; padding: 60px 0; text-align: center; }
+  /* ---------- findings kanban ---------- */
+  .group-toggle { display: flex; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
+  .group-toggle-btn { background: none; color: var(--muted); border: none; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; box-shadow: none; }
+  .group-toggle-btn:hover:not(:disabled) { filter: none; box-shadow: none; color: var(--text-dim); }
+  .group-toggle-btn.active { background: var(--panel-2); color: var(--text); }
+
+  #kanban-view-body { display: flex; flex-direction: column; min-height: 0; }
+  #kanban-board { display: flex; gap: 14px; align-items: stretch; overflow-x: auto; flex: 1; padding-bottom: 6px; }
+  .kanban-column { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; min-width: 270px; max-width: 300px; flex: 1 0 270px; display: flex; flex-direction: column; }
+  .kanban-col-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); border-top: 3px solid var(--col-color, var(--border)); border-radius: 10px 10px 0 0; flex-shrink: 0; }
+  .kanban-col-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--col-color, var(--muted)); flex-shrink: 0; }
+  .kanban-col-title { font-size: 12px; font-weight: 700; color: var(--text-dim); flex: 1; }
+  .kanban-col-count { font-size: 11px; color: var(--muted); background: var(--panel-3); padding: 1px 7px; border-radius: 20px; font-variant-numeric: tabular-nums; }
+  .kanban-cards { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 80px; max-height: calc(100vh - 260px); }
+  .kanban-empty { color: var(--muted); font-size: 11.5px; text-align: center; padding: 18px 6px; }
+  .kanban-card { background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--card-color, var(--border)); border-radius: 8px; padding: 9px 10px; cursor: pointer; }
+  .kanban-card:hover { background: var(--panel-3); border-color: var(--text-dim); }
+  .kanban-card-title { font-size: 12px; font-weight: 600; line-height: 1.4; margin-bottom: 6px; }
+  .kanban-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .kanban-card-file { font-size: 10.5px; color: var(--muted); font-family: var(--mono); margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .finding-modal { width: 900px; max-width: 95vw; position: relative; padding-top: 42px; }
+  .modal-close-btn, .finding-menu-btn {
+    position: absolute; top: 12px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: none;
+  }
+  .modal-close-btn:hover, .finding-menu-btn:hover { color: var(--text); border-color: var(--text-dim); filter: none; box-shadow: none; }
+  .modal-close-btn { right: 12px; }
+  .finding-menu-btn { right: 50px; }
+  .finding-modal .finding-header { padding-right: 92px; }
 
   .finding-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .finding-header-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -255,6 +358,7 @@
 
   .flow-area { flex: 1; padding: 18px 22px; min-height: 0; overflow-y: auto; }
   .cta-row { display: flex; align-items: center; gap: 12px; }
+  .cta-row > button { flex-shrink: 0; white-space: nowrap; }
 
   .stage-row { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; padding: 4px 2px 14px; }
   .connector { color: var(--muted); align-self: center; padding: 0 8px; font-size: 16px; flex-shrink: 0; }
@@ -266,23 +370,20 @@
   .stage-header { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-bottom: 1px solid var(--border); cursor: context-menu; }
   .stage-agent { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
   .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
-  .status-dot.running { background: var(--warn); animation: pulse 1.2s infinite ease-in-out; }
-  .status-dot.done { background: var(--ok); }
-  .status-dot.error, .status-dot.cancelled { background: var(--err); }
+  .status-dot.running { background: var(--warn); box-shadow: 0 0 8px 1px var(--warn); animation: pulse 1.2s infinite ease-in-out; }
+  .status-dot.done { background: var(--ok); box-shadow: 0 0 6px -1px var(--ok); }
+  .status-dot.error, .status-dot.cancelled { background: var(--err); box-shadow: 0 0 6px -1px var(--err); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .status-text { font-size: 10.5px; color: var(--muted); flex: 1; }
   .stage-menu-btn { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; line-height: 1; cursor: pointer; display: flex; }
   .stage-menu-btn:hover { color: var(--text); border-color: var(--text-dim); }
 
-  .stage-feed { padding: 10px; overflow-y: auto; font-size: 12px; line-height: 1.5; display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 60px; }
-  .feed-line { padding: 4px 7px; border-radius: 6px; background: var(--panel); color: var(--text-dim); }
-  .feed-line.tool { color: var(--accent); font-family: var(--mono); font-size: 11px; }
-  .feed-line.result { color: var(--muted); font-family: var(--mono); font-size: 11px; margin-left: 10px; }
-  .feed-line.text { background: none; padding: 2px 2px; color: var(--text); }
-  .feed-line.system { color: var(--muted); font-size: 11px; }
-  .feed-line.summary { border-left: 2px solid var(--accent); }
-  .feed-line.err { color: var(--err); border-left: 2px solid var(--err); }
-  .feed-line.thinking { color: var(--muted); font-size: 11px; }
+  .stage-body { padding: 10px; overflow-y: auto; flex: 1; min-height: 60px; }
+  .stage-section-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+  .stage-analysis-text { font-size: 12.5px; line-height: 1.6; color: var(--text-dim); display: flex; flex-direction: column; gap: 8px; }
+  .stage-analysis-text p { margin: 0; }
+  .stage-analysis-text p.muted { color: var(--muted); font-style: italic; }
+  .stage-analysis-text p.err-line { color: var(--err); }
 
   details.stage-raw { border-top: 1px solid var(--border-soft); font-size: 11px; }
   details.stage-raw summary { padding: 6px 10px; color: var(--muted); cursor: pointer; }
@@ -298,13 +399,13 @@
   .badge.critical { background: var(--crit-soft); color: var(--crit); }
   .badge.needs_review, .badge.medium, .badge.p1, .badge.in_review { background: var(--warn-soft); color: var(--warn); }
   .badge.false_positive, .badge.low, .badge.p2, .badge.p3, .badge.informational, .badge.duplicate, .badge.remediation_ready { background: var(--ok-soft); color: var(--ok); }
-  .badge.new { background: rgba(143,138,123,.16); color: var(--muted); }
-  .badge.closed { background: rgba(143,138,123,.16); color: var(--muted); }
+  .badge.new { background: rgba(109,108,104,.18); color: var(--muted); }
+  .badge.closed { background: rgba(109,108,104,.18); color: var(--muted); }
 
   .stage-actions { padding: 10px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; }
   .stage-actions button { flex: 1; font-size: 12px; padding: 7px 8px; }
 
-  #context-menu { position: fixed; z-index: 50; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 4px; box-shadow: 0 8px 20px rgba(0,0,0,.35); min-width: 240px; }
+  #context-menu { position: fixed; z-index: 70; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 4px; box-shadow: 0 8px 20px rgba(0,0,0,.35); min-width: 240px; }
   #context-menu button { display: block; width: 100%; text-align: left; background: none; color: var(--text-dim); border: none; padding: 8px 10px; font-size: 12px; font-weight: 400; border-radius: 6px; }
   #context-menu button:hover:not(:disabled) { background: var(--panel-3); color: var(--text); }
   #context-menu button:disabled { color: var(--muted); opacity: .5; }
@@ -340,7 +441,16 @@
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.5h16M9.5 9.5V20"/></svg>
     <span>Findings</span>
   </button>
+  <button id="nav-collapse-btn" title="Collapse sidebar">
+    <svg class="icon" id="nav-collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>
+  </button>
+  <div class="nav-status" id="nav-status"></div>
   <div class="nav-footer">
+    <button class="nav-item" id="nav-theme-btn" title="Toggle theme">
+      <svg class="icon" id="nav-theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
+      <svg class="icon" id="nav-theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>
+      <span id="nav-theme-label">Dark theme</span>
+    </button>
     <button class="nav-item" data-view="settings">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1l2.1-2.1M17 7l2.1-2.1"/></svg>
       <span>Settings</span>
@@ -361,31 +471,28 @@
 
     <div class="scan-form">
       <div class="scan-form-title">New scan</div>
-      <div class="scan-form-row">
-        <div>
+      <div class="scan-top-row">
+        <div style="flex:1; min-width:0;">
           <label for="scan-path-input">Target directory</label>
-          <input id="scan-path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
+          <input id="scan-path-input" class="path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
         </div>
-        <button class="secondary" type="button" id="scan-note-btn" title="Optional instructions for the scan">Note</button>
-        <button id="scan-start-btn">Start Scan</button>
+        <button id="scan-start-btn" class="scan-start-btn">Start scan</button>
+      </div>
+      <div class="scan-agents-row">
+        <span class="scan-agents-caption">Run after scan:</span>
+        <div id="scan-agents-list"></div>
+        <button class="link-btn" id="scan-note-toggle-btn" type="button">+ instructions</button>
       </div>
       <div id="scan-instruction-wrap" hidden>
-        <label for="scan-instruction-input">Additional instructions (optional)</label>
         <textarea id="scan-instruction-input" placeholder="e.g. Focus on the API routes under src/api, skip test fixtures." style="min-height:44px;"></textarea>
       </div>
     </div>
     <div id="scan-live-container"></div>
 
     <div class="stat-grid" id="dash-stats"></div>
-    <div class="dash-columns">
-      <div class="panel">
-        <div class="panel-title">Agents</div>
-        <div id="dash-agents"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-title">Status</div>
-        <div id="dash-status-panel"></div>
-      </div>
+    <div class="panel">
+      <div class="panel-title">Agents</div>
+      <div id="dash-agents"></div>
     </div>
     <div class="dash-footer">
       <span id="dash-footer-text"></span>
@@ -412,20 +519,11 @@
   <div class="view-header">
     <div>
       <h1>Settings</h1>
-      <div class="view-subtitle">Appearance and environment</div>
+      <div class="view-subtitle">Environment</div>
     </div>
   </div>
   <div class="view-body">
-    <div class="panel" style="margin-bottom:16px;">
-      <div class="panel-title">Appearance</div>
-      <div class="settings-row">
-        <label>Theme</label>
-        <div class="theme-toggle" id="theme-toggle">
-          <button class="filter-pill" data-theme-choice="dark">Dark</button>
-          <button class="filter-pill" data-theme-choice="light">Light</button>
-        </div>
-      </div>
-    </div>
+    <div class="hint" style="margin-bottom:14px;">Theme is now in the sidebar footer — click the moon/sun icon to switch.</div>
     <div class="panel">
       <div class="panel-title">Environment</div>
       <div id="settings-env"></div>
@@ -434,46 +532,58 @@
 </div>
 
 <div id="view-findings" class="view" hidden>
-  <div id="findings-layout">
-    <aside id="findings-sidebar">
-      <div class="sidebar-header">
-        <h2>Findings</h2>
-        <div style="display:flex; gap:6px;">
-          <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
-          <button id="add-finding-btn">+ Add</button>
-        </div>
+  <div class="view-header">
+    <div>
+      <h1>Findings</h1>
+      <div class="view-subtitle" id="findings-subtitle"></div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <div class="group-toggle" id="findings-group-toggle">
+        <button class="group-toggle-btn active" data-group="status" type="button">By status</button>
+        <button class="group-toggle-btn" data-group="severity" type="button">By severity</button>
       </div>
-      <div id="findings-list"></div>
-    </aside>
-
-    <main id="detail">
-      <div id="empty-state">Select a finding on the left, or add one.</div>
-      <div id="finding-view" hidden>
-        <div class="finding-header">
-          <div class="finding-header-top">
-            <h2 id="fh-title"></h2>
-            <span id="fh-severity" class="badge"></span>
-            <span id="fh-status" class="badge"></span>
-          </div>
-          <div class="finding-header-meta" id="fh-meta"></div>
-          <details class="finding-desc">
-            <summary>Finding details</summary>
-            <pre id="fh-description"></pre>
-          </details>
-        </div>
-        <div class="flow-area" id="flow-area">
-          <div class="cta-row" id="fh-cta">
-            <button id="run-remediation-btn">Run Remediation</button>
-            <span class="hint">Or right-click this finding to add instructions first, or to expand analysis with Triage / Threat Model.</span>
-          </div>
-          <div id="flow-container"></div>
-        </div>
-      </div>
-    </main>
+      <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
+      <button id="add-finding-btn">+ Add</button>
+    </div>
+  </div>
+  <div class="view-body" id="kanban-view-body">
+    <div id="kanban-board"></div>
   </div>
 </div>
 
 <div id="context-menu" hidden></div>
+
+<div class="modal-overlay" id="finding-detail-overlay" hidden>
+  <div class="modal finding-modal">
+    <button class="finding-menu-btn" id="finding-detail-menu-btn" title="More actions" type="button">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/></svg>
+    </button>
+    <button class="modal-close-btn" id="finding-detail-close" title="Close" type="button">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <div>
+      <div class="finding-header">
+        <div class="finding-header-top">
+          <h2 id="fh-title"></h2>
+          <span id="fh-severity" class="badge"></span>
+          <span id="fh-status" class="badge"></span>
+        </div>
+        <div class="finding-header-meta" id="fh-meta"></div>
+        <details class="finding-desc">
+          <summary>Finding details</summary>
+          <pre id="fh-description"></pre>
+        </details>
+      </div>
+      <div class="flow-area">
+        <div class="cta-row" id="fh-cta">
+          <button class="secondary" id="select-flow-btn">Select flow…</button>
+          <span class="hint">Choose which agent to run — Triage, Threat Model, or Remediation — and review the context before anything executes. Nothing runs automatically.</span>
+        </div>
+        <div id="flow-container"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="modal-overlay" id="stage-modal-overlay" hidden>
   <div class="modal">
@@ -548,7 +658,6 @@ const ICONS = {
   folder: '<path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2h8.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3 17.5v-11Z"/>',
   trending: '<path d="m3 16 6-6 4 4 8-8"/><path d="M15 6h6v6"/>',
   dots: '<circle cx="12" cy="5.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="18.5" r="1.3"/>',
-  shield: '<path d="M12 2.5 4.5 5.5v5.7c0 5.1 3.2 8.7 7.5 10.3 4.3-1.6 7.5-5.2 7.5-10.3V5.5L12 2.5Z"/><path d="m9 12 2 2 4-4.5"/>',
   radar: '<circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/>',
 };
 function icon(name, cls) {
@@ -559,10 +668,10 @@ function icon(name, cls) {
 
 const KNOWN_AGENTS = ['triage', 'threat_model', 'remediation'];
 const AGENT_META = {
-  scan: { label: 'Scan', icon: 'radar', color: '#6ba3c9', role: 'Reads a directory and creates findings' },
-  triage: { label: 'Triage', icon: 'search', color: '#8f95d6', role: 'First pass: real finding or noise, how urgent' },
-  threat_model: { label: 'Threat Model', icon: 'target', color: '#d3a05e', role: 'Exploit path, preconditions, blast radius' },
-  remediation: { label: 'Remediation', icon: 'wrench', color: '#87a878', role: 'Concrete fix guidance, terminal stage' },
+  scan: { label: 'Scan', icon: 'radar', color: '#38bdf8', role: 'Reads a directory and creates findings' },
+  triage: { label: 'Triage', icon: 'search', color: '#a78bfa', role: 'First pass: real finding or noise, how urgent' },
+  threat_model: { label: 'Threat Model', icon: 'target', color: '#fb923c', role: 'Exploit path, preconditions, blast radius' },
+  remediation: { label: 'Remediation', icon: 'wrench', color: '#2dd4bf', role: 'Concrete fix guidance, terminal stage' },
 };
 const TIMELINE_KINDS = ['scan', ...KNOWN_AGENTS];
 function agentMeta(name) {
@@ -572,18 +681,18 @@ function agentMeta(name) {
 // ---------- dom refs ----------
 
 const statusEl = document.getElementById('status');
-const findingsListEl = document.getElementById('findings-list');
+const kanbanBoardEl = document.getElementById('kanban-board');
+const findingsSubtitleEl = document.getElementById('findings-subtitle');
 const addFindingBtn = document.getElementById('add-finding-btn');
 const exportCsvBtn = document.getElementById('export-csv-btn');
-const emptyState = document.getElementById('empty-state');
-const findingView = document.getElementById('finding-view');
+const findingDetailOverlay = document.getElementById('finding-detail-overlay');
 const fhTitle = document.getElementById('fh-title');
 const fhSeverity = document.getElementById('fh-severity');
 const fhStatus = document.getElementById('fh-status');
 const fhMeta = document.getElementById('fh-meta');
 const fhDescription = document.getElementById('fh-description');
 const fhCta = document.getElementById('fh-cta');
-const runRemediationBtn = document.getElementById('run-remediation-btn');
+const selectFlowBtn = document.getElementById('select-flow-btn');
 const flowContainer = document.getElementById('flow-container');
 const contextMenuEl = document.getElementById('context-menu');
 
@@ -591,6 +700,9 @@ const scanPathInput = document.getElementById('scan-path-input');
 const scanInstructionInput = document.getElementById('scan-instruction-input');
 const scanStartBtn = document.getElementById('scan-start-btn');
 const scanLiveContainer = document.getElementById('scan-live-container');
+const scanAgentsList = document.getElementById('scan-agents-list');
+
+let scanSelectedAgents = new Set();
 
 const stageModalOverlay = document.getElementById('stage-modal-overlay');
 const stageModalTitle = document.getElementById('stage-modal-title');
@@ -609,6 +721,7 @@ let ws = null;
 let agentsList = [];
 let findings = [];               // list-item shape from GET /api/findings
 let selectedFindingId = null;
+let findingsGroupBy = 'status';
 let currentView = 'dashboard';
 const findingCache = new Map();  // findingId -> full finding record (from GET /api/findings/:id)
 const flows = new Map();         // findingId -> { el, stageRowEl, stages: [runId,...] }
@@ -636,6 +749,13 @@ function escapeHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+function hexToRgba(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return `rgba(110,110,110,${alpha})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 function formatRelativeTime(ts) {
@@ -675,14 +795,45 @@ async function loadAgents() {
     opt.value = a; opt.textContent = a;
     stageModalAgent.appendChild(opt);
   }
+  renderScanAgentSelection();
+}
+
+function renderScanAgentSelection() {
+  scanAgentsList.innerHTML = '';
+  for (const agentName of KNOWN_AGENTS) {
+    const meta = agentMeta(agentName);
+    const available = agentsList.includes(agentName);
+    const isSelected = scanSelectedAgents.has(agentName);
+
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'agent-pill' + (isSelected ? ' selected' : '');
+    pill.disabled = !available;
+    pill.style.setProperty('--pill-color', meta.color);
+    pill.style.setProperty('--pill-bg', hexToRgba(meta.color, .14));
+    pill.title = available ? meta.role : `${meta.label} agent not available`;
+    pill.innerHTML = `<span class="ap-dot"></span>${escapeHtml(meta.label)}`;
+    pill.addEventListener('click', () => {
+      if (scanSelectedAgents.has(agentName)) scanSelectedAgents.delete(agentName);
+      else scanSelectedAgents.add(agentName);
+      renderScanAgentSelection();
+    });
+
+    scanAgentsList.appendChild(pill);
+  }
+  updateScanStartLabel();
+}
+
+function updateScanStartLabel() {
+  scanStartBtn.textContent = 'Start scan';
 }
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}`);
 
-  ws.addEventListener('open', () => { setStatus(true); if (currentView === 'dashboard') renderDashboard(); });
-  ws.addEventListener('close', () => { setStatus(false); if (currentView === 'dashboard') renderDashboard(); setTimeout(connect, 2000); });
+  ws.addEventListener('open', () => { setStatus(true); renderNavStatus(); if (currentView === 'dashboard') renderDashboard(); });
+  ws.addEventListener('close', () => { setStatus(false); renderNavStatus(); if (currentView === 'dashboard') renderDashboard(); setTimeout(connect, 2000); });
   ws.addEventListener('error', () => ws.close());
   ws.addEventListener('message', (ev) => {
     let msg;
@@ -693,10 +844,28 @@ function connect() {
 
 // ---------- nav / view switching ----------
 
-document.querySelectorAll('.nav-item').forEach((btn) => {
+document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
   btn.addEventListener('click', () => showView(btn.dataset.view));
 });
 document.getElementById('dash-timeline-link').addEventListener('click', () => showView('timeline'));
+
+const NAV_COLLAPSE_KEY = 'appsecops-nav-collapsed';
+const navEl = document.getElementById('global-nav');
+const navCollapseBtn = document.getElementById('nav-collapse-btn');
+function applyNavCollapsed(collapsed) {
+  navEl.classList.toggle('collapsed', collapsed);
+  navCollapseBtn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  navCollapseBtn.querySelector('span').textContent = collapsed ? 'Expand' : 'Collapse';
+}
+navCollapseBtn.addEventListener('click', () => {
+  const collapsed = !navEl.classList.contains('collapsed');
+  applyNavCollapsed(collapsed);
+  try { localStorage.setItem(NAV_COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (e) {}
+});
+try { applyNavCollapsed(localStorage.getItem(NAV_COLLAPSE_KEY) === '1'); } catch (e) {}
+document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
+  btn.title = btn.querySelector('span').textContent;
+});
 
 function showView(view) {
   currentView = view;
@@ -790,28 +959,22 @@ function renderDashboard() {
     agentsEl.appendChild(row);
   }
 
-  const statusPanel = document.getElementById('dash-status-panel');
-  statusPanel.innerHTML = '';
-  const wsLine = document.createElement('div');
-  wsLine.className = 'status-line' + (statusEl.classList.contains('connected') ? '' : ' warn');
-  wsLine.innerHTML = `<span class="s-dot"></span> WebSocket: ${statusEl.classList.contains('connected') ? 'connected' : 'disconnected'}`;
-  statusPanel.appendChild(wsLine);
-  const storeLine = document.createElement('div');
-  storeLine.className = 'status-line';
-  storeLine.innerHTML = `<span class="s-dot"></span> Findings store: ${findings.length} finding${findings.length === 1 ? '' : 's'}, in-memory`;
-  statusPanel.appendChild(storeLine);
-  const agentsLine = document.createElement('div');
-  agentsLine.className = 'status-line' + (agentsList.length < KNOWN_AGENTS.length ? ' warn' : '');
-  agentsLine.innerHTML = `<span class="s-dot"></span> Pipeline agents: ${agentsList.length}/${KNOWN_AGENTS.length} available`;
-  statusPanel.appendChild(agentsLine);
-
-  const runningScanCount = scansList.filter((s) => s.status === 'running').length;
-  const scansLine = document.createElement('div');
-  scansLine.className = 'status-line' + (runningScanCount ? ' warn' : '');
-  scansLine.innerHTML = `<span class="s-dot"></span> Scans: ${scansList.length} total${runningScanCount ? `, ${runningScanCount} running` : ''}`;
-  statusPanel.appendChild(scansLine);
-
   document.getElementById('dash-footer-text').textContent = `${findings.length} findings · ${totalRuns} total runs`;
+}
+
+// ---------- sidebar status (compact, always visible regardless of view) ----------
+
+function renderNavStatus() {
+  const navStatusEl = document.getElementById('nav-status');
+  const connected = statusEl.classList.contains('connected');
+  const runningScanCount = scansList.filter((s) => s.status === 'running').length;
+  const line = (warn, text) => `<div class="nav-status-line${warn ? ' warn' : ''}" title="${escapeHtml(text)}"><span class="s-dot"></span><span class="ns-text">${escapeHtml(text)}</span></div>`;
+  navStatusEl.innerHTML = [
+    line(!connected, connected ? 'Connected' : 'Disconnected'),
+    line(false, `${findings.length} finding${findings.length === 1 ? '' : 's'}`),
+    line(agentsList.length < KNOWN_AGENTS.length, `${agentsList.length}/${KNOWN_AGENTS.length} agents ready`),
+    line(runningScanCount > 0, `${scansList.length} scan${scansList.length === 1 ? '' : 's'}${runningScanCount ? ` · ${runningScanCount} running` : ''}`),
+  ].join('');
 }
 
 // ---------- timeline ----------
@@ -899,11 +1062,11 @@ function renderTimeline() {
     row.style.borderLeftColor = meta.color;
     row.innerHTML = `
       <div style="display:flex; align-items:flex-start; gap:10px; width:100%;">
-        <span class="tl-icon">${icon(meta.icon)}</span>
+        <span class="tl-icon" style="color:${meta.color};">${icon(meta.icon)}</span>
         <div class="tl-main">
           <div class="tl-top">
-            <span class="tl-kind">${escapeHtml(meta.label)}</span>
-            <span class="tl-title">${escapeHtml(title)}</span>
+            <span class="tl-kind" style="background:${hexToRgba(meta.color, .16)}; color:${meta.color};">${escapeHtml(meta.label)}</span>
+            <span class="tl-title${isScan ? ' path-text' : ''}">${escapeHtml(title)}</span>
             <span class="badge ${badge.cls}">${escapeHtml(badge.text)}</span>
           </div>
           <div class="tl-summary">${escapeHtml(timelineSummary(entry))}</div>
@@ -956,11 +1119,8 @@ async function loadScans() {
   const res = await fetch('/api/scans');
   scansList = await res.json();
   scansLoaded = true;
+  renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
-}
-
-function scanStatusLabel(s) {
-  return { running: 'Running', done: 'Done', error: 'Error', cancelled: 'Cancelled' }[s] || s;
 }
 
 function renderScanFindingsBody(body, scanFindings) {
@@ -990,11 +1150,11 @@ function renderScanFindingsBody(body, scanFindings) {
 
 function makeScanCard(runId, targetPath) {
   const cardEl = document.createElement('article');
-  cardEl.className = 'stage-card status-running';
+  cardEl.className = 'stage-card scan-card status-running';
   cardEl.dataset.runId = runId;
   cardEl.innerHTML = `
     <div class="stage-header">
-      <span class="stage-agent">${icon('radar')}<span>${escapeHtml(targetPath)}</span></span>
+      <span class="stage-agent">${icon('radar')}<span class="path-text">${escapeHtml(targetPath)}</span></span>
       <span class="status-dot running"></span>
       <span class="status-text">Starting…</span>
     </div>
@@ -1003,17 +1163,81 @@ function makeScanCard(runId, targetPath) {
       <span class="stat"><b class="ss-files">0</b> files read</span>
       <span class="stat"><b class="ss-elapsed">0:00</b> elapsed</span>
     </div>
-    <svg class="scan-sparkline" viewBox="0 0 200 32" preserveAspectRatio="none">
-      <polyline points=""></polyline>
-    </svg>
-    <div class="stage-feed"></div>
-    <details class="stage-raw" hidden>
+    <div class="scan-error-msg" hidden></div>
+    <div class="scan-sev-chips"><span class="hint">No candidates yet</span></div>
+    <div class="scan-live-findings"></div>
+    <div class="scan-results" hidden></div>
+    <details class="stage-raw">
       <summary>Raw stream-json</summary>
       <pre></pre>
     </details>
+    <div class="scan-actions"></div>
   `;
   scanLiveContainer.prepend(cardEl);
   return cardEl;
+}
+
+function updateScanCardActions(run) {
+  const el = run.actionsEl;
+  if (!el) return;
+  el.innerHTML = '';
+  if (run.status === 'running') {
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.textContent = 'Stop scan';
+    btn.addEventListener('click', () => cancelScanRun(run));
+    el.appendChild(btn);
+  } else {
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.textContent = 'Delete';
+    btn.addEventListener('click', () => deleteScanRun(run));
+    el.appendChild(btn);
+  }
+}
+
+function cancelScanRun(run) {
+  if (run.status !== 'running') return;
+  ws.send(JSON.stringify({ type: 'cancel', runId: run.runId }));
+  setStageStatus(run, 'cancelled', 'Cancelling…');
+  updateScanCardActions(run);
+}
+
+async function deleteScanRun(run) {
+  if (run.scanId) {
+    try { await fetch(`/api/scans/${run.scanId}`, { method: 'DELETE' }); } catch (e) {}
+  }
+  stopScanElapsedTimer(run);
+  scanRuns.delete(run.runId);
+  run.cardEl.remove();
+  scansList = scansList.filter((s) => s.runId !== run.runId);
+  timelineEntries = timelineEntries.filter((e) => e.runId !== run.runId);
+  renderNavStatus();
+  if (currentView === 'dashboard') renderDashboard();
+  if (currentView === 'timeline') renderTimeline();
+}
+
+function renderScanCardResults(run, scanFindings) {
+  if (!run.resultsEl) return;
+  if (!scanFindings.length) { run.resultsEl.hidden = true; return; }
+  run.resultsEl.hidden = false;
+  run.resultsEl.innerHTML = '';
+  for (const f of scanFindings) {
+    const item = document.createElement('div');
+    item.className = 'scan-result-row';
+    item.innerHTML = `
+      <span class="sev-dot ${f.severity}"></span>
+      <div class="scan-result-main">
+        <div class="scan-result-title">${escapeHtml(f.title)}</div>
+        <div class="scan-result-why">${escapeHtml(truncate(f.description || '', 160))}</div>
+      </div>
+    `;
+    item.addEventListener('click', async () => {
+      showView('findings');
+      await selectFinding(f.id);
+    });
+    run.resultsEl.appendChild(item);
+  }
 }
 
 function formatElapsed(ms) {
@@ -1034,17 +1258,46 @@ function stopScanElapsedTimer(run) {
   updateScanElapsed(run);
 }
 
-function renderScanSparkline(run) {
-  if (!run.sparklineEl || run.history.length < 2) return;
-  const w = 200, h = 32, pad = 3;
-  const maxT = run.history[run.history.length - 1].t || 1;
-  const maxC = Math.max(...run.history.map((p) => p.count), 1);
-  const points = run.history.map((p) => {
-    const x = pad + (p.t / maxT) * (w - pad * 2);
-    const y = h - pad - (p.count / maxC) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  run.sparklineEl.setAttribute('points', points);
+const SEV_VAR = { critical: 'var(--crit)', high: 'var(--err)', medium: 'var(--warn)', low: 'var(--ok)', informational: 'var(--muted)' };
+const SEV_ORDER = ['critical', 'high', 'medium', 'low', 'informational'];
+const SEV_TAG_RE = /\[(critical|high|medium|low|informational)\]\s+([^\[]*)/gi;
+
+function renderScanSevChips(run) {
+  if (!run.chipsEl) return;
+  const total = SEV_ORDER.reduce((n, s) => n + run.sevCounts[s], 0);
+  if (!total) {
+    run.chipsEl.innerHTML = '<span class="hint">No candidates yet</span>';
+    return;
+  }
+  run.chipsEl.innerHTML = SEV_ORDER
+    .filter((s) => run.sevCounts[s] > 0)
+    .map((s) => `<span class="sev-chip" style="color:${SEV_VAR[s]}; background:color-mix(in srgb, ${SEV_VAR[s]} 16%, transparent);">${run.sevCounts[s]} ${s}</span>`)
+    .join('');
+}
+
+function trackScanCandidates(run, event) {
+  if (event.type !== 'assistant' || !event.message || !Array.isArray(event.message.content)) return;
+  let found = false;
+  for (const block of event.message.content) {
+    if (block.type !== 'text' || !block.text) continue;
+    const re = new RegExp(SEV_TAG_RE.source, SEV_TAG_RE.flags);
+    let m;
+    while ((m = re.exec(block.text))) {
+      const sev = m[1].toLowerCase();
+      const text = truncate(m[2].replace(/\s+/g, ' ').trim(), 180);
+      run.sevCounts[sev] = (run.sevCounts[sev] || 0) + 1;
+      found = true;
+      if (run.findingsEl && text) {
+        const row = document.createElement('div');
+        row.className = 'scan-live-row';
+        row.innerHTML = `<span class="sev-dot ${sev}"></span><span class="scan-live-text"></span>`;
+        row.querySelector('.scan-live-text').textContent = text;
+        run.findingsEl.appendChild(row);
+        run.findingsEl.scrollTop = run.findingsEl.scrollHeight;
+      }
+    }
+  }
+  if (found) renderScanSevChips(run);
 }
 
 function trackScanToolActivity(run, event) {
@@ -1059,14 +1312,13 @@ function trackScanToolActivity(run, event) {
   if (!sawTool) return;
   if (run.toolsEl) run.toolsEl.textContent = String(run.toolCount);
   if (run.filesEl) run.filesEl.textContent = String(run.fileCount);
-  run.history.push({ t: Date.now() - run.startTime, count: run.toolCount });
-  if (run.history.length > 60) run.history.shift();
-  renderScanSparkline(run);
 }
 
 function handleScanRawEvent(run, event) {
-  handleRawEvent(run, event);
+  run.rawEvents.push(event);
+  if (run.rawPreEl) run.rawPreEl.textContent = run.rawEvents.map((e) => JSON.stringify(e)).join('\n');
   trackScanToolActivity(run, event);
+  trackScanCandidates(run, event);
 }
 
 function startScan() {
@@ -1084,43 +1336,45 @@ function startScan() {
     runId, path: targetPath, instruction,
     status: 'running',
     cardEl,
-    feedEl: cardEl.querySelector('.stage-feed'),
     rawDetailsEl: cardEl.querySelector('.stage-raw'),
     rawPreEl: cardEl.querySelector('.stage-raw pre'),
-    thinkingEl: null,
     rawEvents: [],
     startTime: startedAt,
     toolCount: 0,
     fileCount: 0,
-    history: [{ t: 0, count: 0 }],
+    sevCounts: { critical: 0, high: 0, medium: 0, low: 0, informational: 0 },
     toolsEl: cardEl.querySelector('.ss-tools'),
     filesEl: cardEl.querySelector('.ss-files'),
     elapsedEl: cardEl.querySelector('.ss-elapsed'),
-    sparklineEl: cardEl.querySelector('.scan-sparkline polyline'),
+    errorEl: cardEl.querySelector('.scan-error-msg'),
+    chipsEl: cardEl.querySelector('.scan-sev-chips'),
+    findingsEl: cardEl.querySelector('.scan-live-findings'),
+    resultsEl: cardEl.querySelector('.scan-results'),
+    actionsEl: cardEl.querySelector('.scan-actions'),
     elapsedTimer: null,
   };
   scanRuns.set(runId, run);
   run.elapsedTimer = setInterval(() => updateScanElapsed(run), 1000);
+  updateScanCardActions(run);
   scansList.unshift({ id: null, runId, path: targetPath, instruction, status: 'running', error: null, findingIds: [], startedAt, finishedAt: null });
   upsertTimelineEntry({ kind: 'scan', runId, path: targetPath, instruction, status: 'running', findingCount: 0, startedAt, finishedAt: null });
+  renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
 
   ws.send(JSON.stringify({ type: 'scan', runId, path: targetPath, instruction }));
   scanInstructionInput.value = '';
   scanInstructionWrap.hidden = true;
-  scanNoteBtn.classList.remove('has-note');
+  scanNoteToggleBtn.textContent = '+ instructions';
 }
 
 scanStartBtn.addEventListener('click', startScan);
 
-const scanNoteBtn = document.getElementById('scan-note-btn');
 const scanInstructionWrap = document.getElementById('scan-instruction-wrap');
-scanNoteBtn.addEventListener('click', () => {
+const scanNoteToggleBtn = document.getElementById('scan-note-toggle-btn');
+scanNoteToggleBtn.addEventListener('click', () => {
   scanInstructionWrap.hidden = !scanInstructionWrap.hidden;
+  scanNoteToggleBtn.textContent = scanInstructionWrap.hidden ? '+ instructions' : '− instructions';
   if (!scanInstructionWrap.hidden) scanInstructionInput.focus();
-});
-scanInstructionInput.addEventListener('input', () => {
-  scanNoteBtn.classList.toggle('has-note', scanInstructionInput.value.trim().length > 0);
 });
 
 function handleScanServerMessage(msg) {
@@ -1139,37 +1393,48 @@ function handleScanServerMessage(msg) {
     return;
   }
   if (msg.type === 'scan-stderr') {
-    appendFeedLine(run, msg.data.trim(), 'err');
-    return;
+    return; // CLI-internal chatter, not actionable — still in the raw stream-json toggle's source events if needed
   }
   if (msg.type === 'scan-error') {
-    appendFeedLine(run, msg.message, 'err');
-    setStageStatus(run, 'error', 'Error');
+    const cancelled = run.status === 'cancelled';
+    if (!cancelled) {
+      setStageStatus(run, 'error', 'Error');
+      if (run.errorEl) { run.errorEl.hidden = false; run.errorEl.textContent = msg.message; }
+    } else {
+      setStageStatus(run, 'cancelled', 'Cancelled');
+    }
     stopScanElapsedTimer(run);
-    if (listItem) { listItem.status = 'error'; listItem.error = msg.message; listItem.finishedAt = Date.now(); }
-    upsertTimelineEntry({ runId: msg.runId, status: 'error', error: msg.message, finishedAt: Date.now() });
+    updateScanCardActions(run);
+    const finalStatus = cancelled ? 'cancelled' : 'error';
+    if (listItem) { listItem.status = finalStatus; listItem.error = cancelled ? null : msg.message; listItem.finishedAt = Date.now(); }
+    upsertTimelineEntry({ runId: msg.runId, status: finalStatus, error: cancelled ? null : msg.message, finishedAt: Date.now() });
     if (currentView === 'dashboard') renderDashboard();
     return;
   }
   if (msg.type === 'scan-done') {
-    clearThinkingPill(run);
+    const cancelled = run.status === 'cancelled';
     stopScanElapsedTimer(run);
     const n = msg.findings.length;
-    setStageStatus(run, msg.code === 0 ? 'done' : 'error', `${n} finding${n === 1 ? '' : 's'} created`);
-    appendFeedLine(run, `Scan complete — ${n} finding${n === 1 ? '' : 's'} created.`, 'summary');
-    upsertTimelineEntry({ runId: msg.runId, scanId: msg.scanId, status: msg.code === 0 ? 'done' : 'error', findingCount: n, finishedAt: Date.now() });
+    const finalStatus = cancelled ? 'cancelled' : (msg.code === 0 ? 'done' : 'error');
+    setStageStatus(run, finalStatus, cancelled ? 'Cancelled' : `${n} finding${n === 1 ? '' : 's'} created`);
+    if (run.findingsEl) run.findingsEl.hidden = true;
+    renderScanCardResults(run, msg.findings);
+    updateScanCardActions(run);
+    if (listItem) { listItem.status = finalStatus; listItem.findingIds = msg.findings.map((f) => f.id); listItem.finishedAt = Date.now(); }
+    upsertTimelineEntry({ runId: msg.runId, scanId: msg.scanId, status: finalStatus, findingCount: n, finishedAt: Date.now() });
     loadFindings();
     loadScans();
     return;
   }
 }
 
-// ---------- findings list (sidebar) ----------
+// ---------- findings kanban ----------
 
 async function loadFindings() {
   const res = await fetch('/api/findings');
   findings = await res.json();
-  renderFindingsList();
+  renderKanban();
+  renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
 }
 
@@ -1177,48 +1442,89 @@ function statusLabel(status) {
   return { new: 'Not started', in_review: 'In review', remediation_ready: 'Remediation ready', closed: 'Closed' }[status] || status;
 }
 
-function renderFindingsList() {
-  findingsListEl.innerHTML = '';
+const KANBAN_STATUS_COLUMNS = ['new', 'in_review', 'remediation_ready', 'closed'];
+const KANBAN_SEVERITY_COLUMNS = ['critical', 'high', 'medium', 'low', 'informational'];
+const STATUS_COLOR_VAR = { new: 'var(--muted)', in_review: 'var(--warn)', remediation_ready: 'var(--ok)', closed: 'var(--muted)' };
+const SEV_COLOR_VAR = { critical: 'var(--crit)', high: 'var(--err)', medium: 'var(--warn)', low: 'var(--ok)', informational: 'var(--muted)' };
+function severityLabel(sev) { return sev.charAt(0).toUpperCase() + sev.slice(1); }
+
+function renderKanban() {
+  kanbanBoardEl.innerHTML = '';
+  findingsSubtitleEl.textContent = `${findings.length} finding${findings.length === 1 ? '' : 's'} · grouped by ${findingsGroupBy}`;
+
   if (!findings.length) {
-    const empty = document.createElement('div');
-    empty.id = 'findings-empty';
-    empty.textContent = 'No findings yet — click "+ Add" to create one.';
-    findingsListEl.appendChild(empty);
+    kanbanBoardEl.innerHTML = '<div class="hint" style="padding:30px 4px;">No findings yet — click "+ Add" to create one, or start a scan from the Dashboard.</div>';
     return;
   }
 
-  for (const f of findings) {
-    const row = document.createElement('div');
-    row.className = 'finding-row' + (f.id === selectedFindingId ? ' selected' : '');
-    row.dataset.findingId = f.id;
+  const bySeverity = findingsGroupBy === 'severity';
+  const columns = bySeverity ? KANBAN_SEVERITY_COLUMNS : KANBAN_STATUS_COLUMNS;
+  const colColor = bySeverity ? SEV_COLOR_VAR : STATUS_COLOR_VAR;
+  const colLabel = bySeverity ? severityLabel : statusLabel;
+  const keyOf = bySeverity ? (f) => f.severity : (f) => f.status;
 
-    const runInfo = f.runCount
-      ? `${f.runCount} run${f.runCount === 1 ? '' : 's'}${f.latestRun ? ' · ' + f.latestRun.agent : ''}`
-      : 'no runs yet';
-
-    row.innerHTML = `
-      <span class="sev-dot ${f.severity}"></span>
-      <div class="finding-row-main">
-        <div class="finding-row-title">${escapeHtml(f.title)}</div>
-        <div class="finding-row-meta">
-          <span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span>
-          <span class="hint">${escapeHtml(runInfo)}</span>
-        </div>
+  for (const col of columns) {
+    const bucket = findings.filter((f) => keyOf(f) === col);
+    const colEl = document.createElement('div');
+    colEl.className = 'kanban-column';
+    colEl.style.setProperty('--col-color', colColor[col] || 'var(--muted)');
+    colEl.innerHTML = `
+      <div class="kanban-col-header">
+        <span class="kanban-col-dot"></span>
+        <span class="kanban-col-title">${escapeHtml(colLabel(col))}</span>
+        <span class="kanban-col-count">${bucket.length}</span>
       </div>
+      <div class="kanban-cards"></div>
     `;
-    row.addEventListener('click', () => selectFinding(f.id));
-    row.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      openFindingContextMenu(e.clientX, e.clientY, f.id);
-    });
-    findingsListEl.appendChild(row);
+    const cardsEl = colEl.querySelector('.kanban-cards');
+    if (!bucket.length) {
+      cardsEl.innerHTML = '<div class="kanban-empty">None</div>';
+    } else {
+      for (const f of bucket) cardsEl.appendChild(makeKanbanCard(f, bySeverity));
+    }
+    kanbanBoardEl.appendChild(colEl);
   }
 }
+
+function makeKanbanCard(f, bySeverity) {
+  const card = document.createElement('div');
+  card.className = 'kanban-card';
+  card.style.setProperty('--card-color', SEV_COLOR_VAR[f.severity] || 'var(--border)');
+  card.dataset.findingId = f.id;
+  const runInfo = f.runCount
+    ? `${f.runCount} run${f.runCount === 1 ? '' : 's'}${f.latestRun ? ' · ' + agentMeta(f.latestRun.agent).label : ''}`
+    : 'No runs yet';
+  const otherBadgeCls = bySeverity ? f.status : f.severity;
+  const otherBadgeText = bySeverity ? statusLabel(f.status) : severityLabel(f.severity);
+  card.innerHTML = `
+    <div class="kanban-card-title">${escapeHtml(f.title)}</div>
+    <div class="kanban-card-meta">
+      <span class="sev-dot ${f.severity}"></span>
+      <span class="badge ${otherBadgeCls}">${escapeHtml(otherBadgeText)}</span>
+      <span class="hint">${escapeHtml(runInfo)}</span>
+    </div>
+    ${f.file ? `<div class="kanban-card-file">${escapeHtml(f.file)}</div>` : ''}
+  `;
+  card.addEventListener('click', () => selectFinding(f.id));
+  card.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    openFindingContextMenu(e.clientX, e.clientY, f.id);
+  });
+  return card;
+}
+
+document.querySelectorAll('#findings-group-toggle .group-toggle-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    findingsGroupBy = btn.dataset.group;
+    document.querySelectorAll('#findings-group-toggle .group-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    renderKanban();
+  });
+});
 
 function updateFindingListItem(findingId, patch) {
   const item = findings.find((f) => f.id === findingId);
   if (item) Object.assign(item, patch);
-  renderFindingsList();
+  renderKanban();
   if (currentView === 'dashboard') renderDashboard();
 }
 
@@ -1226,7 +1532,6 @@ function updateFindingListItem(findingId, patch) {
 
 async function selectFinding(findingId) {
   selectedFindingId = findingId;
-  renderFindingsList();
 
   let finding = findingCache.get(findingId);
   if (!finding) {
@@ -1236,8 +1541,7 @@ async function selectFinding(findingId) {
     findingCache.set(findingId, finding);
   }
 
-  emptyState.hidden = true;
-  findingView.hidden = false;
+  findingDetailOverlay.hidden = false;
 
   fhTitle.textContent = finding.title;
   fhSeverity.textContent = finding.severity;
@@ -1293,66 +1597,27 @@ function ensureFlow(findingId, finding) {
 
 // ---------- stage creation & rehydration ----------
 
-function describeToolUse(block) {
-  const name = block.name;
-  const input = block.input || {};
-  switch (name) {
-    case 'Read': return `Read ${input.file_path || ''}`;
-    case 'Grep': return `Grep "${input.pattern || ''}"${input.glob ? ' in ' + input.glob : ''}`;
-    case 'Glob': return `Glob "${input.pattern || ''}"`;
-    case 'Bash': return `Run: ${truncate(input.command || '', 90)}`;
-    default: return `${name} ${truncate(JSON.stringify(input), 80)}`;
-  }
+// Only the agent's own prose (its analysis, in its own words) is surfaced
+// here — tool calls, tool results, and thinking-token chatter are dropped
+// from the visible card entirely. They're still captured in rawEvents for
+// the collapsed "Raw stream-json" toggle, so nothing is actually lost, it's
+// just not in the AppSec tester's way by default.
+function appendAnalysisParagraph(stage, text, cls) {
+  if (stage.analysisEmpty) { stage.analysisEl.innerHTML = ''; stage.analysisEmpty = false; }
+  const p = document.createElement('p');
+  if (cls) p.className = cls;
+  p.textContent = text;
+  stage.analysisEl.appendChild(p);
+  stage.analysisEl.scrollTop = stage.analysisEl.scrollHeight;
 }
 
-function describeToolResult(event) {
-  const meta = event.tool_use_result;
-  if (meta) {
-    if (Array.isArray(meta.filenames)) {
-      const extra = typeof meta.totalMatches === 'number' ? `, ${meta.totalMatches} total match(es)` : '';
-      return `${meta.numFiles || meta.filenames.length} file(s) found${extra}`;
-    }
-    if (meta.file && typeof meta.file.numLines === 'number') {
-      return `read ${meta.file.numLines} lines from ${meta.file.filePath}`;
-    }
-    if (typeof meta.totalMatches === 'number') {
-      return `${meta.totalMatches} match(es)`;
-    }
-  }
-  const content = event.message && event.message.content;
-  if (Array.isArray(content)) {
-    for (const block of content) {
-      if (block.type === 'tool_result') {
-        let text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
-        return truncate(text.replace(/\s+/g, ' ').trim(), 140);
-      }
-    }
-  }
-  return '(result)';
-}
-
-function appendFeedLine(stage, text, cls) {
-  const div = document.createElement('div');
-  div.className = 'feed-line ' + (cls || '');
-  div.textContent = text;
-  stage.feedEl.appendChild(div);
-  stage.feedEl.scrollTop = stage.feedEl.scrollHeight;
-}
-
-function updateThinkingPill(stage, tokens) {
-  if (!stage.thinkingEl) {
-    stage.thinkingEl = document.createElement('div');
-    stage.thinkingEl.className = 'feed-line thinking';
-    stage.feedEl.appendChild(stage.thinkingEl);
-  }
-  stage.thinkingEl.textContent = `Thinking… (~${tokens} tokens)`;
-  stage.feedEl.scrollTop = stage.feedEl.scrollHeight;
-}
-
-function clearThinkingPill(stage) {
-  if (stage.thinkingEl) {
-    stage.thinkingEl.remove();
-    stage.thinkingEl = null;
+function renderAnalysisFromFullText(stage, fullText) {
+  const fenceIdx = fullText.indexOf('```');
+  const prose = (fenceIdx >= 0 ? fullText.slice(0, fenceIdx) : fullText).trim();
+  if (!prose) return;
+  for (const para of prose.split(/\n{2,}/)) {
+    const trimmed = para.trim();
+    if (trimmed) appendAnalysisParagraph(stage, trimmed);
   }
 }
 
@@ -1360,42 +1625,17 @@ function handleRawEvent(stage, event) {
   stage.rawEvents.push(event);
   stage.rawPreEl.textContent = stage.rawEvents.map((e) => JSON.stringify(e)).join('\n');
 
-  if (event.type === 'system' && event.subtype === 'init') {
-    appendFeedLine(stage, 'Session started', 'system');
-    return;
-  }
-  if (event.type === 'system' && event.subtype === 'thinking_tokens') {
-    updateThinkingPill(stage, event.estimated_tokens);
-    return;
-  }
-  if (event.type === 'system' && event.subtype === 'post_turn_summary') {
-    appendFeedLine(stage, event.status_detail || event.needs_action || 'Turn summary', 'summary');
-    return;
-  }
-  if (event.type === 'system' || event.type === 'rate_limit_event' || event.type === 'thinking') {
-    return; // noise, still available in raw
-  }
-
   if (event.type === 'assistant' && event.message && Array.isArray(event.message.content)) {
-    clearThinkingPill(stage);
     for (const block of event.message.content) {
       if (block.type === 'text' && block.text.trim()) {
-        appendFeedLine(stage, block.text.trim(), 'text');
-      } else if (block.type === 'tool_use') {
-        appendFeedLine(stage, describeToolUse(block), 'tool');
+        const fenceIdx = block.text.indexOf('```');
+        const prose = (fenceIdx >= 0 ? block.text.slice(0, fenceIdx) : block.text).trim();
+        if (prose) appendAnalysisParagraph(stage, prose);
       }
     }
-    return;
   }
-
-  if (event.type === 'user') {
-    appendFeedLine(stage, describeToolResult(event), 'result');
-    return;
-  }
-
-  if (event.type === 'result') {
-    return; // covered by the 'done' message / verdict card
-  }
+  // tool_use / tool_result / system / thinking / rate_limit events are
+  // intentionally not rendered — see the comment above.
 }
 
 function makeStageCard(findingId, runId, agent) {
@@ -1418,8 +1658,11 @@ function makeStageCard(findingId, runId, agent) {
       <span class="status-text">Running…</span>
       <button class="stage-menu-btn" title="Stage actions">${icon('dots')}</button>
     </div>
-    <div class="stage-feed"></div>
-    <details class="stage-raw" hidden>
+    <div class="stage-body">
+      <div class="stage-section-title">Analysis</div>
+      <div class="stage-analysis-text"><p class="muted">Waiting for the agent to start…</p></div>
+    </div>
+    <details class="stage-raw">
       <summary>Raw stream-json</summary>
       <pre></pre>
     </details>
@@ -1448,12 +1691,12 @@ function rehydrateStage(findingId, run) {
     runId: run.runId, findingId, agent: run.agent, context: run.context, instruction: run.instruction,
     status: run.status,
     cardEl,
-    feedEl: cardEl.querySelector('.stage-feed'),
+    analysisEl: cardEl.querySelector('.stage-analysis-text'),
+    analysisEmpty: true,
     rawDetailsEl: cardEl.querySelector('.stage-raw'),
     rawPreEl: cardEl.querySelector('.stage-raw pre'),
     verdictEl: cardEl.querySelector('.stage-verdict'),
     actionsEl: cardEl.querySelector('.stage-actions'),
-    thinkingEl: null,
     rawEvents: [],
     fullText: run.fullText || '',
     verdict: run.verdict || null,
@@ -1461,10 +1704,11 @@ function rehydrateStage(findingId, run) {
   stages.set(run.runId, stage);
 
   if (run.status === 'running') {
-    appendFeedLine(stage, 'Reconnected after page load — live activity isn’t retained, this will update once the run finishes.', 'system');
+    appendAnalysisParagraph(stage, 'Reconnected after page load — live activity isn’t retained, this will update once the run finishes.', 'muted');
   } else {
     setStageStatus(stage, run.status, run.status === 'done' ? 'Completed' : run.status === 'cancelled' ? 'Cancelled' : 'Error');
-    if (run.instruction) appendFeedLine(stage, `Instruction: ${run.instruction}`, 'system');
+    if (run.instruction) appendAnalysisParagraph(stage, `Instruction: ${run.instruction}`, 'muted');
+    if (run.fullText) renderAnalysisFromFullText(stage, run.fullText);
     renderVerdict(stage);
     renderActions(stage);
   }
@@ -1481,12 +1725,12 @@ function startStage(findingId, agent, context, instruction) {
     runId, findingId, agent, context, instruction,
     status: 'running',
     cardEl,
-    feedEl: cardEl.querySelector('.stage-feed'),
+    analysisEl: cardEl.querySelector('.stage-analysis-text'),
+    analysisEmpty: true,
     rawDetailsEl: cardEl.querySelector('.stage-raw'),
     rawPreEl: cardEl.querySelector('.stage-raw pre'),
     verdictEl: cardEl.querySelector('.stage-verdict'),
     actionsEl: cardEl.querySelector('.stage-actions'),
-    thinkingEl: null,
     rawEvents: [],
     fullText: '',
     verdict: null,
@@ -1529,18 +1773,16 @@ function handleServerMessage(msg) {
     return;
   }
   if (msg.type === 'stderr') {
-    appendFeedLine(stage, msg.data.trim(), 'err');
-    return;
+    return; // CLI-internal chatter, not actionable — still in the raw stream-json toggle
   }
   if (msg.type === 'error') {
-    appendFeedLine(stage, msg.message, 'err');
+    appendAnalysisParagraph(stage, msg.message, 'err-line');
     setStageStatus(stage, 'error', 'Error');
     upsertTimelineEntry({ runId: stage.runId, status: 'error', finishedAt: Date.now() });
     refreshFindingAfterRun(stage.findingId);
     return;
   }
   if (msg.type === 'done') {
-    clearThinkingPill(stage);
     stage.fullText = msg.fullText;
     stage.verdict = msg.verdict;
     setStageStatus(stage, msg.code === 0 ? 'done' : 'error', `Exited (code ${msg.code})`);
@@ -1582,7 +1824,7 @@ function setStageStatus(stage, status, text) {
 
 function renderVerdict(stage) {
   if (!stage.verdict) {
-    stage.verdictEl.innerHTML = '<p class="hint">No JSON verdict block found in the response.</p>';
+    stage.verdictEl.innerHTML = '<div class="stage-section-title">Conclusion</div><p class="hint">No JSON verdict block found in the response.</p>';
     return;
   }
   const rows = Object.entries(stage.verdict).map(([k, v]) => {
@@ -1595,7 +1837,7 @@ function renderVerdict(stage) {
     }
     return `<div class="k">${escapeHtml(k)}</div><div class="v">${valueHtml}</div>`;
   }).join('');
-  stage.verdictEl.innerHTML = `<div class="vgrid">${rows}</div>`;
+  stage.verdictEl.innerHTML = `<div class="stage-section-title">Conclusion</div><div class="vgrid">${rows}</div>`;
 }
 
 function renderActions(stage) {
@@ -1662,33 +1904,29 @@ function openFindingContextMenu(x, y, findingId) {
     contextMenuEl.appendChild(btn);
   };
 
-  const hasRemediation = agentsList.includes('remediation');
-  addItem('Run Remediation', !hasRemediation, async () => {
-    await selectFinding(findingId);
-    const finding = findingCache.get(findingId);
-    startStage(findingId, 'remediation', buildBaseContext(finding), '');
-  });
-  addItem('Run Remediation with instructions…', !hasRemediation, async () => {
-    await selectFinding(findingId);
-    const finding = findingCache.get(findingId);
-    openFreshStageModal(findingId, 'remediation', buildBaseContext(finding));
-  });
-
-  const hr = document.createElement('hr');
-  contextMenuEl.appendChild(hr);
-
+  // Every path here opens the stage modal rather than running an agent
+  // immediately — the AppSec tester reviews context/instructions and
+  // explicitly clicks "Start stage" before anything executes, so there's
+  // always a deliberate action behind a run, not an implicit auto-fix.
   const hasTriage = agentsList.includes('triage');
-  addItem('Expand analysis: Triage…', !hasTriage, async () => {
+  addItem('Run Triage…', !hasTriage, async () => {
     await selectFinding(findingId);
     const finding = findingCache.get(findingId);
     openFreshStageModal(findingId, 'triage', buildBaseContext(finding));
   });
 
   const hasThreatModel = agentsList.includes('threat_model');
-  addItem('Expand analysis: Threat Model…', !hasThreatModel, async () => {
+  addItem('Run Threat Model…', !hasThreatModel, async () => {
     await selectFinding(findingId);
     const finding = findingCache.get(findingId);
     openFreshStageModal(findingId, 'threat_model', buildBaseContext(finding));
+  });
+
+  const hasRemediation = agentsList.includes('remediation');
+  addItem('Run Remediation…', !hasRemediation, async () => {
+    await selectFinding(findingId);
+    const finding = findingCache.get(findingId);
+    openFreshStageModal(findingId, 'remediation', buildBaseContext(finding));
   });
 
   positionAndShowMenu(x, y);
@@ -1709,7 +1947,7 @@ document.addEventListener('click', (e) => {
   if (!contextMenuEl.hidden && !contextMenuEl.contains(e.target)) closeContextMenu();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeContextMenu(); closeStageModal(); closeFindingModal(); }
+  if (e.key === 'Escape') { closeContextMenu(); closeStageModal(); closeFindingModal(); closeFindingDetailModal(); }
 });
 
 // ---------- stage modal (continue / re-run / branch / fresh run w/ instructions) ----------
@@ -1817,12 +2055,25 @@ document.getElementById('finding-modal-save').addEventListener('click', async ()
   selectFinding(finding.id);
 });
 
-// ---------- run-remediation CTA ----------
+// ---------- finding detail modal ----------
 
-runRemediationBtn.addEventListener('click', () => {
+function closeFindingDetailModal() { findingDetailOverlay.hidden = true; }
+document.getElementById('finding-detail-close').addEventListener('click', closeFindingDetailModal);
+findingDetailOverlay.addEventListener('click', (e) => { if (e.target === findingDetailOverlay) closeFindingDetailModal(); });
+document.getElementById('finding-detail-menu-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!selectedFindingId) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  openFindingContextMenu(rect.right, rect.bottom + 4, selectedFindingId);
+});
+
+// ---------- select-flow CTA ----------
+
+selectFlowBtn.addEventListener('click', () => {
   if (!selectedFindingId) return;
   const finding = findingCache.get(selectedFindingId);
-  startStage(selectedFindingId, 'remediation', buildBaseContext(finding), '');
+  const defaultAgent = agentsList.includes('triage') ? 'triage' : agentsList[0];
+  openFreshStageModal(selectedFindingId, defaultAgent, buildBaseContext(finding));
 });
 
 // ---------- csv export ----------
@@ -1834,6 +2085,10 @@ exportCsvBtn.addEventListener('click', () => {
 // ---------- settings / theme ----------
 
 const THEME_KEY = 'appsecops-theme';
+const navThemeBtn = document.getElementById('nav-theme-btn');
+const navThemeIconMoon = document.getElementById('nav-theme-icon-moon');
+const navThemeIconSun = document.getElementById('nav-theme-icon-sun');
+const navThemeLabel = document.getElementById('nav-theme-label');
 
 function applyTheme(theme) {
   if (theme === 'light') document.documentElement.dataset.theme = 'light';
@@ -1844,14 +2099,17 @@ function applyTheme(theme) {
 
 function renderThemeToggle() {
   const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-  document.querySelectorAll('#theme-toggle [data-theme-choice]').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.themeChoice === current);
-  });
+  navThemeIconMoon.hidden = current === 'light';
+  navThemeIconSun.hidden = current === 'dark';
+  navThemeLabel.textContent = current === 'light' ? 'Light theme' : 'Dark theme';
+  navThemeBtn.title = current === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
 }
 
-document.querySelectorAll('#theme-toggle [data-theme-choice]').forEach((btn) => {
-  btn.addEventListener('click', () => applyTheme(btn.dataset.themeChoice));
+navThemeBtn.addEventListener('click', () => {
+  const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  applyTheme(current === 'light' ? 'dark' : 'light');
 });
+renderThemeToggle();
 
 function renderSettings() {
   renderThemeToggle();

@@ -41,6 +41,7 @@ function toListItem(finding) {
     severity: finding.severity,
     rule: finding.rule,
     file: finding.file,
+    description: finding.description,
     status: finding.status,
     createdAt: finding.createdAt,
     runCount: runs.length,
@@ -152,6 +153,20 @@ app.get('/api/scans/:id', (req, res) => {
     ...toScanListItem(scan),
     findings: scan.findingIds.map((id) => findings.get(id)).filter(Boolean).map(toListItem),
   });
+});
+
+app.delete('/api/scans/:id', (req, res) => {
+  const scan = scans.get(req.params.id);
+  if (!scan) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  if (scan.status === 'running') {
+    res.status(409).json({ error: 'Cancel the scan before deleting it.' });
+    return;
+  }
+  scans.delete(req.params.id);
+  res.json({ ok: true });
 });
 
 app.get('/api/findings', (req, res) => {
@@ -608,8 +623,10 @@ function handleScanMessage(msg, { children, send }) {
       created.push(toListItem(finding));
     }
 
-    scan.status = code === 0 ? 'done' : 'error';
-    scan.error = code === 0 ? null : `claude exited with code ${code}`;
+    if (scan.status !== 'cancelled') {
+      scan.status = code === 0 ? 'done' : 'error';
+      scan.error = code === 0 ? null : `claude exited with code ${code}`;
+    }
     scan.finishedAt = Date.now();
     send({ type: 'scan-done', runId, scanId: scan.id, code, findings: created });
     children.delete(runId);

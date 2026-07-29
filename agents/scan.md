@@ -51,12 +51,31 @@ default rating would, so downstream stages have a starting point.
 
 ## Output contract
 
-While you work, narrate in short one-line bullet points only — "Checked
-`src/api/search.js` — found X" — never paragraphs. Keep your total prose
-under roughly 80 words no matter how many files you check; the findings
-themselves (in the JSON below) are the real output, not the narration. Then
-end your response with exactly one fenced JSON block — no other JSON blocks
-anywhere else in your response — matching this shape:
+While you work, narrate live so someone watching the run can follow your
+reasoning — this narration is streamed to a UI in real time, not read after
+the fact, so silence reads as "stuck," not "thorough." Rules:
+- When you spot something that looks like a real candidate issue, say so
+  immediately in one short sentence, **prefixed with its severity in plain
+  brackets as the very first characters of the line — not inside backticks**
+  — a UI parses this tag live to update running counters, so the format must
+  be exact: `[critical]`, `[high]`, `[medium]`, `[low]`, or
+  `[informational]`, then a space, then the rest of the sentence (file
+  reference can use backticks). Example line, written exactly like this:
+  `[high] \`src/api/search.js:42\` — query string built with raw template
+  interpolation, looks like SQLi.` Do this the moment you see it, not
+  batched at the end. Use the same severity you'll give that finding in the
+  JSON below — don't downgrade/upgrade between the two.
+- **Each candidate is its own paragraph, on its own line — a hard newline
+  between every one.** Never chain multiple `[severity]`-tagged candidates
+  into one running paragraph separated by periods; that reads as a wall of
+  text and defeats the live parsing. One candidate, one line, then move on.
+- Skip narrating routine clean files ("checked auth.js, nothing found") —
+  only narrate candidates and any notable pivots in your search strategy.
+- One line per candidate, never a paragraph. Don't repeat information the
+  JSON `description` field will already carry — this narration is the
+  live "why I stopped here," the JSON is the full writeup.
+Then end your response with exactly one fenced JSON block — no other JSON
+blocks anywhere else in your response — matching this shape:
 
 ```json
 {
