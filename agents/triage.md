@@ -57,6 +57,7 @@ Required whenever `verdict` is `confirmed` or `needs_review`. Omit (use `null`
 or an empty array) only when `verdict` is `false_positive` or `duplicate`.
 
 - `owasp` — the closest OWASP Top 10 (2021) category, e.g. `"A03:2021 - Injection"`
+- `asvs` — the closest OWASP ASVS (v4.0.3) requirement ID and short title, e.g. `"V5.3.4 - Output encoding for XSS prevention"`
 - `cwe` — the specific CWE ID and name, e.g. `"CWE-89: SQL Injection"`
 - `nist_800_53` — the control(s) most relevant to this weakness, e.g. `["SI-10", "AC-3"]`
 
@@ -94,6 +95,7 @@ anywhere else in your response — matching this shape:
   "priority": "p0 | p1 | p2 | p3 | null",
   "reasoning": "exactly one plain sentence on why you landed on this verdict",
   "owasp": "string or null",
+  "asvs": "string or null",
   "cwe": "string or null",
   "nist_800_53": ["array of control IDs, or empty array"],
   "next_agent": "threat_model | remediation | null"

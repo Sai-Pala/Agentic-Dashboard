@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A local Node app that invokes Claude Code headless (`claude -p`) as a set of specialized
 AppSec agents, streams their reasoning live to a browser UI over WebSocket, and parses a
 structured JSON verdict out of each run. The UI is a "mission control" style app with a
-global left nav (Dashboard / Timeline / Findings), plus Settings tucked in the nav footer:
+global left nav (Dashboard / Timeline / Findings / Threat Model / Agents), plus Settings
+tucked in the nav footer:
 
 - **Dashboard** — the scan kickoff form lives here (there is no separate Scans view; "combine
   Scans into Dashboard, let me kick off scans from the main screen" was an explicit design
@@ -37,6 +38,25 @@ global left nav (Dashboard / Timeline / Findings), plus Settings tucked in the n
   parsed verdict) summary — raw `stream-json` is available behind a collapsed toggle, not
   shown by default. An "Export" button (`GET /api/findings/export.csv`) downloads all
   findings + latest verdicts.
+- **Threat Model** — a read-only, cross-finding view of every finding with a completed
+  Threat Model run whose verdict is `confirmed` or `needs_review` (findings never
+  threat-modeled just don't appear — no placeholder queue), grouped into sections by
+  `verdict.owasp` (sorted by finding count, `"Unclassified"` bucket for anything without
+  one), each section header showing every distinct `verdict.asvs` value found among its
+  findings. Entirely derived client-side from the same `timelineEntries` cache Timeline
+  already fetches (`GET /api/timeline`, kept live via `upsertTimelineEntry()`) — no
+  dedicated endpoint, no chart library, no static OWASP→ASVS lookup table (the agents
+  already emit the specific ASVS control per finding, which is more precise than a
+  category-level table would be). Cards are colored by `verdict.severity_confirmed` via
+  the same `SEV_COLOR_VAR` map the Kanban board uses, and clicking one jumps to that
+  finding in Findings.
+- **Agents** — a top-level screen for managing the `.md` files under `agents/` from the
+  browser instead of by hand: create/edit/delete via `GET/POST/PUT/DELETE /api/agents(/:name)`
+  in `server.js`. Built-in pipeline agents (`triage`/`threat_model`/`remediation`/`scan`,
+  `BUILTIN_AGENTS` server-side) can be edited but not deleted (403). New agents are
+  immediately usable everywhere `agentsList` is consumed — the Findings stage modal's agent
+  dropdown and the Dashboard's "Run after scan" pill row are both driven off the same
+  dynamic list, no extra wiring needed per agent.
 - **Settings** — a nav-footer entry (not a top-level nav item, deliberately tucked away),
   with a Dark/Light theme toggle (`applyTheme()`, persisted to `localStorage` under
   `appsecops-theme`, applied flash-free by an inline `<script>` at the very top of `<head>`
@@ -199,10 +219,12 @@ raw stream captured only in that card's own collapsed toggle, never rendered inl
 each agent's `.md` file and must stay byte-identical across agents (copy, don't
 redefine) — they're meant to match the org's existing `owasp-code-review`
 Claude skill so findings read consistently whether a human or an agent
-produced them. OWASP/CWE/NIST 800-53 framework mapping is required (not
-optional) whenever an agent's verdict is `confirmed` or `needs_review` — this
-program runs under FedRAMP Moderate/High and FISMA, and the NIST 800-53
-mapping feeds compliance reporting downstream. See `agents/triage.md` for the
+produced them. OWASP/ASVS/CWE/NIST 800-53 framework mapping (`owasp`, `asvs`,
+`cwe`, `nist_800_53`) is required (not optional) whenever an agent's verdict
+is `confirmed` or `needs_review` — this program runs under FedRAMP
+Moderate/High and FISMA, and the mapping feeds compliance reporting
+downstream, including the Threat Model tab's OWASP-category grouping (see
+"Threat Model" below). See `agents/triage.md` for the
 current definitions; `threat_model.md` and `remediation.md` reuse them (`remediation.md`
 now assigns them itself, same rules, when there's no prior verdict to carry forward — see
 "Pipeline shape" above) and only add stage-specific fields

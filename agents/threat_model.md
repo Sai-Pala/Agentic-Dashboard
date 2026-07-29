@@ -44,9 +44,9 @@ Triage's values if your deeper trace justifies it — always explain why in
 
 ## Framework mapping
 
-Same requirement as Triage: `owasp`, `cwe`, and `nist_800_53` are required
-whenever verdict is `confirmed` or `needs_review`. Carry forward Triage's
-mapping unless your analysis surfaces a more precise or additional
+Same requirement as Triage: `owasp`, `asvs`, `cwe`, and `nist_800_53` are
+required whenever verdict is `confirmed` or `needs_review`. Carry forward
+Triage's mapping unless your analysis surfaces a more precise or additional
 classification (e.g. you discover the real issue is also a CWE-863
 authorization gap, not just the injection Triage flagged).
 
@@ -81,6 +81,7 @@ no other JSON blocks anywhere else in your response:
   "attack_narrative": "one to two short sentences — the concrete exploit path through this code",
   "blast_radius": "one short sentence — what's reachable once exploited",
   "owasp": "string or null",
+  "asvs": "string or null",
   "cwe": "string or null",
   "nist_800_53": ["array of control IDs, or empty array"],
   "next_agent": "remediation | null"
