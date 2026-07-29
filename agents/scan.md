@@ -44,10 +44,27 @@ default rating would, so downstream stages have a starting point.
 - `severity` — your best-effort initial call: `critical | high | medium | low | informational`
 - `rule` — the CWE this most closely matches, e.g. `"CWE-89 SQL Injection"`
 - `file` — path relative to the scan root, with a line number when you have one, e.g. `"src/api/search.js:42"`
-- `description` — plain text covering: what pattern you found, the actual
-  code snippet (not paraphrased), and why it's exploitable — written the way
-  a scanner export's description field would read, since this is exactly what
-  Triage receives as its starting context
+- `description` — plain text covering: what pattern you found and why it's
+  exploitable — written the way a scanner export's description field would
+  read, since this is exactly what Triage receives as its starting context
+
+Additionally, fill in whichever of these optional fields actually apply to
+this finding (leave the rest `null` — don't force a field that doesn't fit):
+
+- `code` — for a source-code finding (the common case): the exact vulnerable
+  snippet, verbatim from the file, not paraphrased or reformatted. This is
+  rendered with syntax highlighting in the UI, so paste it exactly as it
+  appears in source.
+- `package_name`, `package_version`, `fixed_version` — for a dependency/SCA
+  finding (a known-vulnerable, outdated, or unpinned third-party package
+  found in a manifest/lockfile): the package name, the version currently
+  pinned/resolved, and the version that fixes it if you know one (`null` if
+  unknown). Leave `code` `null` for these unless quoting the manifest line
+  itself is genuinely useful context.
+- `endpoint`, `method` — for a runtime/attack-surface finding (an externally
+  reachable route or entry point you're reasoning about from static code):
+  the route path (e.g. `"/api/users/:id/export"`) and HTTP method (e.g.
+  `"GET"`). Leave `null` for findings that aren't about a specific route.
 
 ## Output contract
 
@@ -85,7 +102,13 @@ blocks anywhere else in your response — matching this shape:
       "severity": "critical | high | medium | low | informational",
       "rule": "string",
       "file": "string",
-      "description": "string"
+      "description": "string",
+      "code": "string or null",
+      "package_name": "string or null",
+      "package_version": "string or null",
+      "fixed_version": "string or null",
+      "endpoint": "string or null",
+      "method": "string or null"
     }
   ]
 }
