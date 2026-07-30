@@ -466,9 +466,6 @@
   .findings-table .ft-select-col { width: 1%; padding-right: 0; }
   .findings-table .ft-actions-col { width: 1%; text-align: right; }
   .ft-empty { padding: 40px; text-align: center; color: var(--muted); font-size: 12.5px; }
-  .remediation-table td { max-width: 340px; }
-  .remediation-code-cell { max-height: 260px; overflow-y: auto; }
-  .remediation-code-cell .code-block { margin: 0; }
 
   /* ---------- finding detail (full page) ---------- */
   #fd-back-btn { font-size: 11px; margin-bottom: 6px; padding: 0; }
@@ -949,25 +946,6 @@
   </div>
 </div>
 
-<div id="view-remediation" class="view" hidden>
-  <div class="view-header">
-    <div>
-      <button class="link-btn" id="remediation-back-btn" type="button">← Back to Agent Triage</button>
-      <h1>Remediation</h1>
-      <div class="view-subtitle">Auto-generated fixes for the findings selected on Agent Triage</div>
-    </div>
-  </div>
-  <div class="view-body">
-    <div id="remediation-empty" class="hint" style="padding:30px 4px;" hidden>No findings selected — go back to Agent Triage, check some rows, and click "Auto-remediate selected".</div>
-    <div class="findings-table-wrap">
-      <table class="findings-table remediation-table">
-        <thead><tr><th>Severity</th><th>Issue</th><th>Code issue</th><th>Corrected code</th></tr></thead>
-        <tbody id="remediation-table-body"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
 <div id="view-threatmodel" class="view" hidden>
   <div class="view-header">
     <div>
@@ -1350,7 +1328,6 @@ let findingsTypeFilter = 'all';  // 'all' | 'reasoning' | 'sca'
 let findingsScanFilter = 'all';  // 'all' or a scan id — restricts the table to one scan's findings
 let findingsSort = { key: 'severity', dir: 'asc' };
 let selectedFindingIds = new Set();  // checked rows on Agent Triage, feeds "Auto-remediate selected"
-let remediationBatchIds = [];  // ordered findingIds shown on the Remediation screen's current batch
 let currentFindingDetailId = null;
 let currentView = 'dashboard';
 const findingCache = new Map();  // findingId -> full finding record (from GET /api/findings/:id)
@@ -1551,7 +1528,6 @@ function showView(view, opts = {}) {
   document.getElementById('view-settings').hidden = view !== 'settings';
   document.getElementById('view-findings').hidden = view !== 'findings';
   document.getElementById('view-finding-detail').hidden = view !== 'finding-detail';
-  document.getElementById('view-remediation').hidden = view !== 'remediation';
   document.getElementById('view-threatmodel').hidden = view !== 'threatmodel';
   document.getElementById('view-controls-assist').hidden = view !== 'controls-assist';
   document.getElementById('view-agents').hidden = view !== 'agents';
@@ -3465,7 +3441,6 @@ function updateFindingListItem(findingId, patch) {
   if (currentView === 'findings') renderFindingsTable();
   if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
   if (currentView === 'dashboard') renderDashboard();
-  if (currentView === 'remediation' && remediationBatchIds.includes(findingId)) renderRemediationView();
 }
 
 // ---------- finding loading (used to build context for a fresh agent run) ----------
@@ -3479,57 +3454,25 @@ async function ensureFindingCached(findingId) {
   return finding;
 }
 
-// ---------- auto-remediate: run Remediation on every checked Agent Triage row, then show a
-// side-by-side original/corrected-code report for the batch ----------
+// ---------- auto-remediate: run Remediation on every checked Agent Triage row in place ----------
+// No separate results page — progress and outcome show up right in the table each row is
+// already in (the Runs column, and the "Remediation generated" status badge once a run
+// lands), the same way any other agent run does. Opening a row's Finding Detail page shows
+// the full verdict, including corrected_code, if you need to read it.
 
 async function autoRemediateSelected() {
   const ids = [...selectedFindingIds];
   if (!ids.length) return;
   selectedFindingIds.clear();
-  remediationBatchIds = ids;
-  showView('remediation');
-  renderRemediationView();
+  renderFindingsTable();
   for (const id of ids) {
     const finding = await ensureFindingCached(id);
     if (!finding) continue;
-    renderRemediationView();
     startStage(id, 'remediation', buildBaseContext(finding), '');
   }
 }
 
-function remediationRowStateHtml(finding) {
-  const latest = finding.runs && finding.runs.length ? finding.runs[finding.runs.length - 1] : null;
-  if (!latest || latest.agent !== 'remediation') return '<span class="hint">Waiting to start…</span>';
-  if (latest.status === 'running') return '<span class="hint">Generating…</span>';
-  if (latest.status === 'error' || latest.status === 'cancelled') return '<span class="hint">Run failed — no corrected code produced.</span>';
-  const correctedCode = latest.verdict && latest.verdict.corrected_code;
-  if (correctedCode) return `<div class="remediation-code-cell"><pre class="code-block"><code>${highlightCode(correctedCode)}</code></pre></div>`;
-  return '<span class="hint">No corrected code produced for this finding.</span>';
-}
-
-function renderRemediationView() {
-  const bodyEl = document.getElementById('remediation-table-body');
-  const emptyEl = document.getElementById('remediation-empty');
-  emptyEl.hidden = remediationBatchIds.length > 0;
-  bodyEl.innerHTML = remediationBatchIds.map((id) => {
-    const finding = findingCache.get(id);
-    if (!finding) return '';
-    const codeCell = finding.code
-      ? `<div class="remediation-code-cell"><pre class="code-block"><code>${highlightCode(finding.code)}</code></pre></div>`
-      : '<span class="hint">No code on file for this finding.</span>';
-    return `
-      <tr>
-        <td><span class="badge ${escapeHtml(finding.severity)}">${escapeHtml(severityLabel(finding.severity))}</span></td>
-        <td><div class="ft-title">${escapeHtml(finding.title)}</div></td>
-        <td>${codeCell}</td>
-        <td>${remediationRowStateHtml(finding)}</td>
-      </tr>
-    `;
-  }).join('');
-}
-
 autoRemediateBtn.addEventListener('click', autoRemediateSelected);
-document.getElementById('remediation-back-btn').addEventListener('click', () => showView('findings'));
 
 function buildBaseContext(finding) {
   const latestRun = finding.runs && finding.runs.length ? finding.runs[finding.runs.length - 1] : null;

@@ -164,8 +164,9 @@ dots do.
   in a leading `.ft-select-col` column (`selectedFindingIds`, a `Set` of finding IDs) plus a
   header "select all visible" checkbox that only ever affects the currently-filtered/sorted
   `rows` array, not the full findings list — checking/unchecking updates a header button,
-  "Auto-remediate selected (N)" (`#auto-remediate-btn`, disabled at N=0), which feeds the
-  Remediation screen below. Every row also carries a trailing **`.ft-actions-col`** with a
+  "Auto-remediate selected (N)" (`#auto-remediate-btn`, disabled at N=0), which bulk-runs
+  Remediation on every checked row in place (see the Auto-remediate bullet below — there is no
+  separate results screen). Every row also carries a trailing **`.ft-actions-col`** with a
   small three-dot button (reusing the `.console-toggle-btn` icon-button style) that opens the
   exact same per-agent dropdown as right-clicking the row — added because right-click alone
   isn't discoverable, especially without a mouse; the button just calls
@@ -214,41 +215,30 @@ dots do.
   the click bubbles to the document-level "click outside closes the menu" listener and closes
   the menu in the same tick it opened. An "Export" button (`GET /api/findings/export.csv`)
   downloads all findings + latest verdicts.
-- **Remediation** — a second, narrower full-page table reached only via Agent Triage's
-  "Auto-remediate selected (N)" button (`autoRemediateSelected()`), not a top-level nav item —
-  same reasoning as Finding Detail not being one: it's a destination for one specific action,
-  not a place someone browses to on its own. Clicking it clears `selectedFindingIds`, snapshots
-  the checked IDs into `remediationBatchIds` (an ordered array — this batch, not "every
-  remediation ever run," is deliberately what stays on screen; see below), navigates to
-  `#view-remediation`, and then for each ID: ensures the full finding is cached
-  (`ensureFindingCached()`), re-renders immediately so the **Issue**/**Code issue** columns
-  appear right away (`renderRemediationView()`), and fires a normal `remediation` stage run
-  (`startStage(id, 'remediation', buildBaseContext(finding), '')` — the same function every
-  other agent run uses, just without the small stage modal in front of it, since "auto" here
-  means skip the per-run review step for a batch action). The **Corrected code** column
-  (`remediationRowStateHtml()`) shows "Generating…" while that finding's run is `running`, then
-  the agent's `corrected_code` verdict field once it lands — a new field added to
-  `agents/remediation.md`'s output contract specifically for this screen: the full corrected
-  version of the finding's `code` snippet, not just prose fix guidance, so it can render
-  side-by-side with the original in a `.code-block` (`highlightCode()`, reused unchanged). It's
-  `null` when there's no `code` snippet to correct, or the real fix is architectural (the agent
-  is told to say so in `fix_guidance` instead of inventing a misleading single-snippet diff).
-  Because this is a real `remediation` run like any other, `deriveStatus()` in `server.js` picks
-  it up: a new `remediation_generated` status is derived when the latest run is `agent ===
-  'remediation'` with a non-null `corrected_code` and a `confirmed`/`needs_review` verdict
-  (checked *before* the existing `remediation_ready` case, but *after* the `false_positive`/
-  `duplicate` → `closed` case — a finding the agent itself flagged as not real stays `closed`
-  even if it still produced speculative corrected code, since remediation.md's contract has it
-  fill in best-effort guidance for a pattern even when this particular instance isn't
-  exploitable). The status shows up back on Agent Triage as a new accent-colored "Remediation
-  generated" badge (`statusLabel()`/`.badge.remediation_generated`) the moment the run finishes,
-  via the same `updateFindingListItem()` hook every other status change already flows through
-  (extended with one more branch: re-render the Remediation table too, if it's the open view
-  and the finding is part of the current batch). Revisiting this screen only ever shows the
-  *current* batch (`remediationBatchIds` is replaced, not appended to, each time the button is
-  clicked) — findings remediated in an earlier batch this session aren't still listed after a
-  new batch runs; the badge on Agent Triage is the durable record of "this one already has
-  corrected code," not this screen.
+- **Auto-remediate (bulk)** — no dedicated screen for this; results land back in Agent
+  Triage's own table, the same place every other agent's outcome already shows up. Clicking
+  "Auto-remediate selected (N)" (`autoRemediateSelected()`) clears `selectedFindingIds` and
+  re-renders the table immediately (unchecking every box, disabling the button), then for each
+  previously-checked id: ensures the full finding is cached (`ensureFindingCached()`) and fires
+  a normal `remediation` stage run (`startStage(id, 'remediation', buildBaseContext(finding),
+  '')` — the same function every other agent run uses, just without the small stage modal in
+  front of it, since "auto" here means skip the per-run review step for a batch action). No
+  navigation happens; you stay on Agent Triage and watch each row's **Status**/**Runs** columns
+  update as runs land, exactly like a single "Run Remediation…" from a row's own menu would.
+  A prior version of this feature built out `#view-remediation`, a dedicated full-page
+  before/after code comparison — it was cut after user feedback that a whole separate page
+  (even a well laid-out one) was more than this needed; the corrected code itself is still
+  fully available, just via Finding Detail's normal Agent runs section like any other verdict,
+  not a bespoke display. Because this is a real `remediation` run like any other,
+  `deriveStatus()` in `server.js` derives a `remediation_generated` status once the latest run
+  is `agent === 'remediation'` with a non-null `corrected_code` (a field on
+  `agents/remediation.md`'s output contract: the full corrected version of the finding's `code`
+  snippet, not just prose fix guidance — `null` when there's no `code` snippet to correct, or
+  the fix is architectural) and a `confirmed`/`needs_review` verdict (checked *before* the
+  existing `remediation_ready` case, but *after* the `false_positive`/`duplicate` → `closed`
+  case). The status shows up as an accent-colored "Remediation generated" badge
+  (`statusLabel()`/`.badge.remediation_generated`) the moment the run finishes, via the same
+  `updateFindingListItem()` hook every other status change already flows through.
 - **Threat Model** — a read-only, cross-finding view of every finding with a completed
   Threat Model run whose verdict is `confirmed` or `needs_review` (`latestThreatModelEntries()`
   — findings never threat-modeled just don't appear, no placeholder queue). Entirely derived
@@ -497,11 +487,11 @@ Agent Triage table (or a timeline agent-run row) to open its full-page detail vi
 "Agent Runs ▾" in the page header (or right-click the table row for the same menu) to pick an
 agent, review the context/instructions in the small stage modal, and explicitly start it;
 nothing runs without that step. Alternatively, check one or more rows' checkboxes on Agent
-Triage and click "Auto-remediate selected" to run Remediation on all of them at once and see
-original-vs-corrected code side by side on the Remediation screen. The detail page's Agent
-runs section updates live once a run finishes (or shows a "running" placeholder immediately,
-via an optimistic push in `startStage()`). There is no automated test for the WebSocket flow —
-verification is manual, through the browser.
+Triage and click "Auto-remediate selected" to run Remediation on all of them at once, right
+there in the table — no separate screen, just watch each row's Status/Runs columns update as
+the runs land. The detail page's Agent runs section updates live once a run finishes (or shows
+a "running" placeholder immediately, via an optimistic push in `startStage()`). There is no
+automated test for the WebSocket flow — verification is manual, through the browser.
 
 ## Architecture
 
@@ -515,14 +505,14 @@ public/index.html   The whole app: global nav (status summary + Settings entry i
                     footer) with Dashboard (briefing + stats + a clickable agents panel),
                     Reasoning Scan (the scan kickoff form — target/branch/app, scope in the
                     header — plus its live scan cards and a timeline-drawer clock button), SCA
-                    Scan (structurally identical, its own live cards, its own clock button, plus a
-                    still-wired "run after scan" pill row), an Agent Triage table split into
-                    Reasoning/SCA type tabs with click-to-sort columns, a per-scan filter
-                    popover, and row checkboxes feeding an "Auto-remediate selected" button, a
-                    full-page Finding Detail view per finding (meta grid, syntax-highlighted
-                    code block, and an Agent runs history with a single "Agent Runs ▾"
-                    dropdown), a Remediation screen (original vs. agent-corrected code for a
-                    batch of auto-remediated findings), a Threat Model page (per-finding OWASP
+                    Scan (structurally identical, its own live cards, its own clock button), an
+                    Agent Triage table split into Reasoning/SCA type tabs with click-to-sort
+                    columns, a per-scan filter popover, a per-row action menu, and row
+                    checkboxes feeding an "Auto-remediate selected" button that bulk-runs
+                    Remediation in place (no separate results screen), a full-page Finding
+                    Detail view per finding (meta grid, syntax-highlighted code block, and an
+                    Agent runs history with a single "Agent Runs ▾" dropdown), a Threat Model
+                    page (per-finding OWASP
                     x severity heat map plus a "New app threat model" form and its own
                     accordion-style App-level Threat Models list, also heat-mapped, plus a
                     clock button), a Control Scan page (its own "New control scan"
@@ -726,8 +716,7 @@ now assigns them itself, same rules, when there's no prior verdict to carry forw
 (`preconditions`/`attack_narrative`/`blast_radius` for threat_model;
 `root_cause`/`fix_guidance`/`corrected_code`/`verification_steps`/`effort` for remediation —
 `corrected_code` is `null` unless the finding's context included a `code` snippet and the fix
-is a meaningful drop-in replacement, and is what the Remediation screen renders side-by-side
-with the original; see the Remediation bullet above). `scan.md`
+is a meaningful drop-in replacement; see the Auto-remediate bullet above). `scan.md`
 findings deliberately do *not* carry `verdict`/`severity_confirmed`/`confidence`/
 `priority`/framework-mapping — they're raw, scanner-export-style output; a `severity`
 field is the scan's best-effort initial estimate only, and real triage happens downstream.
@@ -767,7 +756,3 @@ dashboard merge itself (`findings-dashboard.jsx`'s Azure DevOps ticket creation 
 does a browser-side `fetch()` that's expected to hit CORS — if that logic moves into this
 app, it should move server-side, where Node has no CORS problem), and the **Reports** screen
 (currently a bare placeholder — no data, no server endpoint, see the Reports bullet above).
-The **Remediation** screen also only ever shows the most recently triggered
-`remediationBatchIds` batch, not a durable history of every batch run this session — a
-finding's `remediation_generated` status on Agent Triage is the only lasting record that it
-has corrected code, and there's no way from this screen to re-open an older batch's table.
