@@ -7,86 +7,119 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A local Node app that invokes Claude Code headless (`claude -p`) as a set of specialized
 AppSec agents, streams their reasoning live to a browser UI over WebSocket, and parses a
 structured JSON verdict out of each run. The UI is a "mission control" style app with a
-global left nav (Dashboard / Scans / SCA / Timeline / Findings / Threat Model / Agents), plus
-Settings tucked in the nav footer. Four nav items carry a live status badge
-(`renderNavBadges()`, called from `upsertTimelineEntry()` and `renderNavStatus()` so it
-stays current from any view): **Scans** shows a pulsing yellow dot while any non-SCA scan is
-`status: 'running'` (`scansList`, filtered to `scanType !== 'sca'`); **SCA** shows the same
-pulsing yellow dot, filtered the other way (`scanType === 'sca'`) — split so a running SCA
-scan doesn't make the Scans page look like something's happening there when it isn't, and
-vice versa; **Timeline** shows a pulsing yellow dot while any run/scan of *any* kind is
-`status: 'running'`, or a solid green dot if nothing's running but a run finished while the
-user was on a different view (`timelineUnseenDone`, cleared when they actually visit
-Timeline); **Findings** shows a red count pill of findings whose `status !== 'closed'`. When
-the sidebar is collapsed, `#global-nav.collapsed .nav-item .nav-badge` forces every badge —
-dot or count pill alike — to the same 8×8 corner dot (text hidden via `font-size: 0`, the
-count still readable from the badge's `title` tooltip on hover); without this override the
-wider count pill overlapped the nav icon instead of sitting in its corner like the plain
-status dots do.
+global left nav (Dashboard / Reasoning Scans / SCA / Agent Triage / Threat Model / Agent
+Configuration / Reports), plus Settings tucked in the nav footer. Timeline is deliberately
+*not* one of these nav items — see the Timeline bullet below for why and where it lives
+instead. Three nav items carry a live status badge (`renderNavBadges()`, called from
+`upsertTimelineEntry()` and `renderNavStatus()` so it stays current from any view):
+**Reasoning Scans** shows a pulsing yellow dot while any non-SCA scan is `status: 'running'`
+(`scansList`, filtered to `scanType !== 'sca'`); **SCA** shows the same pulsing yellow dot,
+filtered the other way (`scanType === 'sca'`) — split so a running SCA scan doesn't make the
+Reasoning Scans page look like something's happening there when it isn't, and vice versa;
+**Agent Triage** shows a red count pill of findings whose `status !== 'closed'`. When the
+sidebar is collapsed, `#global-nav.collapsed .nav-item .nav-badge` forces every badge — dot
+or count pill alike — to the same 8×8 corner dot (text hidden via `font-size: 0`, the count
+still readable from the badge's `title` tooltip on hover); without this override the wider
+count pill overlapped the nav icon instead of sitting in its corner like the plain status
+dots do.
 
 - **Dashboard** — a pure status/briefing screen: the Briefing banner, a `.quick-actions` row
   of two prominent cards ("Start a scan" / "View timeline", `#dash-scans-link`/
-  `#dash-timeline-link`) linking into those views, stat tiles (in progress, not started, in
-  review, remediation ready, total findings, total agent runs), and an Agents panel (the 3
+  `#dash-timeline-link` — the latter opens the timeline drawer, see the Timeline bullet below,
+  not a dedicated view) linking into those destinations, stat tiles (in progress, not started,
+  in review, remediation ready, total findings, total agent runs), and an Agents panel (the 3
   per-finding pipeline agents only — Scan and App Threat Model are deliberately not listed
-  there, see below). It holds no form of its own — `renderDashboard()` only refreshes the
-  briefing/stats/agents panel, nothing else. The quick-actions row replaced an earlier
-  `.dash-footer` bar that crammed the same two links into a thin text strip alongside a
-  "`{n} findings · {m} total runs`" summary — that summary was pure duplication of numbers
-  the stat tiles already show directly above it, and the two links read as an afterthought;
-  removed the redundant text and gave the links real button-card treatment instead. The
-  connection/findings-count/agents-ready/scans-count status lives in the sidebar
+  there, see below). The panel itself (`#dash-agents-panel`, `.panel-clickable`) is a single
+  click target that navigates straight to Agent Configuration — a small "→" fades in on hover
+  (`.panel-title-arrow`) as the only visual hint it's clickable, since a whole panel acting as
+  one link has no other natural affordance. It holds no form of its own — `renderDashboard()`
+  only refreshes the briefing/stats/agents panel, nothing else. The quick-actions row replaced
+  an earlier `.dash-footer` bar that crammed the same two links into a thin text strip
+  alongside a "`{n} findings · {m} total runs`" summary — that summary was pure duplication of
+  numbers the stat tiles already show directly above it, and the two links read as an
+  afterthought; removed the redundant text and gave the links real button-card treatment
+  instead. The connection/findings-count/agents-ready/scans-count status lives in the sidebar
   (`#nav-status`, rendered by `renderNavStatus()`) so it's visible from every view, not just
   Dashboard.
-- **Scans** — the scan kickoff form and its live cards, on their own top-level page (this
-  used to be folded into Dashboard per an earlier explicit request to "combine Scans into
-  Dashboard, let me kick off scans from the main screen" — a later request reversed that,
+- **Reasoning Scans** — the scan kickoff form and its live cards, on their own top-level page
+  (this used to be folded into Dashboard per an earlier explicit request to "combine Scans
+  into Dashboard, let me kick off scans from the main screen" — a later request reversed that,
   finding the combined Dashboard confusing, and asked for Scans to be split back out plus for
   the whole-app threat model action to move off the scan form entirely, see below): a
-  target-directory input, branch/app fields, a **Scan type** pill row, scope toggle, a row of
-  toggleable agent pills ("run after scan") plus an "+ instructions" textarea toggle, and a
-  Start button — followed by `#scan-live-container` (2-column grid of live scan cards).
-  Starting a scan optimistically pushes into both `scansList` and `timelineEntries` so the
-  Dashboard briefing and Timeline update before the server round-trip completes. The "run
-  after scan" pill row (`renderScanAgentSelection()`) deliberately excludes `threat_model` —
-  its per-finding Triage/Remediation semantics ("run this against every finding this scan
-  creates") don't fit Threat Model, which needs an exploit-chain to already exist; whole-app
-  threat modeling lives entirely on the Threat Model page instead (see below), fully
-  independent of any scan — no foreign key between the two, they just happen to often target
-  the same directory.
+  target-directory input, branch/app fields, an "+ instructions" textarea toggle, and a Start
+  button — followed by `#scan-live-container` (2-column grid of live scan cards). Starting a
+  scan optimistically pushes into both `scansList` and `timelineEntries` so the Dashboard
+  briefing and timeline drawer update before the server round-trip completes.
 
-  The Scan type pill row now only offers **Reasoning Scan** and **Custom** — SAST and DAST used
-  to be separate pills/scanTypes, but both were really just this same LLM reading source and
-  reasoning about it (no real static-analysis tool parsing an AST, no live traffic hitting a
-  running app), so presenting them as distinct scanner categories was misleading. They're
-  merged into one `reasoning` scan type whose canned framing (`SCAN_TYPE_FRAMING.reasoning` in
-  `server.js`) covers both angles — concrete code-level vulnerabilities and attack-surface/
-  entry-point reasoning — in a single pass. SCA is kept as its own genuinely different task
-  (checking manifests/lockfiles against known-vulnerable packages, not reasoning about code
-  patterns) and moved to its own page entirely rather than staying a pill here — see below.
-  The merge goes all the way down to finding classification too: `FINDING_SCAN_TYPES` is now
-  just `['reasoning', 'sca']`, and the Findings screen's type tabs became Reasoning/SCA (no
-  more separate DAST tab) — see the Findings bullet below.
+  The page used to also carry a **Scan type** pill row (Reasoning Scan vs. Custom) and a
+  toggleable "run after scan" agent-pill row — both removed. The scan-type pill was dropped
+  because this page is now dedicated to reasoning scans specifically (SCA moved to its own
+  page, see below, and nothing in the UI could still produce a `custom`-type scan once the
+  pill was gone), so `scanType` is just a hardcoded constant client-side now
+  (`const scanType = 'reasoning'`) — the same pattern the SCA page already used for its own
+  fixed type. The "run after scan" pill row (`scanSelectedAgents`/`renderScanAgentSelection()`)
+  turned out to be dead code on inspection — the selected agents were never actually read
+  anywhere or sent to the server, so removing it was a straight cleanup, not a
+  functionality cut. The **scope toggle** (Full scan / Diff only, `#scan-scope-toggle`) moved
+  from the form body into the page's `view-header`, top-right, alongside the new clock-icon
+  timeline button (`.view-header-actions`, see the Timeline bullet below) — freeing the form
+  itself down to just the fields that vary per invocation.
+
+  Historically this page also carried a **Scan type** merge story worth keeping straight:
+  SAST and DAST used to be separate pills/scanTypes, but both were really just this same LLM
+  reading source and reasoning about it (no real static-analysis tool parsing an AST, no live
+  traffic hitting a running app), so presenting them as distinct scanner categories was
+  misleading — they were merged into one `reasoning` scan type whose canned framing
+  (`SCAN_TYPE_FRAMING.reasoning` in `server.js`) covers both angles in a single pass. That
+  merge goes all the way down to finding classification: `FINDING_SCAN_TYPES` is
+  `['reasoning', 'sca']`, and the Agent Triage screen's type tabs are Reasoning/SCA (no
+  separate DAST tab) — see the Agent Triage bullet below.
 - **SCA** — Software Composition Analysis gets its own top-level page, structurally identical
-  to Scans (target directory, branch/app, scope toggle, run-after-scan pills, Start button,
-  live cards) but with no Scan type pill row at all, since the whole point of this page is that
-  the type is fixed. It reuses the exact same underlying mechanism as Scans — the same WS
+  to Reasoning Scans (target directory, branch/app, scope toggle now in the header, Start
+  button, live cards, a clock-icon timeline button) but with a run-after-scan pill row still
+  present (`scaAgentsList`/`renderScaAgentSelection()` — this one genuinely is wired, unlike
+  the removed Reasoning Scans copy) since the whole point of this page is that the type is
+  fixed. It reuses the exact same underlying mechanism as Reasoning Scans — the same WS
   `'scan'` message, the same `scanRuns` Map, the same `makeScanCard()` — just with a different
   target container (`#sca-live-container`) and `scanType: 'sca'` hardcoded
   (`startScaScan()`/`beginScanRun()` in `index.html`, factored out of the old single `startScan()`
   so both pages share the run-tracking/live-card machinery instead of duplicating it). Its own
-  nav badge (`#nav-badge-sca`) mirrors Scans' but filters to `scanType === 'sca'` scans only, so
-  the two pages' "something's running" indicators never cross-contaminate.
+  nav badge (`#nav-badge-sca`) mirrors Reasoning Scans' but filters to `scanType === 'sca'`
+  scans only, so the two pages' "something's running" indicators never cross-contaminate.
 - **Timeline** — every scan *and* every per-finding agent run, newest first, date-grouped,
-  filterable by a `kind` tag (`scan` / `triage` / `threat_model` / `remediation`,
-  color-coded via `AGENT_META` in `index.html`). Updates live via `upsertTimelineEntry()` —
-  no refetch needed. Scan rows are expandable in place (click toggles a `.timeline-row-body`
-  showing the findings that scan produced, reusing `renderScanFindingsBody()`); agent-run
-  rows instead navigate to that finding in Findings on click. `GET /api/timeline`
-  server-side now merges `findings` runs and `scans` into one array tagged with `kind`
-  before sorting by `startedAt` — see `handleScanMessage`'s sibling code in that endpoint.
-- **Findings** — a sortable table (`renderFindingsTable()`), not a Kanban board: findings are
-  split into type tabs (`findingsTypeFilter`: All / Reasoning / SCA, `#findings-type-tabs`,
+  filterable by a `kind` tag (`scan` / `triage` / `threat_model` / `remediation`, color-coded
+  via `AGENT_META` in `index.html`). This is **not a top-level nav destination** — it used to
+  be, but a dedicated Timeline tab read as one more place to check for "what's happening,"
+  competing with the per-page nav badges that already answer that question contextually.
+  Instead it's a slide-in drawer (`#timeline-drawer` + `#timeline-drawer-backdrop`,
+  `openTimelineDrawer()`/`closeTimelineDrawer()`) opened by a small clock-icon button
+  (`.clock-btn`) in the `view-header` of Reasoning Scans, SCA, and Threat Model — each button
+  opens the *same* drawer and reuses the *same* filter pills (`#timeline-filters`,
+  `#timeline-list` — untouched markup/JS, just relocated from a full page into the drawer),
+  but pre-scopes it to that page's own activity: Reasoning Scans passes
+  `openTimelineDrawer('scan', 'reasoning')`, SCA passes `openTimelineDrawer('scan', 'sca')`,
+  Threat Model passes `openTimelineDrawer('threat_model', null)`. The second argument,
+  `timelineScanTypeFilter`, only narrows entries when `timelineFilter === 'scan'` (a scan-kind
+  timeline entry now carries `scanType`, added to `GET /api/timeline`'s scan-entry shape in
+  `server.js` specifically to make this narrowing possible) — clicking any filter pill inside
+  the drawer clears it, since a manual "Scan" pill click means "show every scan," not whichever
+  type the drawer happened to open with. This preset-then-broaden design keeps the drawer
+  contextually useful without losing the ability to browse everything from any entry point.
+  The Dashboard's "View timeline" quick-action opens the same drawer with no preset
+  (`openTimelineDrawer('all')`). The Escape key and clicking the backdrop both close it
+  (folded into the same document-level `keydown`/`click` handlers the context menu and modals
+  already used, rather than adding a second listener). Scan rows are expandable in place
+  (click toggles a `.timeline-row-body` showing the findings that scan produced, reusing
+  `renderScanFindingsBody()`); agent-run rows instead navigate to that finding in Agent Triage
+  on click. `GET /api/timeline` server-side merges `findings` runs and `scans` into one array
+  tagged with `kind` before sorting by `startedAt`. A running-dot per clock button
+  (`updateTimelineClockDots()`, replacing the single shared `#nav-badge-timeline` the old nav
+  item carried) turns yellow while that page's own scope has something running, or green if
+  nothing in scope is running but something finished anywhere since the drawer was last opened
+  (`timelineUnseenDone`, still a single global counter — matches the old badge's behavior of
+  clearing on any drawer open, regardless of scope).
+- **Agent Triage** — a sortable table (`renderFindingsTable()`), not a Kanban board: findings
+  are split into type tabs (`findingsTypeFilter`: All / Reasoning / SCA, `#findings-type-tabs`,
   styled as a `.group-toggle` segmented control) because each type's useful columns differ —
   Reasoning shows a merged **Location** column (file path if it's a code-pattern finding,
   endpoint+method if it's an attack-surface one — a reasoning-scan finding can be either, or
@@ -95,28 +128,33 @@ status dots do.
   latest run's agent and, if that run produced a verdict, the verdict in parens (e.g. "2 runs
   · Threat Model (needs_review)") — a lightweight way to see a finding's most recent pipeline
   state without opening it. Severity/Title/Status columns are click-to-sort
-  (`findingsSort`, toggling asc/desc on the same header). A **Scan** filter
-  (`#findings-scan-filter`, `findingsScanFilter`) sits beside the type tabs — populated from
-  `scansList` (path + relative time per option, newest first), it restricts the table to one
-  scan's findings via `finding.sourceScanId` (`findingsScanScoped()`); the type tabs' counts
-  and the empty-state message both react to it too, and a scan that produced no findings
-  still on record (or whose findings were all removed) is left out of the option list rather
-  than becoming a dead-end filter. Three other places link into this same filtered view via
-  `openFindingsFilteredByScan(scanId)`: the Finding Detail page (a "Found by scan of `<path>`"
-  line under the badges, if the finding has a `sourceScanId`), a completed scan card's "View in
-  Findings →" action (`updateScanCardActions()`, Scans page), and a Timeline scan row's
-  expanded body ("View all in Findings →", `renderScanFindingsBody()`) — added because
-  discovering the scan filter only via the dropdown wasn't obvious enough on its own.
+  (`findingsSort`, toggling asc/desc on the same header). Every row also carries a **checkbox**
+  in a leading `.ft-select-col` column (`selectedFindingIds`, a `Set` of finding IDs) plus a
+  header "select all visible" checkbox that only ever affects the currently-filtered/sorted
+  `rows` array, not the full findings list — checking/unchecking updates a header button,
+  "Auto-remediate selected (N)" (`#auto-remediate-btn`, disabled at N=0), which feeds the
+  Remediation screen below. A **Scan** filter sits beside the type tabs — not a native
+  `<select>` but a small custom popover (`.scan-filter-dropdown`, `#findings-scan-filter-btn` +
+  `#findings-scan-filter-menu`, `renderFindingsScanFilter()`), each item formatted as e.g.
+  "Reasoning scan on `<path>` started 2h ago" / "SCA scan on `<path>` started..."
+  (`scanFilterLabel()`) rather than the old dropdown's bare path text — populated from
+  `scansList` (newest first), it restricts the table to one scan's findings via
+  `finding.sourceScanId` (`findingsScanScoped()`); the type tabs' counts and the empty-state
+  message both react to it too, and a scan that produced no findings still on record (or whose
+  findings were all removed) is left out of the menu rather than becoming a dead-end filter.
+  Three other places link into this same filtered view via `openFindingsFilteredByScan(scanId)`:
+  the Finding Detail page (a "Found by scan of `<path>`" line under the badges, if the finding
+  has a `sourceScanId`), a completed scan card's "View in Agent Triage →" action
+  (`updateScanCardActions()`, Reasoning Scans page), and a timeline drawer scan row's expanded
+  body ("View all in Agent Triage →", `renderScanFindingsBody()`) — added because discovering
+  the scan filter only via the popover wasn't obvious enough on its own.
   `openFindingsFilteredByScan()` just sets `findingsScanFilter` and calls `showView('findings')`.
-  This surfaced a real bug in `renderFindingsScanFilter()`: it used to compute
-  `findingsScanFilterEl.value || findingsScanFilter` to decide what to preserve across a
-  rebuild, but the `<select>`'s DOM value defaults to the truthy string `"all"` until a user
-  touches it directly — so that expression always picked `"all"` and silently discarded
-  whatever `findingsScanFilter` had just been set to by any of these three programmatic links
-  (a plain dropdown selection worked fine, since in that path the native `change` event fires
-  after the browser has already updated `.value` to match). Fixed by treating
-  `findingsScanFilter` as the single source of truth and the `<select>`'s value as a pure
-  render target, never read back as state. Clicking a row navigates to a
+  `findingsScanFilter` (not the popover button's DOM text) is the single source of truth for
+  which scan is selected, read fresh on every `renderFindingsScanFilter()` call rather than
+  scraped back from whatever the button currently displays — a past version of this filter used
+  a native `<select>` where reading `.value` back as a fallback silently discarded a
+  programmatically-set filter, which is why the state now flows one direction only (JS variable
+  → rendered button text, never the reverse). Clicking a row navigates to a
   full-page **Finding Detail** view (`#view-finding-detail`, `openFindingDetail()` /
   `renderFindingDetail()`) rather than a modal or panel — earlier rounds tried a right-docked
   panel, then in-Kanban-card expansion, then reverted to a bare Kanban board with no detail
@@ -133,41 +171,87 @@ status dots do.
   (`openFindingContextMenu()`, positioned under the button via its `getBoundingClientRect()`
   instead of the cursor) — deliberately *not* three separate hardcoded Triage/Threat
   Model/Remediation buttons, since that menu is built by iterating `agentsList` (whatever's
-  declared on the Agents screen, built-in or custom), so a new custom agent shows up there
-  with no code change. Both paths converge on `openFreshStageModal()`. Note:
+  declared on the Agent Configuration screen, built-in or custom), so a new custom agent shows
+  up there with no code change. Both paths converge on `openFreshStageModal()`. Note:
   `openFindingContextMenu()`'s button click handler calls `e.stopPropagation()` — without it,
   the click bubbles to the document-level "click outside closes the menu" listener and closes
   the menu in the same tick it opened. An "Export" button (`GET /api/findings/export.csv`)
   downloads all findings + latest verdicts.
+- **Remediation** — a second, narrower full-page table reached only via Agent Triage's
+  "Auto-remediate selected (N)" button (`autoRemediateSelected()`), not a top-level nav item —
+  same reasoning as Finding Detail not being one: it's a destination for one specific action,
+  not a place someone browses to on its own. Clicking it clears `selectedFindingIds`, snapshots
+  the checked IDs into `remediationBatchIds` (an ordered array — this batch, not "every
+  remediation ever run," is deliberately what stays on screen; see below), navigates to
+  `#view-remediation`, and then for each ID: ensures the full finding is cached
+  (`ensureFindingCached()`), re-renders immediately so the **Issue**/**Code issue** columns
+  appear right away (`renderRemediationView()`), and fires a normal `remediation` stage run
+  (`startStage(id, 'remediation', buildBaseContext(finding), '')` — the same function every
+  other agent run uses, just without the small stage modal in front of it, since "auto" here
+  means skip the per-run review step for a batch action). The **Corrected code** column
+  (`remediationRowStateHtml()`) shows "Generating…" while that finding's run is `running`, then
+  the agent's `corrected_code` verdict field once it lands — a new field added to
+  `agents/remediation.md`'s output contract specifically for this screen: the full corrected
+  version of the finding's `code` snippet, not just prose fix guidance, so it can render
+  side-by-side with the original in a `.code-block` (`highlightCode()`, reused unchanged). It's
+  `null` when there's no `code` snippet to correct, or the real fix is architectural (the agent
+  is told to say so in `fix_guidance` instead of inventing a misleading single-snippet diff).
+  Because this is a real `remediation` run like any other, `deriveStatus()` in `server.js` picks
+  it up: a new `remediation_generated` status is derived when the latest run is `agent ===
+  'remediation'` with a non-null `corrected_code` and a `confirmed`/`needs_review` verdict
+  (checked *before* the existing `remediation_ready` case, but *after* the `false_positive`/
+  `duplicate` → `closed` case — a finding the agent itself flagged as not real stays `closed`
+  even if it still produced speculative corrected code, since remediation.md's contract has it
+  fill in best-effort guidance for a pattern even when this particular instance isn't
+  exploitable). The status shows up back on Agent Triage as a new accent-colored "Remediation
+  generated" badge (`statusLabel()`/`.badge.remediation_generated`) the moment the run finishes,
+  via the same `updateFindingListItem()` hook every other status change already flows through
+  (extended with one more branch: re-render the Remediation table too, if it's the open view
+  and the finding is part of the current batch). Revisiting this screen only ever shows the
+  *current* batch (`remediationBatchIds` is replaced, not appended to, each time the button is
+  clicked) — findings remediated in an earlier batch this session aren't still listed after a
+  new batch runs; the badge on Agent Triage is the durable record of "this one already has
+  corrected code," not this screen.
 - **Threat Model** — a read-only, cross-finding view of every finding with a completed
   Threat Model run whose verdict is `confirmed` or `needs_review` (`latestThreatModelEntries()`
   — findings never threat-modeled just don't appear, no placeholder queue). Entirely derived
-  client-side from the same `timelineEntries` cache Timeline already fetches — no dedicated
-  endpoint. Rendered as a top-down tree/org-chart built from plain HTML/CSS boxes
-  (`buildThreatModelTree()`, no charting library or SVG) instead of a card grid or a radial
-  diagram: a root "App" box, one branch per OWASP category (`verdict.owasp`, labeled with its
-  finding count, colored by the *worst* severity in that category via `worstSeverity()`), and
-  each category's individual findings as leaf boxes stacked below their branch (colored by
-  their own `severity_confirmed`). This replaced an earlier hand-drawn SVG hub-and-spoke
-  (radial) layout — SVG `<text>` can't wrap without manual `<tspan>` line-breaking, so long
-  category labels (e.g. "A01:2021 - Broken Access Control") were getting crowded or truncated
-  at the edge; plain HTML/CSS boxes wrap normally, so labels are never cut off no matter how
-  long. Clicking a leaf calls `selectThreatModelFinding(findingId)`, which
-  renders that finding's **attack-path flow** below the diagram (`renderAttackPathFlow()`):
-  four connected boxes — Attacker (generic, not agent data) → Preconditions → Attack Path →
-  Blast Radius — using the exact prose those three verdict fields already contain, plus a "View
-  finding →" button into the full Finding Detail page. This needed no new agent capability;
-  it's purely a different way to look at data `agents/threat_model.md` already produces.
-  A finding can carry more than one Threat Model run over its lifetime (re-run after a code
-  fix, or re-run after Triage's picture changes) — `allThreatModelEntriesForFinding()` returns
-  all of them (newest-first) for a given finding, and whenever there's more than one,
-  `renderAttackPathFlow()` shows a **Run** `<select>` above the flow (`#tm-run-select`,
-  `renderThreatModelDetail()`) so a specific historical run can be picked instead of always
-  showing the latest. Because the diagram itself only maps each finding's *latest* run
-  (`latestThreatModelEntries()`, filtered to `confirmed`/`needs_review`), a finding whose most
-  recent run is `false_positive` (or whose selected-in-the-dropdown run just isn't the current
-  one) won't have a leaf node — in that case the detail panel adds a "Not shown on the map
-  above" hint rather than silently looking like it belongs to a node that isn't there.
+  client-side from the same `timelineEntries` cache the timeline drawer uses (loaded on
+  whichever comes first, `openThreatModelView()` ensures it itself via `loadTimeline()` if
+  needed) — no dedicated endpoint. Rendered as a **category × severity heat map**
+  (`buildThreatHeatmap()`, plain HTML/CSS `<button>` cells, no charting library or SVG) instead
+  of a card grid, a radial hub-and-spoke, or the top-down tree that briefly replaced it: rows
+  are OWASP categories (`verdict.owasp`, sorted by finding count descending, row label colored
+  by the *worst* severity in that category via `worstOfList()`), columns are the fixed severity
+  scale (Critical…Informational, `HEATMAP_SEVERITY_COLS`), and each cell is shaded by how many
+  findings land in that category+severity combination (`--heat-intensity`, a per-cell CSS
+  custom property scaled `0.28–1.0` against that row's own max count) — this replaced the tree
+  (which itself replaced an even earlier radial layout) because a grid answers the actual
+  triage question — "which category+severity combination has the most findings" — at a glance,
+  where a tree only showed category-level counts and made you read every branch to compare
+  severities within it. Clicking a non-empty cell (`.tm-heat-cell.has-findings`) filters
+  `entries` in JS by that cell's `data-category`/`data-sev` and calls
+  `renderTmCellFindings(cellEntries)`: for the common case of exactly one matching finding it
+  jumps straight to that finding's report; for more than one it shows a small row of pill
+  buttons (`#tm-cell-findings`, one per finding title) above the report so the user picks which
+  one to read — the "report" a cell represents, surfaced without needing a separate list view.
+  Either way the report itself is `renderAttackPathFlow()`: four connected boxes — Attacker
+  (generic, not agent data) → Preconditions → Attack Path → Blast Radius — using the exact prose
+  those three verdict fields already contain, plus a "View finding →" button into the full
+  Finding Detail page. This needed no new agent capability; it's purely a different way to look
+  at data `agents/threat_model.md` already produces. A finding can carry more than one Threat
+  Model run over its lifetime (re-run after a code fix, or re-run after Triage's picture
+  changes) — `allThreatModelEntriesForFinding()` returns all of them (newest-first) for a given
+  finding, and whenever there's more than one, `renderAttackPathFlow()` shows a **Run**
+  `<select>` above the flow (`#tm-run-select`, `renderThreatModelDetail()`) so a specific
+  historical run can be picked instead of always showing the latest. Because the heat map
+  itself only aggregates each finding's *latest* run (`latestThreatModelEntries()`, filtered to
+  `confirmed`/`needs_review`, tracked in `tmMapFindingIds` — a `Set` of the finding IDs
+  currently represented on the map, checked instead of re-querying the DOM for a specific
+  finding's cell, since a cell aggregates a whole category+severity bucket rather than mapping
+  1:1 to one finding), a finding whose most recent run is `false_positive` (or whose
+  selected-in-the-dropdown run just isn't the current one) may not be represented in any cell
+  right now — in that case the detail panel adds a "Not shown on the map above" hint rather
+  than silently implying it belongs to a cell it isn't counted in.
   A finding's full-page detail view also links here directly: any `threat_model` entry in its
   **Agent runs** list (`runCardHtml()`) gets a "View in Threat Model →" button
   (`openThreatModelForFinding(findingId, runId)`) that navigates to this tab and opens that
@@ -180,7 +264,7 @@ status dots do.
   The Threat Model page opens with its own **"New app threat model"** form (`#atm-path-input`/
   `#atm-branch-input`/`#atm-app-input`/`#atm-instruction-input`/`#atm-start-btn`,
   `startAppThreatModel()`) — target directory, optional branch/app labels, optional focus-area
-  instructions, and a Start button, styled like the Scans page's New Scan form but with its
+  instructions, and a Start button, styled like the Reasoning Scans page's New Scan form but with its
   own pink `.atm-start-btn` accent. This used to be a toggle pill on the scan form itself
   ("Also: Threat-model this app," firing alongside a scan) but was pulled out into its own
   standalone form here — whole-app threat modeling is conceptually unrelated to a findings
@@ -194,7 +278,7 @@ status dots do.
   holistic architecture report — trust boundaries, data flows, a `top_risks` list, and
   recommendations — rather than a per-finding verdict). These runs are **not** tied to any
   finding or scan (no foreign key to `scans` — `startAppThreatModel()` fires an independent WS
-  message straight from this form) and so aren't part of the OWASP tree above; they get
+  message straight from this form) and so aren't part of the OWASP heat map above; they get
   their own list (`appThreatModelsList`, from `GET /api/app-threat-models`, kept live via
   `upsertAppThreatModel()`/`handleAppThreatModelServerMessage()` — distinct WS message types
   `app-threat-model-started/event/stderr/done/error`, same rationale as `scan-*` types: avoid
@@ -220,15 +304,19 @@ status dots do.
   done since there's no cancel button in this UI to test that path against; fixed by
   explicitly branching on `'cancelled'` in both `renderAppThreatModelSection()` and
   `renderAppThreatModelDetail()`). `app_threat_model` is excluded from `GET /api/agents` (like
-  `scan`) since it isn't a per-finding pipeline agent — it doesn't show up in the Findings
+  `scan`) since it isn't a per-finding pipeline agent — it doesn't show up in the Agent Triage
   stage modal's agent dropdown or the "run after scan" pill row.
 
-  `renderAppThreatModelDetail()` also draws a diagram, not just prose — `buildAppThreatModelTree()`
-  reuses the exact same top-down tree shape and `.tm-tree-*` CSS classes as the per-finding
-  tree (`buildThreatModelTree()`), just built from a flat `top_risks` array (grouped by `owasp`)
-  instead of per-finding timeline entries, since a whole-app report has no individual findings
-  to hang leaf boxes off of. Clicking a leaf (`data-risk-index`) or a risk card below
-  cross-highlights both and scrolls the matching risk card into view.
+  `renderAppThreatModelDetail()` also draws a diagram, not just prose — it groups `top_risks`
+  by `owasp` locally and calls the same shared `buildThreatHeatmap()` the per-finding page uses,
+  just with a `getSeverity` callback reading `risk.severity` instead of
+  `verdict.severity_confirmed`, since a whole-app report has no per-finding verdict to pull
+  from. Risk cards also carry `data-owasp`/`data-severity` attributes now (in addition to their
+  existing `data-risk-index`) so a heat-map cell click can cross-highlight every matching card,
+  not just one by index: clicking a cell compares its `data-category`/`data-sev` against each
+  `.atm-risk-card`'s dataset in JS (not a CSS attribute selector, to avoid escaping arbitrary
+  category-name text into a selector string), toggles `.selected` on every match, and scrolls
+  the first match into view; clicking a risk card directly still just self-highlights.
 
   Running rows also carry live stats — tool/file/token counts, elapsed time, and a
   context-window fill bar — the same way scan cards do (`appThreatModelRuns`, a
@@ -251,13 +339,24 @@ status dots do.
   right now), not the running `tokenCount` sum shown next to it (a different, cumulative
   "total work done" metric) — summing every turn's input would double-count the growing
   conversation history that gets resent each turn.
-- **Agents** — a top-level screen for managing the `.md` files under `agents/` from the
+- **Agent Configuration** — a top-level screen (renamed from plain "Agents" — the shorter name
+  read as if it might be a list of running agents/activity, when it's actually a config/editor
+  screen for the `.md` prompt files themselves) for managing the files under `agents/` from the
   browser instead of by hand: create/edit/delete via `GET/POST/PUT/DELETE /api/agents(/:name)`
   in `server.js`. Built-in pipeline agents (`triage`/`threat_model`/`remediation`/`scan`/
   `app_threat_model`, `BUILTIN_AGENTS` server-side) can be edited but not deleted (403). New agents are
-  immediately usable everywhere `agentsList` is consumed — the Findings stage modal's agent
-  dropdown and the Scans page's "Run after scan" pill row are both driven off the same
-  dynamic list, no extra wiring needed per agent.
+  immediately usable everywhere `agentsList` is consumed — the Agent Triage stage modal's agent
+  dropdown and the SCA page's "Run after scan" pill row are both driven off the same
+  dynamic list, no extra wiring needed per agent. The Dashboard's Agents panel
+  (`#dash-agents-panel`) is a shortcut into this screen — see the Dashboard bullet above.
+- **Reports** — a placeholder top-level screen (`#view-reports`), added ahead of any actual
+  reporting feature so the nav slot and page shell exist for whatever gets built there next
+  (an exportable compliance/findings report was the motivating idea, per the intro's
+  `GET /api/findings/export.csv` and the FedRAMP/FISMA framework-mapping requirement described
+  under "Taxonomy convention" below — this screen would be the natural home for a richer,
+  formatted version of that same data). Currently just a "Coming soon" message
+  (`.placeholder-panel`); no server-side support, no data, no wiring beyond the nav
+  item/`showView()` toggle.
 - **Settings** — a nav-footer entry (not a top-level nav item, deliberately tucked away),
   with a Dark/Light theme toggle (`applyTheme()`, persisted to `localStorage` under
   `appsecops-theme`, applied flash-free by an inline `<script>` at the very top of `<head>`
@@ -275,12 +374,18 @@ status dots do.
   `scanDetailCache`), stops and clears any live `scanRuns`/`appThreatModelRuns` tracking
   objects, clears both live-scan containers, and re-renders whichever view is currently open.
 
-**Pipeline shape**: `Scan → Findings → Remediation` is the conceptual path, but **no agent
+**Pipeline shape**: `Scan → Agent Triage → Remediation` is the conceptual path, but **no agent
 ever runs automatically** — every run requires an explicit, reviewable action so there's
 always an audit trail before anything executes against a finding (an earlier version
 defaulted straight to Remediation on click, which read as auto-fixing without review — this
-was a deliberate correction). Both the Finding Detail page's "Agent Runs ▾" button and the
-right-click context menu on a Findings table row open the same dynamic per-agent menu
+was a deliberate correction). Note "Remediation" names two different things in this app: the
+`remediation` agent/pipeline stage (run one finding at a time, from the stage modal like any
+other agent) and the standalone **Remediation** screen (a batch of those same runs, kicked off
+together via Agent Triage's "Auto-remediate selected" button — see the Remediation bullet
+above). They share an agent and a verdict shape; the screen is just a different entry point
+and a different view of the results, not a separate pipeline. Both the Finding Detail page's
+"Agent Runs ▾" button and the right-click context menu on an Agent Triage table row open the
+same dynamic per-agent menu
 (one "Run <Agent>…" item per entry in `agentsList`) as equally-weighted shortcuts into the
 same small stage modal (agent dropdown + editable context + optional instructions,
 `openFreshStageModal()`) — none of them run instantly, and none is "the default" over the
@@ -305,16 +410,18 @@ Before invoking, `claude auth status` must succeed (the server spawns the CLI
 non-interactively and does not handle auth itself).
 
 To exercise the pipeline manually: open `http://localhost:4500` (lands on Dashboard), go to
-Scans, enter a directory path on this machine under "New scan" and click "Start scan" — watch
-its live card right there, then check Findings once it completes (or expand the row in
-Timeline). Click a
-finding's row in the Findings table (or a Timeline agent-run row) to open its full-page
-detail view, then click "Agent Runs ▾" in the page header (or right-click the table row for
-the same menu) to pick an agent, review the context/instructions in the small stage modal,
-and explicitly start it; nothing runs without
-that step. The detail page's Agent runs section updates live once a run finishes (or shows a
-"running" placeholder immediately, via an optimistic push in `startStage()`). There is no
-automated test for the WebSocket flow — verification is manual, through the browser.
+Reasoning Scans, enter a directory path on this machine under "New scan" and click "Start
+scan" — watch its live card right there, then check Agent Triage once it completes (or open
+the timeline drawer via the clock icon and expand the row there). Click a finding's row in the
+Agent Triage table (or a timeline agent-run row) to open its full-page detail view, then click
+"Agent Runs ▾" in the page header (or right-click the table row for the same menu) to pick an
+agent, review the context/instructions in the small stage modal, and explicitly start it;
+nothing runs without that step. Alternatively, check one or more rows' checkboxes on Agent
+Triage and click "Auto-remediate selected" to run Remediation on all of them at once and see
+original-vs-corrected code side by side on the Remediation screen. The detail page's Agent
+runs section updates live once a run finishes (or shows a "running" placeholder immediately,
+via an optimistic push in `startStage()`). There is no automated test for the WebSocket flow —
+verification is manual, through the browser.
 
 ## Architecture
 
@@ -325,19 +432,24 @@ server.js          Express + ws. In-memory findings store (seeded with sample da
                     per scan), relays stream-json lines live, and extracts the final JSON
                     block from the accumulated assistant text.
 public/index.html   The whole app: global nav (status summary + Settings entry in the nav
-                    footer) with Dashboard (briefing + stats + agents panel only), Scans
-                    (the scan kickoff form — target/branch/app, Reasoning/Custom scan
-                    type, full-vs-diff scope — plus its live scan cards), SCA (structurally
-                    identical to Scans minus the scan-type row, its own live cards), a
-                    Findings table split into Reasoning/SCA type tabs with click-to-sort
-                    columns and a per-scan filter, a full-page Finding Detail view per
-                    finding (meta grid, syntax-highlighted code block, and an Agent runs
-                    history with a single "Agent Runs ▾" dropdown), a Threat Model page
-                    (per-finding OWASP top-down tree plus a "New app threat model" form and
-                    its own accordion-style App-level Threat Models list), an Agents screen
-                    for managing `agents/*.md` from the browser, a right-click context menu
-                    on table rows for the same agent actions, and modals for adding a
-                    finding / running a stage with custom instructions.
+                    footer) with Dashboard (briefing + stats + a clickable agents panel),
+                    Reasoning Scans (the scan kickoff form — target/branch/app, scope in the
+                    header — plus its live scan cards and a timeline-drawer clock button), SCA
+                    (structurally identical, its own live cards, its own clock button, plus a
+                    still-wired "run after scan" pill row), an Agent Triage table split into
+                    Reasoning/SCA type tabs with click-to-sort columns, a per-scan filter
+                    popover, and row checkboxes feeding an "Auto-remediate selected" button, a
+                    full-page Finding Detail view per finding (meta grid, syntax-highlighted
+                    code block, and an Agent runs history with a single "Agent Runs ▾"
+                    dropdown), a Remediation screen (original vs. agent-corrected code for a
+                    batch of auto-remediated findings), a Threat Model page (per-finding OWASP
+                    x severity heat map plus a "New app threat model" form and its own
+                    accordion-style App-level Threat Models list, also heat-mapped, plus a
+                    clock button), an Agent Configuration screen for managing `agents/*.md`
+                    from the browser, a Reports placeholder, a slide-in timeline drawer shared
+                    by the three clock buttons, a right-click context menu on table rows for
+                    the same agent actions, and modals for adding a finding / running a stage
+                    with custom instructions.
 agents/*.md         Agent system prompts (passed via --append-system-prompt). Plain
                     markdown, no code — this is the only place agent-specific analysis
                     logic lives. New *per-finding* agent = new .md file, no server
@@ -350,13 +462,13 @@ agents/*.md         Agent system prompts (passed via --append-system-prompt). Pl
                     different `cwd` (the target directory, not the app's own), and a
                     different output shape (`scan.md` returns `{"findings": [...]}`;
                     `app_threat_model.md` returns a holistic report object — see the
-                    Scans/Threat Model bullets above) rather than a single per-finding
-                    verdict object.
+                    Reasoning Scans/Threat Model bullets above) rather than a single
+                    per-finding verdict object.
 ```
 
 **Findings store**: `findings` (Map, in `server.js`) is session-lifetime only — reset on
 restart, seeded from `seedFindings()` with six sample AppSec findings (five reasoning, one
-SCA — enough to populate both Findings type tabs on first run). Every finding has
+SCA — enough to populate both Agent Triage type tabs on first run). Every finding has
 a `scanType` (`reasoning | sca`, `FINDING_SCAN_TYPES` — narrower than a scan's own
 `scanType`, since a `custom`-type scan's findings fall back to `reasoning`) plus a handful of
 optional type-specific fields: `code` (reasoning, syntax-highlighted on the detail page),
@@ -370,9 +482,9 @@ the previous one concluded rather than re-deriving it. A finding created by a sc
 additionally carries `sourceScanId`. REST surface: `GET /api/findings`, `POST /api/findings`,
 `GET /api/findings/:id`, `GET /api/findings/export.csv` (all findings + latest verdict
 fields, one row each), and `GET /api/timeline` (flattens every finding's `runs` into one
-array, newest first — what the Timeline view fetches on load; live runs after that are
-patched into the client's copy
-directly from WebSocket messages, not re-fetched).
+array, newest first — what the timeline drawer fetches the first time it's opened, or the
+Threat Model page fetches on load if the drawer hasn't been opened yet; live runs after that
+are patched into the client's copy directly from WebSocket messages, not re-fetched).
 
 **Scans store**: `scans` (Map, in `server.js`) is the same session-lifetime pattern as
 `findings`, separate Map. A scan record is `{id, path, status, findingIds, startedAt,
@@ -459,7 +571,7 @@ immediately rather than staying blank until it finishes, but there's no token-by
 tool-by-tool feed — this was a deliberate simplification after an earlier design that showed
 every tool call/result plus raw stream-json read as noise rather than the two things an
 AppSec tester actually wants: what was found, and why (now surfaced only once, in the
-finished verdict). Scan cards on the Scans page are the one place with a live feed, since a
+finished verdict). Scan cards on the Reasoning Scans page are the one place with a live feed, since a
 scan can run for minutes over many files: `handleScanRawEvent()` in `index.html` updates a
 running tools/tokens/files-read counter and severity chip row per stream-json event, and
 `agents/scan.md`'s narration contract has it prefix each candidate finding with a literal
@@ -481,7 +593,10 @@ reuse them (`remediation.md`
 now assigns them itself, same rules, when there's no prior verdict to carry forward — see
 "Pipeline shape" above) and only add stage-specific fields
 (`preconditions`/`attack_narrative`/`blast_radius` for threat_model;
-`root_cause`/`fix_guidance`/`verification_steps`/`effort` for remediation). `scan.md`
+`root_cause`/`fix_guidance`/`corrected_code`/`verification_steps`/`effort` for remediation —
+`corrected_code` is `null` unless the finding's context included a `code` snippet and the fix
+is a meaningful drop-in replacement, and is what the Remediation screen renders side-by-side
+with the original; see the Remediation bullet above). `scan.md`
 findings deliberately do *not* carry `verdict`/`severity_confirmed`/`confidence`/
 `priority`/framework-mapping — they're raw, scanner-export-style output; a `severity`
 field is the scan's best-effort initial estimate only, and real triage happens downstream.
@@ -497,7 +612,7 @@ WebSocket or REST endpoints; `--permission-mode acceptEdits` and `--allowedTools
 models) are set loosely for a fast test loop, not for anything beyond localhost use. Both
 `agent` names and `runId`s from client messages are validated against `^[a-zA-Z0-9_-]+$`
 before being used (agent name is joined into a filesystem path) — don't relax either when
-adding features. The Scans feature (and, the same way, app-level threat models) is a
+adding features. The scan features (Reasoning Scans and SCA) and, the same way, app-level threat models are a
 deliberate widening of that posture: both spawn `claude` with `cwd` set to **any directory
 path the client sends**, gated only by "does this path exist and is it a directory"
 (`fs.statSync` in `handleScanMessage` / `handleAppThreatModelMessage`) — there's no
@@ -508,7 +623,12 @@ exposure without revisiting this.
 **Not yet built**: disk persistence (both the findings store and the scans store are
 in-memory and reset on restart — there's no SQLite/JSON-file layer yet), CSV *ingestion*
 (export exists — `GET /api/findings/export.csv` — but importing an external scanner's CSV
-to seed findings, the original `findings-dashboard.jsx` workflow, does not), and the
+to seed findings, the original `findings-dashboard.jsx` workflow, does not), the
 dashboard merge itself (`findings-dashboard.jsx`'s Azure DevOps ticket creation currently
 does a browser-side `fetch()` that's expected to hit CORS — if that logic moves into this
-app, it should move server-side, where Node has no CORS problem).
+app, it should move server-side, where Node has no CORS problem), and the **Reports** screen
+(currently a bare placeholder — no data, no server endpoint, see the Reports bullet above).
+The **Remediation** screen also only ever shows the most recently triggered
+`remediationBatchIds` batch, not a durable history of every batch run this session — a
+finding's `remediation_generated` status on Agent Triage is the only lasting record that it
+has corrected code, and there's no way from this screen to re-open an older batch's table.

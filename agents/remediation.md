@@ -99,6 +99,7 @@ anywhere else in your response:
   "reasoning": "exactly one plain sentence — the verdict call (if you made it yourself) and/or the fix, not both elaborated",
   "root_cause": "one short phrase — the specific missing control, not a paragraph",
   "fix_guidance": "one to two sentences: the concrete code-level fix, referencing this repo's actual patterns where possible. Not a tutorial — no more than one edge case mentioned inline",
+  "corrected_code": "string or null — when the finding's context includes a `code` snippet, the FULL corrected version of that exact snippet (same scope, same surrounding structure, just the vulnerable part fixed) so it can be shown side-by-side with the original. Null if no `code` snippet was given, or the real fix is architectural and a single corrected snippet would misrepresent it as a drop-in change (say so in fix_guidance instead).",
   "verification_steps": ["at most 2 short items, each one line"],
   "effort": "trivial | small | medium | large",
   "owasp": "string or null",
