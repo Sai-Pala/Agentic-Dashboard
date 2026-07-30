@@ -22,13 +22,17 @@ compliance report — see the Control Scan bullet below for why it's grouped her
 difference); the indent groups them without adding a second click target (the label itself
 does nothing — clicking any of the three still works exactly as any other nav item). Timeline
 is deliberately *not* one of these nav items — see the Timeline bullet below for why and where
-it lives instead. Three nav items carry a live status badge (`renderNavBadges()`, called from
-`upsertTimelineEntry()` and `renderNavStatus()` so it stays current from any view):
+it lives instead. Four nav items carry a live status badge (`renderNavBadges()`, called from
+`upsertTimelineEntry()`, `upsertControlAssessment()`, and `renderNavStatus()` so it stays
+current from any view — `upsertControlAssessment()` needs its own explicit call since Control
+Scan runs never flow through `upsertTimelineEntry()` the way scans do):
 **Reasoning Scan** shows a pulsing yellow dot while any non-SCA scan is `status: 'running'`
 (`scansList`, filtered to `scanType !== 'sca'`); **SCA Scan** shows the same pulsing yellow dot,
 filtered the other way (`scanType === 'sca'`) — split so a running SCA scan doesn't make the
 Reasoning Scan page look like something's happening there when it isn't, and vice versa;
-**Agent Triage** shows a red count pill of findings whose `status !== 'closed'`. When the
+**Control Scan** shows the same pulsing yellow dot while any `controlAssessmentsList` entry is
+`status: 'running'`; **Agent Triage** shows a red count pill of findings whose `status !==
+'closed'`. When the
 sidebar is collapsed, `#global-nav.collapsed .nav-item .nav-badge` forces every badge — dot
 or count pill alike — to the same 8×8 corner dot (text hidden via `font-size: 0`, the count
 still readable from the badge's `title` tooltip on hover); without this override the wider
@@ -39,9 +43,11 @@ dots do.
   of two prominent cards ("Start a scan" / "View timeline", `#dash-scans-link`/
   `#dash-timeline-link` — the latter opens the timeline drawer, see the Timeline bullet below,
   not a dedicated view) linking into those destinations, stat tiles (in progress, not started,
-  in review, remediation ready, total findings, total agent runs), and an Agents panel (the 3
-  per-finding pipeline agents only — Scan and App Threat Model are deliberately not listed
-  there, see below). The panel itself (`#dash-agents-panel`, `.panel-clickable`) is a single
+  in review, remediation ready, total findings, total agent runs), and an Agents panel (every
+  per-finding agent from `agentsList` — built-in or custom — so it grows automatically as
+  agents are added in Agent Configuration; the whole-app agents, Scan/App Threat Model/Control
+  Scan, are deliberately excluded since `agentsList` itself is already filtered to per-finding
+  agents server-side, see below). The panel itself (`#dash-agents-panel`, `.panel-clickable`) is a single
   click target that navigates straight to Agent Configuration — a small "→" fades in on hover
   (`.panel-title-arrow`) as the only visual hint it's clickable, since a whole panel acting as
   one link has no other natural affordance. It holds no form of its own — `renderDashboard()`
@@ -652,24 +658,52 @@ iterating key/value pairs (badging a fixed set of known fields: `verdict`,
 no frontend change unless new behavior should key off a new field specifically (e.g.
 `deriveStatus()` in `server.js` keys off `verdict`/`next_agent`).
 
-**No live per-finding streaming view**: per-finding runs (Triage/Threat Model/Remediation)
-don't render a live activity feed or even a live "Analysis" prose stream while running —
-`handleServerMessage()` in `index.html` ignores `event`/`stderr` WS messages entirely for
-these and only acts on `done`/`error`, at which point the Timeline row and (if that finding's
-detail page happens to be open) the Agent runs section update via `refreshFindingAfterRun()`
-→ `updateFindingListItem()`. `startStage()` does push one optimistic "running" placeholder
-into the finding's cached `runs` array so the detail page shows the run as in-progress
-immediately rather than staying blank until it finishes, but there's no token-by-token or
-tool-by-tool feed — this was a deliberate simplification after an earlier design that showed
-every tool call/result plus raw stream-json read as noise rather than the two things an
-AppSec tester actually wants: what was found, and why (now surfaced only once, in the
-finished verdict). Scan cards on the Reasoning Scan page are the one place with a live feed, since a
-scan can run for minutes over many files: `handleScanRawEvent()` in `index.html` updates a
-running tools/tokens/files-read counter and severity chip row per stream-json event, and
-`agents/scan.md`'s narration contract has it prefix each candidate finding with a literal
-`[severity]` tag as it's spotted, which `trackScanCandidates()` parses via `SEV_TAG_RE` into
-a live scrolling list — but even here the raw stream-json itself is never rendered, only
-counters and parsed candidates derived from it.
+**No live per-finding stats/activity feed, but an opt-in raw console**: per-finding runs
+(Triage/Threat Model/Remediation) don't render a live tool/token/file counter or a parsed
+activity feed while running — `handleServerMessage()` in `index.html` still only acts on
+`done`/`error` for the Timeline row and (if that finding's detail page happens to be open) the
+Agent runs section, via `refreshFindingAfterRun()` → `updateFindingListItem()`. `startStage()`
+does push one optimistic "running" placeholder into the finding's cached `runs` array so the
+detail page shows the run as in-progress immediately rather than staying blank until it
+finishes, but there's still no token-by-token or tool-by-tool *stats* feed — showing every
+tool call/result plus raw stream-json by default was tried once already and read as noise
+rather than the two things an AppSec tester actually wants: what was found, and why (normally
+surfaced only once, in the finished verdict). Scan cards on the Reasoning Scan page are the
+one place with a live *stats* feed, since a scan can run for minutes over many files:
+`handleScanRawEvent()` in `index.html` updates a running tools/tokens/files-read counter and
+severity chip row per stream-json event, and `agents/scan.md`'s narration contract has it
+prefix each candidate finding with a literal `[severity]` tag as it's spotted, which
+`trackScanCandidates()` parses via `SEV_TAG_RE` into a live scrolling list.
+
+What *is* available everywhere, opt-in: a small terminal-icon **console toggle button**
+(`consoleToggleButtonHtml()`/`consolePanelHtml()` in `index.html`) next to every live run —
+Reasoning/SCA scan cards, App Threat Model rows, Control Scan rows, and Finding Detail's
+per-finding run cards. Clicking it reveals a `<pre class="console-panel">` streaming the
+model's raw narrated prose (assistant text blocks only, not tool calls/inputs/outputs — the
+same noise tradeoff above, just made opt-in instead of removed outright) as it arrives, via
+the shared `trackConsoleText()` appending onto each run's `consoleText` buffer and, if the
+panel is currently attached to the DOM, directly onto it too. This is deliberately **live-only,
+not replayable**: nothing is persisted server-side beyond what already existed (`fullText` is
+still discarded after `extractVerdict()` parses it for scan/app-threat-model/control-scan
+runs), so a run's console content only exists for as long as its tracking object survives in
+the browser tab — reload the page or let the object get GC'd and a finished run's reasoning is
+gone, same as the counters next to it. Each of the four surfaces needed its own small amount
+of plumbing since each already had a different live-tracking shape: `stageConsoles` (new Map,
+`index.html`) is per-finding's *only* live tracking object, since those runs otherwise track
+nothing else live; the other three surfaces just gained `consoleText`/`consoleOpen`/
+`consoleEl` fields alongside their existing `toolCount`/`tokenCount`/etc. `trackConsoleText()`
+is called from each surface's raw-event handler (`handleScanRawEvent`,
+`handleAppThreatModelRawEvent`, `handleControlsAssistRawEvent`, and inline in
+`handleServerMessage()`'s per-finding `event` branch) right alongside the existing
+tool/token/candidate trackers. Because App Threat Model, Control Scan, and Finding Detail all
+fully rebuild their row/card HTML on every re-render (unlike scan cards, which are created
+once and updated via cached refs), those three surfaces persist `consoleText`/`consoleOpen` on
+the run object across rebuilds and reattach `consoleEl` afterward
+(`reattachAppThreatModelLiveRefs()`/`reattachControlsAssistLiveRefs()`/`reattachConsoleRefs()`
+respectively) — otherwise every stream-json event or accordion toggle would silently wipe an
+open panel back to empty. The toggle button always calls `e.stopPropagation()` since it sits
+inside a clickable row/summary that would otherwise also fire its own click handler (expanding
+an App Threat Model/Control Scan accordion, in particular).
 
 **Taxonomy convention**: severity/confidence/priority definitions live inside
 each agent's `.md` file and must stay byte-identical across agents (copy, don't

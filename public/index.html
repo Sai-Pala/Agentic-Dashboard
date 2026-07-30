@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>AppSec Ops</title>
+<title>Sanity Checker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -282,9 +282,6 @@
   .agent-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); }
   .agent-row:last-child { border-bottom: none; }
   .agent-row .a-icon { width: 26px; text-align: center; }
-  .agent-row .a-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-  .agent-row .a-dot.online { background: var(--ok); }
-  .agent-row .a-dot.offline { background: var(--muted); }
   .agent-row-main { flex: 1; min-width: 0; }
   .agent-row-name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
   .agent-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -503,6 +500,15 @@
   .fd-verdict-item b { color: var(--muted); font-weight: 600; margin-right: 4px; }
   .fd-verdict-reasoning { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
 
+  /* ---------- live console (per-run raw reasoning stream, opt-in via a small toggle button;
+     shown only for runs with a live tracking object this browser session — see CLAUDE.md) ---------- */
+  .console-toggle-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; padding: 0; flex-shrink: 0; }
+  .console-toggle-btn:hover { color: var(--text); border-color: var(--muted); }
+  .console-toggle-btn .icon { width: 13px; height: 13px; }
+  .console-toggle-btn.active { color: var(--accent); border-color: var(--accent); }
+  .console-panel { margin-top: 8px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--ok); max-height: 220px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+  .console-panel:empty::before { content: 'Waiting for model output…'; opacity: .6; font-style: italic; color: var(--muted); }
+
   /* ---------- app-level (whole-directory) threat models ---------- */
   .atm-section { margin-bottom: 20px; }
   .atm-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
@@ -646,7 +652,7 @@
 <nav id="global-nav">
   <div class="nav-brand">
     <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 4.5 5.5v5.7c0 5.1 3.2 8.7 7.5 10.3 4.3-1.6 7.5-5.2 7.5-10.3V5.5L12 2.5Z"/><path d="m9 12 2 2 4-4.5"/></svg>
-    <span>AppSec Ops</span>
+    <span>Sanity Checker</span>
   </div>
   <button class="nav-item active" data-view="dashboard">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/></svg>
@@ -665,6 +671,7 @@
   <button class="nav-item" data-view="controls-assist">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M9.5 3.5h5a1 1 0 0 1 1 1V6h-7V4.5a1 1 0 0 1 1-1Z"/><path d="m9.5 11 1.5 1.5L14 9M9.5 15.5h5"/></svg>
     <span>Control Scan</span>
+    <span class="nav-badge" id="nav-badge-controls-assist" hidden></span>
   </button>
   <button class="nav-item" data-view="findings">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.5h16M9.5 9.5V20"/></svg>
@@ -1212,6 +1219,7 @@ const ICONS = {
   branch: '<circle cx="6" cy="4.5" r="2.2"/><circle cx="6" cy="19.5" r="2.2"/><circle cx="18" cy="7.5" r="2.2"/><path d="M6 6.7V17.3"/><path d="M18 9.7A7 7 0 0 1 11 16.5"/>',
   shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6L12 3Z"/><path d="m9 12 2 2 4-4"/>',
   clipboard: '<path d="M8 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M9.5 3.5h5a1 1 0 0 1 1 1V6h-7V4.5a1 1 0 0 1 1-1Z"/><path d="m9.5 11 1.5 1.5L14 9M9.5 15.5h5"/>',
+  terminal: '<rect x="3" y="4.5" width="18" height="15" rx="1.8"/><path d="m7.5 9.5 3 2.7-3 2.7"/><path d="M13 15.2h4"/>',
 };
 function icon(name, cls) {
   return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -1345,6 +1353,7 @@ let currentFindingDetailId = null;
 let currentView = 'dashboard';
 const findingCache = new Map();  // findingId -> full finding record (from GET /api/findings/:id)
 const stages = new Map();        // runId -> findingId, just enough to correlate incoming WS messages
+const stageConsoles = new Map(); // runId -> live console tracking object for per-finding runs (Triage/Threat Model/Remediation), mirrors scanRuns/appThreatModelRuns/controlAssistRuns but only holds the console fields since that's the only live thing these runs track
 
 let timelineEntries = [];        // flattened run history, newest first
 let timelineLoaded = false;
@@ -1618,20 +1627,18 @@ function renderDashboard() {
 
   const agentsEl = document.getElementById('dash-agents');
   agentsEl.innerHTML = '';
-  for (const name of KNOWN_AGENTS) {
+  for (const name of agentsList) {
     const meta = agentMeta(name);
-    const available = agentsList.includes(name);
     const lastEntry = timelineEntries.find((e) => e.agent === name);
     const row = document.createElement('div');
     row.className = 'agent-row';
     row.innerHTML = `
       <span class="a-icon">${icon(meta.icon)}</span>
-      <span class="a-dot ${available ? 'online' : 'offline'}"></span>
       <div class="agent-row-main">
         <div class="agent-row-name">${escapeHtml(meta.label)}</div>
         <div class="agent-row-meta">${escapeHtml(meta.role)}</div>
       </div>
-      <div class="agent-row-status">${lastEntry ? `${escapeHtml(truncate(lastEntry.findingTitle, 26))}<br>${formatRelativeTime(lastEntry.startedAt)}` : (available ? 'no runs yet' : 'not available')}</div>
+      <div class="agent-row-status">${lastEntry ? `${escapeHtml(truncate(lastEntry.findingTitle, 26))}<br>${formatRelativeTime(lastEntry.startedAt)}` : 'no runs yet'}</div>
     `;
     agentsEl.appendChild(row);
   }
@@ -1895,6 +1902,16 @@ function renderNavBadges() {
   } else {
     scaBadge.hidden = true;
   }
+
+  const caBadge = document.getElementById('nav-badge-controls-assist');
+  const runningCaCount = controlAssessmentsList.filter((r) => r.status === 'running').length;
+  if (runningCaCount > 0) {
+    caBadge.hidden = false;
+    caBadge.className = 'nav-badge running';
+    caBadge.title = `${runningCaCount} control scan${runningCaCount === 1 ? '' : 's'} running`;
+  } else {
+    caBadge.hidden = true;
+  }
 }
 
 // ---------- threat model (category x severity heat map + per-finding attack-path report) ----------
@@ -2042,6 +2059,7 @@ function renderThreatModelView() {
       if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
   });
+  wireConsoleToggles(contentEl, appThreatModelRuns, renderThreatModelView);
   reattachAppThreatModelLiveRefs();
   updateTmViewingLabel();
 }
@@ -2103,6 +2121,7 @@ function stopAppThreatModelElapsedTimer(run) {
 function handleAppThreatModelRawEvent(run, event) {
   trackRunToolActivity(run, event);
   trackRunTokens(run, event);
+  trackConsoleText(run, event);
 }
 
 // Which app-level run's row is expanded — a real accordion (one at a time), not a separate
@@ -2171,7 +2190,9 @@ function appThreatModelRowHtml(r) {
           ${liveStatsHtml}
         </div>
         <span class="badge ${statusCls}">${escapeHtml(statusText)}</span>
+        ${run ? consoleToggleButtonHtml(run) : ''}
       </div>
+      ${run ? consolePanelHtml(run, 'atm-console') : ''}
       ${bodyHtml}
     </div>
   `;
@@ -2187,6 +2208,7 @@ function reattachAppThreatModelLiveRefs() {
     run.elapsedEl = rowEl.querySelector('.atm-elapsed');
     run.contextBarFillEl = rowEl.querySelector('.atm-context-fill');
     run.contextBarLabelEl = rowEl.querySelector('.atm-context-label');
+    run.consoleEl = rowEl.querySelector('.atm-console');
   }
 }
 
@@ -2279,6 +2301,7 @@ function stopControlsAssistElapsedTimer(run) {
 function handleControlsAssistRawEvent(run, event) {
   trackRunToolActivity(run, event);
   trackRunTokens(run, event);
+  trackConsoleText(run, event);
 }
 
 // Which control-assessment row is expanded — a real accordion (one at a time), mirrors
@@ -2326,7 +2349,9 @@ function caRowHtml(r) {
           ${liveStatsHtml}
         </div>
         <span class="badge ${statusCls}">${escapeHtml(statusText)}</span>
+        ${run ? consoleToggleButtonHtml(run) : ''}
       </div>
+      ${run ? consolePanelHtml(run, 'ca-console') : ''}
       ${bodyHtml}
     </div>
   `;
@@ -2342,6 +2367,7 @@ function reattachControlsAssistLiveRefs() {
     run.elapsedEl = rowEl.querySelector('.ca-elapsed');
     run.contextBarFillEl = rowEl.querySelector('.ca-context-fill');
     run.contextBarLabelEl = rowEl.querySelector('.ca-context-label');
+    run.consoleEl = rowEl.querySelector('.ca-console');
   }
 }
 
@@ -2484,6 +2510,7 @@ function renderControlsAssistView() {
       downloadTextFile(`ssp-draft-${runId}.md`, buildControlAssessmentMarkdown(record));
     });
   });
+  wireConsoleToggles(caContentEl, controlAssistRuns, renderControlsAssistView);
   reattachControlsAssistLiveRefs();
 }
 
@@ -2601,6 +2628,7 @@ function upsertControlAssessment(patch) {
   const idx = controlAssessmentsList.findIndex((r) => r.runId === patch.runId);
   if (idx >= 0) controlAssessmentsList[idx] = { ...controlAssessmentsList[idx], ...patch };
   else controlAssessmentsList.unshift(patch);
+  renderNavBadges();
   if (currentView === 'controls-assist') renderControlsAssistView();
 }
 
@@ -2657,6 +2685,7 @@ function makeScanCard(runId, targetPath, meta, containerEl) {
   cardEl.innerHTML = `
     <div class="stage-header">
       <span class="stage-agent">${icon(typeMeta.icon)}<span class="path-text">${escapeHtml(targetPath)}</span></span>
+      <button class="console-toggle-btn" type="button" style="margin-left:auto;" data-console-toggle data-run-id="${escapeHtml(runId)}" title="View model's live reasoning">${icon('terminal')}</button>
     </div>
     <div class="scan-meta-row">${metaTags.join('')}</div>
     <div class="scan-stats">
@@ -2670,6 +2699,7 @@ function makeScanCard(runId, targetPath, meta, containerEl) {
       <div class="context-bar"><div class="context-bar-fill ss-context-fill"></div></div>
       <span class="context-bar-label ss-context-label">0% of context</span>
     </div>
+    <pre class="console-panel ss-console" hidden></pre>
     <div class="scan-error-msg" hidden></div>
     <div class="scan-sev-chips"><span class="hint">No candidates yet</span></div>
     <div class="scan-live-findings"></div>
@@ -2860,10 +2890,69 @@ function trackRunTokens(run, event) {
   updateContextBar(run, run.lastContextTokens);
 }
 
+// Feeds the opt-in per-run console panel: extracts the assistant's narrated prose text (not
+// tool calls/results — that raw stream-json firehose was tried before and rejected as noise,
+// see CLAUDE.md) and appends it both to the run's buffer (survives a re-render) and, if the
+// panel is currently attached to the DOM, directly onto it.
+function trackConsoleText(run, event) {
+  if (event.type !== 'assistant' || !event.message || !Array.isArray(event.message.content)) return;
+  let text = '';
+  for (const block of event.message.content) {
+    if (block.type === 'text' && typeof block.text === 'string') text += block.text;
+  }
+  if (!text) return;
+  run.consoleText = (run.consoleText || '') + text;
+  if (run.consoleEl) {
+    run.consoleEl.textContent += text;
+    run.consoleEl.scrollTop = run.consoleEl.scrollHeight;
+  }
+}
+
+// Shared markup for the small terminal-icon toggle button and its console panel. Only
+// rendered by callers that have a live tracking object for this run this browser session —
+// historical/seeded runs never captured any text, so there's nothing to show. Split into two
+// functions (rather than one block) because the button belongs inside a flex header row
+// alongside other controls, while the panel needs to sit as a full-width block sibling below
+// that row — embedding a <pre> inside a nowrap flex row would squeeze it instead of wrapping.
+// panelClass distinguishes each surface's panel for its own reattach query.
+function consoleToggleButtonHtml(run) {
+  return `<button class="console-toggle-btn${run.consoleOpen ? ' active' : ''}" type="button" data-console-toggle data-run-id="${escapeHtml(run.runId)}" title="View model's live reasoning">${icon('terminal')}</button>`;
+}
+function consolePanelHtml(run, panelClass) {
+  return `<pre class="console-panel ${panelClass}" data-run-id="${escapeHtml(run.runId)}"${run.consoleOpen ? '' : ' hidden'}>${escapeHtml(run.consoleText || '')}</pre>`;
+}
+
+// Wires every console-toggle button inside a just-rebuilt container. Used by the surfaces
+// whose rows get fully torn down and re-rendered on every update (App Threat Model, Control
+// Scan, Finding Detail) — scan cards are created once and never rebuilt, so they wire their
+// single button directly at creation time instead (see beginScanRun).
+function wireConsoleToggles(containerEl, runsMap, rerender) {
+  containerEl.querySelectorAll('[data-console-toggle]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const run = runsMap.get(btn.dataset.runId);
+      if (!run) return;
+      run.consoleOpen = !run.consoleOpen;
+      rerender();
+    });
+  });
+}
+
+// Re-points each run's consoleEl at its freshly-rendered panel node after a container's
+// innerHTML has been rebuilt (App Threat Model/Control Scan already do this inline alongside
+// their other live-stat refs; Finding Detail's stage runs have no other live refs to reattach
+// so this is the only one they need).
+function reattachConsoleRefs(containerEl, runsMap, panelClass) {
+  for (const run of runsMap.values()) {
+    run.consoleEl = containerEl.querySelector(`.${panelClass}[data-run-id="${run.runId}"]`) || null;
+  }
+}
+
 function handleScanRawEvent(run, event) {
   trackRunToolActivity(run, event);
   trackRunTokens(run, event);
   trackScanCandidates(run, event);
+  trackConsoleText(run, event);
 }
 
 // Shared by the Scans and SCA pages — both kick off the exact same underlying WS 'scan'
@@ -2894,9 +2983,18 @@ function beginScanRun(targetPath, instruction, scanMeta, containerEl) {
     findingsEl: cardEl.querySelector('.scan-live-findings'),
     resultsEl: cardEl.querySelector('.scan-results'),
     actionsEl: cardEl.querySelector('.scan-actions'),
+    consoleText: '',
+    consoleOpen: false,
+    consoleEl: cardEl.querySelector('.ss-console'),
     elapsedTimer: null,
   };
   scanRuns.set(runId, run);
+  cardEl.querySelector('[data-console-toggle]').addEventListener('click', (e) => {
+    e.stopPropagation();
+    run.consoleOpen = !run.consoleOpen;
+    e.currentTarget.classList.toggle('active', run.consoleOpen);
+    run.consoleEl.hidden = !run.consoleOpen;
+  });
   run.elapsedTimer = setInterval(() => updateScanElapsed(run), 1000);
   updateScanCardActions(run);
   scansList.unshift({ id: null, runId, path: targetPath, instruction, ...scanMeta, status: 'running', error: null, findingIds: [], startedAt, finishedAt: null });
@@ -3559,6 +3657,9 @@ function renderFindingDetail(findingId) {
     btn.addEventListener('click', () => openThreatModelForFinding(findingId, btn.dataset.runId));
   });
 
+  wireConsoleToggles(fdBodyEl, stageConsoles, () => renderFindingDetail(findingId));
+  reattachConsoleRefs(fdBodyEl, stageConsoles, 'stage-console');
+
   renderFindingDetailActions(finding);
 }
 
@@ -3597,13 +3698,19 @@ function runCardHtml(run) {
     ? `<button class="secondary fd-view-tm-btn" type="button" data-action="view-threat-model" data-run-id="${escapeHtml(run.runId)}">View in Threat Model →</button>`
     : '';
 
+  // Only rendered for runs started this browser session — stageConsoles has nothing for
+  // seeded/historical runs, so there's no live text to show for them.
+  const consoleRun = stageConsoles.get(run.runId);
+
   return `
     <div class="fd-run-card">
       <div class="fd-run-head">
         <span class="fd-run-agent" style="color:${meta.color};">${icon(meta.icon)}${escapeHtml(meta.label)}</span>
         <span class="badge ${statusCls}">${escapeHtml(statusText)}</span>
         <span class="fd-run-time">${escapeHtml(timeStr)}</span>
+        ${consoleRun ? consoleToggleButtonHtml(consoleRun) : ''}
       </div>
+      ${consoleRun ? consolePanelHtml(consoleRun, 'stage-console') : ''}
       ${verdictHtml}
       ${viewInThreatModelHtml}
     </div>
@@ -3662,17 +3769,19 @@ function highlightCode(code) {
   return out;
 }
 
-// Launching a run doesn't render a live per-event stream — that UI (Analysis/
-// Conclusion per stage) was removed along with the old finding-detail panel.
-// Results land in Timeline and update both the Findings table and, if this
-// finding's detail page is open, its Agent runs section, via
-// refreshFindingAfterRun() -> updateFindingListItem(); this just tracks
+// Launching a run doesn't render a live tool/token stats feed — that UI (Analysis/
+// Conclusion per stage) was removed along with the old finding-detail panel. It does,
+// however, feed the opt-in console panel (see stageConsoles/consoleToggleButtonHtml above)
+// if the user chooses to open it. Results land in Timeline and update both the Findings
+// table and, if this finding's detail page is open, its Agent runs section, via
+// refreshFindingAfterRun() -> updateFindingListItem(); stages/stageConsoles just track
 // enough state to correlate incoming WS messages back to the right run.
 function startStage(findingId, agent, context, instruction) {
   const finding = findingCache.get(findingId);
   const runId = uid();
 
   stages.set(runId, findingId);
+  stageConsoles.set(runId, { runId, consoleText: '', consoleOpen: false, consoleEl: null });
 
   const startedAt = Date.now();
   upsertTimelineEntry({
@@ -3717,7 +3826,13 @@ function handleServerMessage(msg) {
   if (!findingId) return;
 
   if (msg.type === 'started') return;
-  if (msg.type === 'event') return; // no live viewing UI to feed anymore
+  if (msg.type === 'event') {
+    // No live stats UI for per-finding runs (see CLAUDE.md) — the only thing fed here is the
+    // opt-in console panel's text buffer, via the same trackConsoleText() scans/whole-app runs use.
+    const consoleRun = stageConsoles.get(msg.runId);
+    if (consoleRun) trackConsoleText(consoleRun, msg.event);
+    return;
+  }
   if (msg.type === 'stderr') {
     return; // CLI-internal chatter, not actionable
   }
