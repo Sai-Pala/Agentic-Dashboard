@@ -141,6 +141,7 @@ function deriveStatus(finding) {
   if (latest.status === 'error' || latest.status === 'cancelled') return 'in_review';
   const v = latest.verdict && latest.verdict.verdict;
   if (v === 'false_positive' || v === 'duplicate') return 'closed';
+  if (latest.agent === 'remediation' && latest.verdict && latest.verdict.corrected_code && (v === 'confirmed' || v === 'needs_review')) return 'remediation_generated';
   if (v === 'confirmed' && !latest.verdict.next_agent) return 'remediation_ready';
   if (v === 'confirmed' || v === 'needs_review') return 'in_review';
   return 'in_review';
@@ -448,6 +449,7 @@ app.get('/api/timeline', (req, res) => {
       runId: scan.runId,
       scanId: scan.id,
       path: scan.path,
+      scanType: scan.scanType,
       status: scan.status,
       instruction: scan.instruction,
       findingCount: scan.findingIds.length,

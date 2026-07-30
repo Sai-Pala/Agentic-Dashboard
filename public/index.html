@@ -164,6 +164,45 @@
   .view-subtitle { color: var(--muted); font-size: 12px; margin-top: 4px; }
   .view-subtitle.viewing-label { color: var(--accent); font-weight: 600; }
   .view-body { flex: 1; overflow-y: auto; padding: 20px 26px; }
+  .view-header-actions { display: flex; align-items: center; gap: 14px; }
+
+  .icon-btn {
+    display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-dim);
+    cursor: pointer; box-shadow: none; padding: 0; font-size: 13px;
+  }
+  .icon-btn:hover:not(:disabled) { background: var(--panel-3); filter: none; box-shadow: none; }
+
+  /* ---------- per-page timeline clock button + drawer (Timeline is not a top-level nav item —
+     each of Reasoning Scans/SCA/Threat Model opens the same drawer, pre-scoped to its own kind,
+     via this small clock icon) ---------- */
+  .clock-btn {
+    position: relative; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-dim);
+    cursor: pointer; box-shadow: none; padding: 0;
+  }
+  .clock-btn:hover:not(:disabled) { background: var(--panel-3); filter: none; box-shadow: none; }
+  .clock-btn-dot {
+    position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%;
+    border: 2px solid var(--bg);
+  }
+  .clock-btn-dot.running { background: var(--warn); box-shadow: 0 0 8px 1px var(--warn); animation: pulse 1.2s infinite ease-in-out; }
+  .clock-btn-dot.completed { background: var(--ok); box-shadow: 0 0 6px -1px var(--ok); }
+
+  #timeline-drawer-backdrop { position: fixed; inset: 0; background: rgba(4,5,7,.5); z-index: 55; }
+  #timeline-drawer {
+    position: fixed; top: 0; right: 0; height: 100%; width: 480px; max-width: 92vw;
+    background: var(--panel); border-left: 1px solid var(--border); z-index: 56;
+    display: flex; flex-direction: column; transform: translateX(100%); transition: transform .18s ease-out;
+  }
+  #timeline-drawer.open { transform: translateX(0); }
+  .timeline-drawer-header {
+    padding: 16px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  }
+  .timeline-drawer-header h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .timeline-drawer-subtitle { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+  .timeline-drawer-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
 
   label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
   select, textarea, input {
@@ -217,6 +256,18 @@
 
   .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .panel-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
+  .panel-clickable { cursor: pointer; }
+  .panel-clickable:hover { border-color: var(--accent); }
+  .panel-title-arrow { opacity: 0; transition: opacity .1s; }
+  .panel-clickable:hover .panel-title-arrow { opacity: 1; }
+
+  .placeholder-panel {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    gap: 8px; padding: 80px 20px; color: var(--muted);
+  }
+  .placeholder-panel .icon-lg { width: 32px; height: 32px; opacity: .5; margin-bottom: 6px; }
+  .placeholder-title { font-size: 14px; font-weight: 600; color: var(--text-dim); }
+  .placeholder-sub { font-size: 12.5px; max-width: 360px; }
 
   .danger-zone { border-color: var(--err); margin-top: 16px; }
   .danger-zone .panel-title { color: var(--err); }
@@ -238,11 +289,6 @@
   .agent-row-name { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
   .agent-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent-row-status { font-size: 11px; color: var(--muted); text-align: right; flex-shrink: 0; }
-
-  .status-line { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); font-size: 12px; color: var(--text-dim); }
-  .status-line:last-child { border-bottom: none; }
-  .status-line .s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
-  .status-line.warn .s-dot { background: var(--warn); }
 
   .link-btn { color: var(--accent); text-decoration: none; cursor: pointer; background: none; border: none; font-size: 11.5px; font-weight: 600; padding: 0; }
 
@@ -316,16 +362,6 @@
   .agent-pill:disabled { opacity: .4; cursor: not-allowed; }
   #scan-note-toggle-btn { margin-left: auto; font-size: 11px; }
 
-  .scan-type-row { display: flex; gap: 6px; flex-wrap: wrap; }
-  .scan-type-pill {
-    display: flex; align-items: center; gap: 6px; padding: 5px 11px 5px 9px; border-radius: 20px;
-    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
-    font-size: 11.5px; font-weight: 600; cursor: pointer; box-shadow: none; white-space: nowrap;
-  }
-  .scan-type-pill:hover:not(:disabled) { filter: none; box-shadow: none; background: var(--panel-3); }
-  .scan-type-pill .icon { color: var(--muted); }
-  .scan-type-pill.selected { background: var(--pill-bg); border-color: var(--pill-color); color: var(--pill-color); }
-  .scan-type-pill.selected .icon { color: var(--pill-color); }
   .scan-scope-row { gap: 10px; }
 
   .agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
@@ -398,7 +434,25 @@
   .findings-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .findings-scan-filter-wrap { display: flex; align-items: center; gap: 8px; }
   .findings-scan-filter-wrap label { font-size: 11px; color: var(--muted); font-weight: 600; }
-  #findings-scan-filter { font-size: 12px; padding: 6px 8px; max-width: 320px; }
+  .scan-filter-dropdown { position: relative; }
+  .scan-filter-btn {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; font-size: 12px; font-family: inherit; cursor: pointer; white-space: nowrap;
+    max-width: 320px; overflow: hidden; text-overflow: ellipsis; display: block;
+  }
+  .scan-filter-btn:hover { background: var(--panel-2); }
+  .scan-filter-menu {
+    position: absolute; top: calc(100% + 6px); left: 0; min-width: 300px; max-width: 420px;
+    max-height: 320px; overflow-y: auto; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 12px 28px -10px rgba(0,0,0,.5); z-index: 40; padding: 6px;
+  }
+  .scan-filter-item {
+    display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 6px;
+    padding: 8px 9px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .scan-filter-item:hover { background: var(--panel-2); }
+  .scan-filter-item.active { background: var(--pill-bg, rgba(167,139,250,.14)); color: var(--accent); font-weight: 600; }
   .group-toggle { display: flex; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
   .group-toggle-btn { background: none; color: var(--muted); border: none; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; box-shadow: none; }
   .group-toggle-btn:hover:not(:disabled) { filter: none; box-shadow: none; color: var(--text-dim); }
@@ -424,7 +478,11 @@
   .findings-table .ft-title { font-weight: 600; line-height: 1.4; max-width: 340px; }
   .findings-table .ft-mono { font-family: var(--mono); font-size: 11px; color: var(--text-dim); word-break: break-word; max-width: 220px; display: inline-block; }
   .findings-table .ft-sev-cell { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .findings-table .ft-select-col { width: 1%; padding-right: 0; }
   .ft-empty { padding: 40px; text-align: center; color: var(--muted); font-size: 12.5px; }
+  .remediation-table td { max-width: 340px; }
+  .remediation-code-cell { max-height: 260px; overflow-y: auto; }
+  .remediation-code-cell .code-block { margin: 0; }
 
   /* ---------- finding detail (full page) ---------- */
   #fd-back-btn { font-size: 11px; margin-bottom: 6px; padding: 0; }
@@ -479,39 +537,51 @@
   .atm-risk-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .atm-recs { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-dim); line-height: 1.7; }
 
-  /* ---------- threat model (radial OWASP map + attack-path flow) ---------- */
-  .tm-diagram-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 24px 16px 16px; margin-bottom: 16px; overflow-x: auto; }
-  /* Top-down tree/org-chart: App -> OWASP category -> individual finding/risk, connected by
-     straight drop-lines instead of a radial hub-and-spoke — the radial layout's edge labels
-     kept getting crowded/truncated ("A01:2021 - Broken Ac..."); a tree lets category labels
-     wrap onto two lines in full instead of being cut off, since there's no arc-crowding
-     constraint to fight. */
-  .tm-tree { display: flex; flex-direction: column; align-items: center; min-width: max-content; }
-  .tm-tree-root-wrap { margin-bottom: 26px; }
-  .tm-tree-box { border-radius: 8px; padding: 8px 12px; font-size: 11.5px; text-align: center; border: 2px solid var(--border); background: var(--panel-2); color: var(--text-dim); }
-  .tm-tree-root-box { font-weight: 700; color: var(--text); padding: 10px 22px; }
-  .tm-tree-cats { display: flex; justify-content: center; gap: 20px; }
-  .tm-tree-branch { display: flex; flex-direction: column; align-items: center; position: relative; padding-top: 26px; width: 170px; flex-shrink: 0; }
-  .tm-tree-branch::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 26px; background: var(--border); }
-  .tm-tree-cat-box { font-weight: 700; width: 100%; }
-  .tm-tree-cat-label { line-height: 1.3; margin-bottom: 3px; }
-  .tm-tree-cat-count { font-size: 10px; font-weight: 600; opacity: .75; }
-  .tm-tree-cat-box.sev-critical { border-color: var(--crit); color: var(--crit); background: color-mix(in srgb, var(--crit) 14%, var(--panel-2)); }
-  .tm-tree-cat-box.sev-high { border-color: var(--err); color: var(--err); background: color-mix(in srgb, var(--err) 14%, var(--panel-2)); }
-  .tm-tree-cat-box.sev-medium { border-color: var(--warn); color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--panel-2)); }
-  .tm-tree-cat-box.sev-low, .tm-tree-cat-box.sev-informational { border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--panel-2)); }
-  .tm-tree-leaves { display: flex; flex-direction: column; gap: 6px; margin-top: 18px; width: 100%; position: relative; }
-  .tm-tree-leaf-box {
-    cursor: pointer; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    border-left-width: 3px; position: relative; padding-top: 14px; font-size: 10.5px;
+  /* ---------- threat model (category x severity heat map + attack-path report) ---------- */
+  .tm-diagram-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; overflow-x: auto; }
+  /* Category (row) x severity (column) grid, replacing an earlier tree/org-chart diagram which
+     itself replaced a radial hub-and-spoke — both were "where does this finding sit visually,"
+     which this heat map answers more directly for triage: darker cell = more findings of that
+     severity in that category, so the riskiest combination is visible at a glance without
+     having to scan every branch. */
+  .tm-heatmap { display: flex; flex-direction: column; gap: 4px; min-width: max-content; }
+  .tm-heat-header, .tm-heat-row { display: flex; align-items: stretch; gap: 4px; }
+  .tm-heat-row-label {
+    width: 220px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; font-size: 11.5px;
+    font-weight: 600; color: var(--text-dim); padding: 6px 8px; border-left: 3px solid var(--border);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .tm-tree-leaf-box::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 14px; background: var(--border); }
-  .tm-tree-leaf-box.selected { background: var(--panel-3); }
-  .tm-tree-leaf-box.selected, .tm-tree-leaf-box:hover { border-color: var(--accent); }
-  .tm-tree-leaf-box.sev-critical { border-left-color: var(--crit); }
-  .tm-tree-leaf-box.sev-high { border-left-color: var(--err); }
-  .tm-tree-leaf-box.sev-medium { border-left-color: var(--warn); }
-  .tm-tree-leaf-box.sev-low, .tm-tree-leaf-box.sev-informational { border-left-color: var(--ok); }
+  .tm-heat-row-label.sev-critical { border-left-color: var(--crit); }
+  .tm-heat-row-label.sev-high { border-left-color: var(--err); }
+  .tm-heat-row-label.sev-medium { border-left-color: var(--warn); }
+  .tm-heat-row-label.sev-low, .tm-heat-row-label.sev-informational { border-left-color: var(--ok); }
+  .tm-heat-row-count { color: var(--muted); font-weight: 400; }
+  .tm-heat-row-cells { display: flex; gap: 4px; }
+  .tm-heat-col-label {
+    width: 76px; flex-shrink: 0; text-align: center; font-size: 9.5px; text-transform: uppercase;
+    letter-spacing: .03em; font-weight: 700; color: var(--muted); padding: 4px 0;
+  }
+  .tm-heat-cell {
+    width: 76px; flex-shrink: 0; min-height: 34px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text-dim); font-size: 12px; font-weight: 700;
+    font-family: inherit; cursor: default;
+  }
+  .tm-heat-cell.has-findings { cursor: pointer; color: #08110a; }
+  .tm-heat-cell.has-findings:hover { filter: brightness(1.08); }
+  .tm-heat-cell.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tm-heat-cell.sev-critical.has-findings { background: color-mix(in srgb, var(--crit) calc(30% + var(--heat-intensity) * 60%), var(--panel-2)); color: #fff; }
+  .tm-heat-cell.sev-high.has-findings { background: color-mix(in srgb, var(--err) calc(30% + var(--heat-intensity) * 60%), var(--panel-2)); color: #fff; }
+  .tm-heat-cell.sev-medium.has-findings { background: color-mix(in srgb, var(--warn) calc(30% + var(--heat-intensity) * 60%), var(--panel-2)); }
+  .tm-heat-cell.sev-low.has-findings, .tm-heat-cell.sev-informational.has-findings { background: color-mix(in srgb, var(--ok) calc(30% + var(--heat-intensity) * 60%), var(--panel-2)); }
+  .tm-heat-cell.empty { opacity: .35; }
+
+  .tm-cell-findings { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tm-cell-finding-item {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 20px;
+    padding: 5px 12px; font-size: 11.5px; font-family: inherit; cursor: pointer; white-space: nowrap;
+  }
+  .tm-cell-finding-item:hover { background: var(--panel-3); }
+  .tm-cell-finding-item.active { border-color: var(--accent); color: var(--accent); background: var(--pill-bg, rgba(167,139,250,.14)); }
 
   .tm-detail-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
   .tm-detail-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
@@ -551,6 +621,7 @@
   .badge.critical { background: var(--crit-soft); color: var(--crit); }
   .badge.needs_review, .badge.medium, .badge.p1, .badge.in_review { background: var(--warn-soft); color: var(--warn); }
   .badge.false_positive, .badge.low, .badge.p2, .badge.p3, .badge.informational, .badge.duplicate, .badge.remediation_ready { background: var(--ok-soft); color: var(--ok); }
+  .badge.remediation_generated { background: var(--accent-soft); color: var(--accent); }
   .badge.new { background: rgba(109,108,104,.18); color: var(--muted); }
   .badge.closed { background: rgba(109,108,104,.18); color: var(--muted); }
 
@@ -584,7 +655,7 @@
   </button>
   <button class="nav-item" data-view="scans">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/></svg>
-    <span>Scans</span>
+    <span>Reasoning Scans</span>
     <span class="nav-badge" id="nav-badge-scans" hidden></span>
   </button>
   <button class="nav-item" data-view="sca">
@@ -592,14 +663,9 @@
     <span>SCA</span>
     <span class="nav-badge" id="nav-badge-sca" hidden></span>
   </button>
-  <button class="nav-item" data-view="timeline">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
-    <span>Timeline</span>
-    <span class="nav-badge" id="nav-badge-timeline" hidden></span>
-  </button>
   <button class="nav-item" data-view="findings">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.5h16M9.5 9.5V20"/></svg>
-    <span>Findings</span>
+    <span>Agent Triage</span>
     <span class="nav-badge alert" id="nav-badge-findings" hidden></span>
   </button>
   <button class="nav-item" data-view="threatmodel">
@@ -608,7 +674,11 @@
   </button>
   <button class="nav-item" data-view="agents">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h7.5L19 8v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 15.5h6M9 18h3.5"/></svg>
-    <span>Agents</span>
+    <span>Agent Configuration</span>
+  </button>
+  <button class="nav-item" data-view="reports">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h9L19.5 8v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M9 12v4M12 9.5v6.5M15 13v3"/></svg>
+    <span>Reports</span>
   </button>
   <button id="nav-collapse-btn" title="Collapse sidebar">
     <svg class="icon" id="nav-collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>
@@ -658,8 +728,8 @@
     </div>
 
     <div class="stat-grid" id="dash-stats"></div>
-    <div class="panel">
-      <div class="panel-title">Agents</div>
+    <div class="panel panel-clickable" id="dash-agents-panel" title="View Agent Configuration">
+      <div class="panel-title">Agents <span class="panel-title-arrow">→</span></div>
       <div id="dash-agents"></div>
     </div>
   </div>
@@ -668,13 +738,29 @@
 <div id="view-scans" class="view" hidden>
   <div class="view-header">
     <div>
-      <h1>Scans</h1>
-      <div class="view-subtitle">Kick off a new scan and watch it run live</div>
+      <h1>Reasoning Scans</h1>
+      <div class="view-subtitle">Kick off a reasoning scan and watch it run live</div>
+    </div>
+    <div class="view-header-actions">
+      <div class="scan-section scan-scope-row" style="margin:0;">
+        <span class="scan-agents-caption">Scope:</span>
+        <div class="group-toggle" id="scan-scope-toggle">
+          <button class="group-toggle-btn active" data-scope="full" type="button">Full scan</button>
+          <button class="group-toggle-btn" data-scope="diff" type="button">Diff only</button>
+        </div>
+        <div id="scan-base-branch-wrap" style="min-width:170px;" hidden>
+          <input id="scan-base-branch-input" class="path-input" placeholder="Base branch to diff against, e.g. main" />
+        </div>
+      </div>
+      <button class="clock-btn" id="scans-clock-btn" type="button" title="View Reasoning Scan timeline">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
+        <span class="clock-btn-dot" id="scans-clock-dot" hidden></span>
+      </button>
     </div>
   </div>
   <div class="view-body">
     <div class="scan-form">
-      <div class="scan-form-title">New scan</div>
+      <div class="scan-form-title">New reasoning scan</div>
 
       <div>
         <label for="scan-path-input">Target directory</label>
@@ -692,25 +778,7 @@
         </div>
       </div>
 
-      <div class="scan-section">
-        <span class="scan-agents-caption">Scan type:</span>
-        <div id="scan-type-list" class="scan-type-row"></div>
-      </div>
-
-      <div class="scan-section scan-scope-row">
-        <span class="scan-agents-caption">Scope:</span>
-        <div class="group-toggle" id="scan-scope-toggle">
-          <button class="group-toggle-btn active" data-scope="full" type="button">Full scan</button>
-          <button class="group-toggle-btn" data-scope="diff" type="button">Diff only</button>
-        </div>
-        <div id="scan-base-branch-wrap" style="flex:1; min-width:170px;" hidden>
-          <input id="scan-base-branch-input" class="path-input" placeholder="Base branch to diff against, e.g. main" />
-        </div>
-      </div>
-
-      <div class="scan-agents-row">
-        <span class="scan-agents-caption">Run after scan:</span>
-        <div id="scan-agents-list"></div>
+      <div>
         <button class="link-btn" id="scan-note-toggle-btn" type="button">+ instructions</button>
       </div>
       <div id="scan-instruction-wrap" hidden>
@@ -728,6 +796,12 @@
     <div>
       <h1>SCA</h1>
       <div class="view-subtitle">Software Composition Analysis — dependency manifests & lockfiles, checked separately from code reasoning</div>
+    </div>
+    <div class="view-header-actions">
+      <button class="clock-btn" id="sca-clock-btn" type="button" title="View SCA timeline">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
+        <span class="clock-btn-dot" id="sca-clock-dot" hidden></span>
+      </button>
     </div>
   </div>
   <div class="view-body">
@@ -776,15 +850,19 @@
   </div>
 </div>
 
-<div id="view-timeline" class="view" hidden>
-  <div class="view-header">
+<div id="timeline-drawer-backdrop" hidden></div>
+<div id="timeline-drawer" hidden>
+  <div class="timeline-drawer-header">
     <div>
-      <h1>Timeline</h1>
-      <div class="view-subtitle">Every scan and agent run, newest first</div>
+      <h2>Timeline</h2>
+      <div class="timeline-drawer-subtitle" id="timeline-drawer-subtitle">Every scan and agent run, newest first</div>
     </div>
-    <button class="secondary" id="timeline-refresh">Refresh</button>
+    <div style="display:flex; gap:6px; align-items:center;">
+      <button class="secondary" id="timeline-refresh">Refresh</button>
+      <button class="icon-btn" id="timeline-drawer-close" title="Close">✕</button>
+    </div>
   </div>
-  <div class="view-body">
+  <div class="timeline-drawer-body">
     <div class="filter-pills" id="timeline-filters"></div>
     <div id="timeline-list"></div>
   </div>
@@ -819,10 +897,11 @@
 <div id="view-findings" class="view" hidden>
   <div class="view-header">
     <div>
-      <h1>Findings</h1>
+      <h1>Agent Triage</h1>
       <div class="view-subtitle" id="findings-subtitle"></div>
     </div>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <button class="secondary" id="auto-remediate-btn" disabled>Auto-remediate selected (0)</button>
       <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
       <button id="add-finding-btn">+ Add</button>
     </div>
@@ -831,8 +910,11 @@
     <div class="findings-toolbar">
       <div class="group-toggle" id="findings-type-tabs"></div>
       <div class="findings-scan-filter-wrap">
-        <label for="findings-scan-filter">Scan</label>
-        <select id="findings-scan-filter"><option value="all">All scans</option></select>
+        <label>Scan</label>
+        <div class="scan-filter-dropdown">
+          <button type="button" class="scan-filter-btn" id="findings-scan-filter-btn">All scans</button>
+          <div class="scan-filter-menu" id="findings-scan-filter-menu" hidden></div>
+        </div>
       </div>
     </div>
     <div class="findings-table-wrap">
@@ -847,7 +929,7 @@
 <div id="view-finding-detail" class="view" hidden>
   <div class="view-header">
     <div>
-      <button class="link-btn" id="fd-back-btn" type="button">← Back to Findings</button>
+      <button class="link-btn" id="fd-back-btn" type="button">← Back to Agent Triage</button>
       <h1 id="fd-title">Finding</h1>
       <div class="view-subtitle" id="fd-subtitle"></div>
     </div>
@@ -858,12 +940,37 @@
   </div>
 </div>
 
+<div id="view-remediation" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <button class="link-btn" id="remediation-back-btn" type="button">← Back to Agent Triage</button>
+      <h1>Remediation</h1>
+      <div class="view-subtitle">Auto-generated fixes for the findings selected on Agent Triage</div>
+    </div>
+  </div>
+  <div class="view-body">
+    <div id="remediation-empty" class="hint" style="padding:30px 4px;" hidden>No findings selected — go back to Agent Triage, check some rows, and click "Auto-remediate selected".</div>
+    <div class="findings-table-wrap">
+      <table class="findings-table remediation-table">
+        <thead><tr><th>Severity</th><th>Issue</th><th>Code issue</th><th>Corrected code</th></tr></thead>
+        <tbody id="remediation-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <div id="view-threatmodel" class="view" hidden>
   <div class="view-header">
     <div>
       <h1>Threat Model</h1>
-      <div class="view-subtitle">Every threat-modeled finding, mapped by OWASP category — click a node for its attack path</div>
+      <div class="view-subtitle">A heat map of every threat-modeled finding by OWASP category and severity — click a cell for its report</div>
       <div class="view-subtitle viewing-label" id="tm-viewing-label" hidden></div>
+    </div>
+    <div class="view-header-actions">
+      <button class="clock-btn" id="tm-clock-btn" type="button" title="View Threat Model timeline">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
+        <span class="clock-btn-dot" id="tm-clock-dot" hidden></span>
+      </button>
     </div>
   </div>
   <div class="view-body">
@@ -900,7 +1007,7 @@
 <div id="view-agents" class="view" hidden>
   <div class="view-header">
     <div>
-      <h1>Agents</h1>
+      <h1>Agent Configuration</h1>
       <div class="view-subtitle">Custom per-finding pipeline agents, defined as markdown system prompts</div>
     </div>
     <button id="new-agent-btn">+ New agent</button>
@@ -908,6 +1015,22 @@
   <div class="view-body">
     <div class="hint" style="margin-bottom:14px;">Every agent here is selectable from a finding's "Select flow…" menu and as a "Run after scan" pill on the Dashboard. Built-in pipeline agents (Triage, Threat Model, Remediation) can be edited but not deleted.</div>
     <div class="agents-grid" id="agents-list"></div>
+  </div>
+</div>
+
+<div id="view-reports" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>Reports</h1>
+      <div class="view-subtitle">Compiled findings and compliance reports</div>
+    </div>
+  </div>
+  <div class="view-body">
+    <div class="placeholder-panel">
+      <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h9L19.5 8v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M9 12v4M12 9.5v6.5M15 13v3"/></svg>
+      <div class="placeholder-title">Coming soon</div>
+      <div class="placeholder-sub">Exportable reports across findings, scans, and threat models will live here.</div>
+    </div>
   </div>
 </div>
 
@@ -1078,11 +1201,10 @@ function knownAgentsAvailableCount() {
 // 'reasoning' replaced the old separate 'sast'/'dast' entries — both were just this same LLM
 // reading source and reasoning about it, so calling them distinct scanner categories was
 // misleading. SCA stays distinct since it's a genuinely different task (manifests/lockfiles
-// vs. code patterns), and now lives on its own page (#view-sca) rather than as a pill here.
+// vs. code patterns), and lives on its own page (#view-sca).
 const SCAN_TYPE_META = {
   reasoning: { label: 'Reasoning Scan', icon: 'search', color: '#a78bfa', caption: 'LLM reasoning pass over source — vulnerability patterns and attack surface, no live target is hit' },
   sca: { label: 'SCA', icon: 'package', color: '#fb923c', caption: 'Dependency manifests & lockfiles for known-vulnerable packages' },
-  custom: { label: 'Custom', icon: 'edit', color: '#2dd4bf', caption: 'Your own instructions drive the pass, no canned framing' },
 };
 
 // ---------- dom refs ----------
@@ -1092,9 +1214,11 @@ const findingsTypeTabsEl = document.getElementById('findings-type-tabs');
 const findingsTableHeadEl = document.getElementById('findings-table-head');
 const findingsTableBodyEl = document.getElementById('findings-table-body');
 const findingsSubtitleEl = document.getElementById('findings-subtitle');
-const findingsScanFilterEl = document.getElementById('findings-scan-filter');
+const findingsScanFilterBtn = document.getElementById('findings-scan-filter-btn');
+const findingsScanFilterMenuEl = document.getElementById('findings-scan-filter-menu');
 const addFindingBtn = document.getElementById('add-finding-btn');
 const exportCsvBtn = document.getElementById('export-csv-btn');
+const autoRemediateBtn = document.getElementById('auto-remediate-btn');
 const contextMenuEl = document.getElementById('context-menu');
 
 const scanPathInput = document.getElementById('scan-path-input');
@@ -1103,8 +1227,6 @@ const scanAppInput = document.getElementById('scan-app-input');
 const scanInstructionInput = document.getElementById('scan-instruction-input');
 const scanStartBtn = document.getElementById('scan-start-btn');
 const scanLiveContainer = document.getElementById('scan-live-container');
-const scanAgentsList = document.getElementById('scan-agents-list');
-const scanTypeListEl = document.getElementById('scan-type-list');
 const scanBaseBranchWrap = document.getElementById('scan-base-branch-wrap');
 const scanBaseBranchInput = document.getElementById('scan-base-branch-input');
 
@@ -1124,9 +1246,8 @@ const scaAgentsList = document.getElementById('sca-agents-list');
 const scaBaseBranchWrap = document.getElementById('sca-base-branch-wrap');
 const scaBaseBranchInput = document.getElementById('sca-base-branch-input');
 
-let scanSelectedAgents = new Set();
 let scaSelectedAgents = new Set();
-let scanType = 'reasoning';
+const scanType = 'reasoning';
 let scanScope = 'full';
 let scaScope = 'full';
 
@@ -1166,6 +1287,8 @@ let findings = [];               // list-item shape from GET /api/findings
 let findingsTypeFilter = 'all';  // 'all' | 'reasoning' | 'sca'
 let findingsScanFilter = 'all';  // 'all' or a scan id — restricts the table to one scan's findings
 let findingsSort = { key: 'severity', dir: 'asc' };
+let selectedFindingIds = new Set();  // checked rows on Agent Triage, feeds "Auto-remediate selected"
+let remediationBatchIds = [];  // ordered findingIds shown on the Remediation screen's current batch
 let currentFindingDetailId = null;
 let currentView = 'dashboard';
 const findingCache = new Map();  // findingId -> full finding record (from GET /api/findings/:id)
@@ -1174,7 +1297,9 @@ const stages = new Map();        // runId -> findingId, just enough to correlate
 let timelineEntries = [];        // flattened run history, newest first
 let timelineLoaded = false;
 let timelineFilter = 'all';
-let timelineUnseenDone = 0;      // completions since the user last viewed Timeline, for the nav badge
+let timelineScanTypeFilter = null;  // null | 'reasoning' | 'sca' — narrows a 'scan' kind filter further, set only by a page's clock-icon preset
+let timelineUnseenDone = 0;      // completions since the user last looked at the timeline drawer
+let timelineDrawerOpen = false;
 
 let scansList = [];              // list-item shape from GET /api/scans
 let scansLoaded = false;
@@ -1242,7 +1367,6 @@ async function loadAgents() {
     opt.value = a; opt.textContent = a;
     stageModalAgent.appendChild(opt);
   }
-  renderScanAgentSelection();
   renderScaAgentSelection();
 }
 
@@ -1276,63 +1400,25 @@ function renderAgentPillSelection(containerEl, selectedSet) {
   }
 }
 
-function renderScanAgentSelection() {
-  renderAgentPillSelection(scanAgentsList, scanSelectedAgents);
-  updateScanStartLabel();
-}
-
 function renderScaAgentSelection() {
   renderAgentPillSelection(scaAgentsList, scaSelectedAgents);
 }
 
-function updateScanStartLabel() {
-  scanStartBtn.textContent = 'Start scan';
-}
-
-function renderScanTypeSelection() {
-  scanTypeListEl.innerHTML = '';
-  for (const key of ['reasoning', 'custom']) {
-    const meta = SCAN_TYPE_META[key];
-    const isSelected = scanType === key;
-
-    const pill = document.createElement('button');
-    pill.type = 'button';
-    pill.className = 'scan-type-pill' + (isSelected ? ' selected' : '');
-    pill.style.setProperty('--pill-color', meta.color);
-    pill.style.setProperty('--pill-bg', hexToRgba(meta.color, .14));
-    pill.title = meta.caption;
-    pill.innerHTML = `${icon(meta.icon)}${escapeHtml(meta.label)}`;
-    pill.addEventListener('click', () => {
-      scanType = key;
-      renderScanTypeSelection();
-      if (key === 'custom' && scanInstructionWrap.hidden) {
-        scanInstructionWrap.hidden = false;
-        scanNoteToggleBtn.textContent = '− instructions';
-        scanInstructionInput.focus();
-      }
+// Shared by the Scans and SCA pages' scope toggles — same full/diff behavior, just a
+// different toggle element, base-branch wrap/input, and where the chosen scope is stored.
+function wireScopeToggle(toggleSelector, baseBranchWrapEl, baseBranchInputEl, setScope) {
+  document.querySelectorAll(`${toggleSelector} .group-toggle-btn`).forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const scope = btn.dataset.scope;
+      setScope(scope);
+      document.querySelectorAll(`${toggleSelector} .group-toggle-btn`).forEach((b) => b.classList.toggle('active', b === btn));
+      baseBranchWrapEl.hidden = scope !== 'diff';
+      if (scope === 'diff') baseBranchInputEl.focus();
     });
-
-    scanTypeListEl.appendChild(pill);
-  }
+  });
 }
-
-document.querySelectorAll('#scan-scope-toggle .group-toggle-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    scanScope = btn.dataset.scope;
-    document.querySelectorAll('#scan-scope-toggle .group-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    scanBaseBranchWrap.hidden = scanScope !== 'diff';
-    if (scanScope === 'diff') scanBaseBranchInput.focus();
-  });
-});
-
-document.querySelectorAll('#sca-scope-toggle .group-toggle-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    scaScope = btn.dataset.scope;
-    document.querySelectorAll('#sca-scope-toggle .group-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    scaBaseBranchWrap.hidden = scaScope !== 'diff';
-    if (scaScope === 'diff') scaBaseBranchInput.focus();
-  });
-});
+wireScopeToggle('#scan-scope-toggle', scanBaseBranchWrap, scanBaseBranchInput, (s) => { scanScope = s; });
+wireScopeToggle('#sca-scope-toggle', scaBaseBranchWrap, scaBaseBranchInput, (s) => { scaScope = s; });
 
 function startAppThreatModel() {
   const targetPath = atmPathInput.value.trim();
@@ -1379,8 +1465,9 @@ function connect() {
 document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
   btn.addEventListener('click', () => showView(btn.dataset.view));
 });
-document.getElementById('dash-timeline-link').addEventListener('click', () => showView('timeline'));
+document.getElementById('dash-timeline-link').addEventListener('click', () => openTimelineDrawer('all'));
 document.getElementById('dash-scans-link').addEventListener('click', () => showView('scans'));
+document.getElementById('dash-agents-panel').addEventListener('click', () => showView('agents'));
 
 const NAV_COLLAPSE_KEY = 'appsecops-nav-collapsed';
 const navEl = document.getElementById('global-nav');
@@ -1405,22 +1492,18 @@ function showView(view, opts = {}) {
   document.getElementById('view-dashboard').hidden = view !== 'dashboard';
   document.getElementById('view-scans').hidden = view !== 'scans';
   document.getElementById('view-sca').hidden = view !== 'sca';
-  document.getElementById('view-timeline').hidden = view !== 'timeline';
   document.getElementById('view-settings').hidden = view !== 'settings';
   document.getElementById('view-findings').hidden = view !== 'findings';
   document.getElementById('view-finding-detail').hidden = view !== 'finding-detail';
+  document.getElementById('view-remediation').hidden = view !== 'remediation';
   document.getElementById('view-threatmodel').hidden = view !== 'threatmodel';
   document.getElementById('view-agents').hidden = view !== 'agents';
+  document.getElementById('view-reports').hidden = view !== 'reports';
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === view));
 
   if (opts.skipInit) return;
 
   if (view === 'dashboard') renderDashboard();
-  if (view === 'timeline') {
-    timelineUnseenDone = 0;
-    renderNavBadges();
-    if (!timelineLoaded) loadTimeline(); else renderTimeline();
-  }
   if (view === 'findings') renderFindingsView();
   if (view === 'threatmodel') openThreatModelView();
   if (view === 'settings') renderSettings();
@@ -1524,7 +1607,8 @@ function renderNavStatus() {
   renderNavBadges();
 }
 
-// ---------- timeline ----------
+// ---------- timeline (a slide-in drawer, opened from a clock-icon button on Reasoning Scans,
+// SCA, and Threat Model — not a top-level nav destination) ----------
 
 async function loadTimeline() {
   const res = await fetch('/api/timeline');
@@ -1535,18 +1619,67 @@ async function loadTimeline() {
 
 document.getElementById('timeline-refresh').addEventListener('click', loadTimeline);
 
+// presetKind/presetScanType: how a clock-icon button scopes the drawer on open (e.g. the SCA
+// page's button passes ('scan', 'sca') so it opens already narrowed to SCA scans) — the pills
+// inside the drawer still let the user broaden or switch away from that preset afterward.
+function openTimelineDrawer(presetKind, presetScanType) {
+  if (presetKind !== undefined) timelineFilter = presetKind;
+  timelineScanTypeFilter = presetScanType !== undefined ? presetScanType : null;
+  timelineDrawerOpen = true;
+  document.getElementById('timeline-drawer-backdrop').hidden = false;
+  document.getElementById('timeline-drawer').hidden = false;
+  document.getElementById('timeline-drawer').classList.add('open');
+  timelineUnseenDone = 0;
+  renderNavBadges();
+  if (!timelineLoaded) loadTimeline(); else renderTimeline();
+}
+
+function closeTimelineDrawer() {
+  timelineDrawerOpen = false;
+  document.getElementById('timeline-drawer').classList.remove('open');
+  document.getElementById('timeline-drawer-backdrop').hidden = true;
+  document.getElementById('timeline-drawer').hidden = true;
+}
+
+document.getElementById('timeline-drawer-close').addEventListener('click', closeTimelineDrawer);
+document.getElementById('timeline-drawer-backdrop').addEventListener('click', closeTimelineDrawer);
+document.getElementById('scans-clock-btn').addEventListener('click', () => openTimelineDrawer('scan', 'reasoning'));
+document.getElementById('sca-clock-btn').addEventListener('click', () => openTimelineDrawer('scan', 'sca'));
+document.getElementById('tm-clock-btn').addEventListener('click', () => openTimelineDrawer('threat_model', null));
+
 function renderTimelineFilters() {
   const el = document.getElementById('timeline-filters');
   el.innerHTML = '';
-  const makePill = (key, label, color) => {
+  // scanType is only set for the two scan-kind pills (Reasoning Scan / SCA) — they both filter
+  // to kind === 'scan' but narrow further by scanType, so "active" has to check both fields
+  // instead of just matching key the way the plain agent-kind pills do.
+  const makePill = (key, label, color, scanType) => {
     const pill = document.createElement('button');
-    pill.className = 'filter-pill' + (timelineFilter === key ? ' active' : '');
+    const isActive = scanType
+      ? timelineFilter === 'scan' && timelineScanTypeFilter === scanType
+      : timelineFilter === key;
+    pill.className = 'filter-pill' + (isActive ? ' active' : '');
     pill.innerHTML = color ? `<span class="fp-dot" style="background:${color}"></span>${escapeHtml(label)}` : escapeHtml(label);
-    pill.addEventListener('click', () => { timelineFilter = key; renderTimeline(); });
+    pill.addEventListener('click', () => {
+      timelineFilter = scanType ? 'scan' : key;
+      timelineScanTypeFilter = scanType || null;
+      renderTimeline();
+    });
     el.appendChild(pill);
   };
   makePill('all', 'All', null);
-  for (const kind of ['scan', ...agentsList]) makePill(kind, agentMeta(kind).label, agentMeta(kind).color);
+  makePill('scan', 'Reasoning Scan', SCAN_TYPE_META.reasoning.color, 'reasoning');
+  makePill('scan', 'SCA', SCAN_TYPE_META.sca.color, 'sca');
+  for (const kind of agentsList) makePill(kind, agentMeta(kind).label, agentMeta(kind).color);
+
+  const subtitleEl = document.getElementById('timeline-drawer-subtitle');
+  if (timelineFilter === 'scan' && timelineScanTypeFilter) {
+    subtitleEl.textContent = timelineScanTypeFilter === 'sca' ? 'SCA scans, newest first' : 'Reasoning scans, newest first';
+  } else if (timelineFilter !== 'all') {
+    subtitleEl.textContent = `${agentMeta(timelineFilter).label} runs, newest first`;
+  } else {
+    subtitleEl.textContent = 'Every scan and agent run, newest first';
+  }
 }
 
 function timelineStatusBadge(entry) {
@@ -1579,7 +1712,10 @@ function renderTimeline() {
   const listEl = document.getElementById('timeline-list');
   listEl.innerHTML = '';
 
-  const filtered = timelineFilter === 'all' ? timelineEntries : timelineEntries.filter((e) => e.kind === timelineFilter);
+  let filtered = timelineFilter === 'all' ? timelineEntries : timelineEntries.filter((e) => e.kind === timelineFilter);
+  if (timelineFilter === 'scan' && timelineScanTypeFilter) {
+    filtered = filtered.filter((e) => (e.scanType === 'sca' ? 'sca' : 'reasoning') === timelineScanTypeFilter);
+  }
   if (!filtered.length) {
     const empty = document.createElement('div');
     empty.id = 'timeline-empty';
@@ -1652,32 +1788,36 @@ function upsertTimelineEntry(entry) {
   else timelineEntries.unshift(entry);
 
   const newStatus = idx >= 0 ? timelineEntries[idx].status : timelineEntries[0].status;
-  if (priorStatus === 'running' && newStatus !== 'running' && currentView !== 'timeline') {
+  if (priorStatus === 'running' && newStatus !== 'running' && !timelineDrawerOpen) {
     timelineUnseenDone++;
   }
 
-  if (currentView === 'timeline') renderTimeline();
+  if (timelineDrawerOpen) renderTimeline();
   if (currentView === 'threatmodel') renderThreatModelView();
   renderNavBadges();
 }
 
-// Yellow/flashing while any run is in progress, green once one finishes and
-// the user hasn't looked at Timeline yet; a red count of open findings on
-// Findings — both live in the sidebar so they're visible from every view.
+// A small dot on each page's clock-icon button (not a single shared nav badge, since Timeline
+// is no longer one nav destination) — yellow while that page's own scope has a run in progress
+// (derived from scansList/findings, not timelineEntries, so it works before the drawer has ever
+// been opened/loaded), green if nothing in that scope is running but something finished
+// somewhere since the drawer was last opened (timelineUnseenDone, global — matches the old
+// single-badge behavior: opening the drawer for any scope clears it for all three).
+function updateTimelineClockDots() {
+  const setDot = (id, running) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (running) { el.hidden = false; el.className = 'clock-btn-dot running'; }
+    else if (timelineUnseenDone > 0) { el.hidden = false; el.className = 'clock-btn-dot completed'; }
+    else { el.hidden = true; }
+  };
+  setDot('scans-clock-dot', scansList.some((s) => s.status === 'running' && s.scanType !== 'sca'));
+  setDot('sca-clock-dot', scansList.some((s) => s.status === 'running' && s.scanType === 'sca'));
+  setDot('tm-clock-dot', findings.some((f) => f.latestRun && f.latestRun.agent === 'threat_model' && f.latestRun.status === 'running'));
+}
+
 function renderNavBadges() {
-  const timelineBadge = document.getElementById('nav-badge-timeline');
-  const runningCount = timelineEntries.filter((e) => e.status === 'running').length;
-  if (runningCount > 0) {
-    timelineBadge.hidden = false;
-    timelineBadge.className = 'nav-badge running';
-    timelineBadge.title = `${runningCount} run${runningCount === 1 ? '' : 's'} in progress`;
-  } else if (timelineUnseenDone > 0) {
-    timelineBadge.hidden = false;
-    timelineBadge.className = 'nav-badge completed';
-    timelineBadge.title = `${timelineUnseenDone} run${timelineUnseenDone === 1 ? '' : 's'} completed`;
-  } else {
-    timelineBadge.hidden = true;
-  }
+  updateTimelineClockDots();
 
   const findingsBadge = document.getElementById('nav-badge-findings');
   const openCount = findings.filter((f) => f.status !== 'closed').length;
@@ -1710,16 +1850,16 @@ function renderNavBadges() {
   }
 }
 
-// ---------- threat model (radial OWASP map + per-finding attack-path flow) ----------
+// ---------- threat model (category x severity heat map + per-finding attack-path report) ----------
 // Read-only, cross-finding view derived entirely from timelineEntries (no dedicated
 // endpoint) — every finding with a completed Threat Model run, grouped by verdict.owasp
-// and laid out as a hub-and-spoke SVG diagram instead of a card grid: center = "App",
-// spokes = OWASP categories (sized by finding count, colored by worst severity in that
-// category), leaves = individual findings (colored by their own severity). Clicking a
-// leaf renders that finding's attack path as a 4-box flow (Attacker -> Preconditions ->
-// Attack Path -> Blast Radius) using the exact prose the Threat Model agent wrote —
-// no new agent capability needed, this is purely a different way to look at data the
-// agent already produces.
+// and laid out as a heat map instead of a card grid: rows = OWASP categories (sorted by
+// finding count), columns = the fixed severity scale, each cell shaded by how many findings
+// land in that category+severity combo. Clicking a cell renders the matching finding's (or,
+// for a cell with more than one, a picker followed by the chosen finding's) attack path as a
+// 4-box flow (Attacker -> Preconditions -> Attack Path -> Blast Radius) using the exact prose
+// the Threat Model agent wrote — no new agent capability needed, this is purely a different
+// way to look at data the agent already produces.
 
 async function openThreatModelView() {
   if (!timelineLoaded) await loadTimeline();
@@ -1735,86 +1875,51 @@ function latestThreatModelEntries() {
   return [...byFinding.values()].filter((e) => e.verdict && ['confirmed', 'needs_review'].includes(e.verdict.verdict));
 }
 
-function worstSeverity(entries) {
+const HEATMAP_SEVERITY_COLS = ['critical', 'high', 'medium', 'low', 'informational'];
+
+function worstOfList(list, getSeverity) {
   let worst = null;
-  for (const e of entries) {
-    const sev = e.verdict.severity_confirmed;
+  for (const item of list) {
+    const sev = getSeverity(item);
     if (!sev) continue;
     if (worst === null || (SEV_ORDER_MAP[sev] ?? 99) < (SEV_ORDER_MAP[worst] ?? 99)) worst = sev;
   }
   return worst || 'informational';
 }
 
-function buildThreatModelTree(categories) {
-  const catsHtml = categories.map(([category, list]) => {
-    const catSev = worstSeverity(list);
-    const leavesHtml = list.map((entry) => {
-      const sev = entry.verdict.severity_confirmed || 'informational';
-      return `<div class="tm-tree-box tm-tree-leaf-box sev-${sev}" data-finding-id="${escapeHtml(entry.findingId)}" title="${escapeHtml(entry.findingTitle)}">${escapeHtml(entry.findingTitle)}</div>`;
+// Shared by both the per-finding Threat Model page and the app-level report's diagram: rows are
+// categories (OWASP, sorted by finding/risk count descending), columns are the fixed severity
+// scale. Cells only carry data-category/data-sev — callers re-derive the underlying items for a
+// clicked cell from their own already-grouped data rather than the DOM, since a cell represents
+// a whole category+severity bucket, not a single item.
+function buildThreatHeatmap(categories, getSeverity) {
+  const headerCells = HEATMAP_SEVERITY_COLS.map((sev) => `<div class="tm-heat-col-label">${severityLabel(sev)}</div>`).join('');
+  const rowsHtml = categories.map(([category, list]) => {
+    const counts = new Map(HEATMAP_SEVERITY_COLS.map((s) => [s, 0]));
+    for (const item of list) {
+      const sev = getSeverity(item);
+      const key = counts.has(sev) ? sev : 'informational';
+      counts.set(key, counts.get(key) + 1);
+    }
+    const maxCount = Math.max(1, ...HEATMAP_SEVERITY_COLS.map((s) => counts.get(s)));
+    const cellsHtml = HEATMAP_SEVERITY_COLS.map((sev) => {
+      const count = counts.get(sev);
+      const intensity = count ? (0.28 + 0.72 * (count / maxCount)).toFixed(2) : 0;
+      return `<button type="button" class="tm-heat-cell${count ? ` has-findings sev-${sev}` : ' empty'}" style="--heat-intensity:${intensity}" data-category="${escapeHtml(category)}" data-sev="${sev}"${count ? '' : ' disabled'}>${count || ''}</button>`;
     }).join('');
+    const rowSev = worstOfList(list, getSeverity);
     return `
-      <div class="tm-tree-branch">
-        <div class="tm-tree-box tm-tree-cat-box sev-${catSev}" title="${escapeHtml(category)}">
-          <div class="tm-tree-cat-label">${escapeHtml(category)}</div>
-          <div class="tm-tree-cat-count">${list.length} finding${list.length === 1 ? '' : 's'}</div>
-        </div>
-        <div class="tm-tree-leaves">${leavesHtml}</div>
+      <div class="tm-heat-row">
+        <div class="tm-heat-row-label sev-${rowSev}" title="${escapeHtml(category)}">${escapeHtml(category)} <span class="tm-heat-row-count">${list.length}</span></div>
+        <div class="tm-heat-row-cells">${cellsHtml}</div>
       </div>
     `;
   }).join('');
 
   return `
-    <div class="tm-tree">
-      <div class="tm-tree-root-wrap"><div class="tm-tree-box tm-tree-root-box">App</div></div>
-      <div class="tm-tree-cats">${catsHtml}</div>
-    </div>
-  `;
-}
-
-// Same tree shape as buildThreatModelTree(), grouping by OWASP category, but built from a
-// flat `top_risks` array (plain {title, severity, owasp, cwe} objects, no nested `.verdict`)
-// instead of per-finding timeline entries — the app-level threat model has no individual
-// findings to hang leaf boxes off of, just its own risk list. Reuses the exact same `.tm-tree-*`
-// CSS classes since they're purely presentational.
-function worstRiskSeverity(risks) {
-  let worst = null;
-  for (const r of risks) {
-    if (!r.severity) continue;
-    if (worst === null || (SEV_ORDER_MAP[r.severity] ?? 99) < (SEV_ORDER_MAP[worst] ?? 99)) worst = r.severity;
-  }
-  return worst || 'informational';
-}
-
-function buildAppThreatModelTree(risks) {
-  const groups = new Map();
-  risks.forEach((risk, i) => {
-    const key = risk.owasp || 'Unclassified';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ ...risk, riskIndex: i });
-  });
-  const categories = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
-
-  const catsHtml = categories.map(([category, list]) => {
-    const catSev = worstRiskSeverity(list);
-    const leavesHtml = list.map((risk) => {
-      const sev = risk.severity || 'informational';
-      return `<div class="tm-tree-box tm-tree-leaf-box sev-${sev}" data-risk-index="${risk.riskIndex}" title="${escapeHtml(risk.title || '')}">${escapeHtml(risk.title || '')}</div>`;
-    }).join('');
-    return `
-      <div class="tm-tree-branch">
-        <div class="tm-tree-box tm-tree-cat-box sev-${catSev}" title="${escapeHtml(category)}">
-          <div class="tm-tree-cat-label">${escapeHtml(category)}</div>
-          <div class="tm-tree-cat-count">${list.length} risk${list.length === 1 ? '' : 's'}</div>
-        </div>
-        <div class="tm-tree-leaves">${leavesHtml}</div>
-      </div>
-    `;
-  }).join('');
-
-  return `
-    <div class="tm-tree">
-      <div class="tm-tree-root-wrap"><div class="tm-tree-box tm-tree-root-box">App</div></div>
-      <div class="tm-tree-cats">${catsHtml}</div>
+    <div class="tm-heatmap">
+      <div class="tm-heat-header"><div class="tm-heat-row-label"></div><div class="tm-heat-row-cells">${headerCells}</div></div>
+      ${rowsHtml}
     </div>
   `;
 }
@@ -1824,8 +1929,16 @@ function allThreatModelEntriesForFinding(findingId) {
   return timelineEntries.filter((e) => e.kind === 'threat_model' && e.findingId === findingId && e.verdict);
 }
 
+// Which findingIds the per-finding heat map currently represents (its cells only aggregate the
+// *latest* confirmed/needs_review run per finding) — used by renderThreatModelDetail() to decide
+// whether the run being viewed is actually reflected in the map above it, without re-querying
+// the DOM for a specific finding's cell (a cell is a whole category+severity bucket, not a
+// per-finding element).
+let tmMapFindingIds = new Set();
+
 function renderThreatModelView() {
   const entries = latestThreatModelEntries();
+  tmMapFindingIds = new Set(entries.map((e) => e.findingId));
   const contentEl = document.getElementById('tm-content');
 
   const groups = new Map();
@@ -1838,43 +1951,82 @@ function renderThreatModelView() {
   const categories = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
 
   const diagramHtml = entries.length
-    ? `<div class="tm-diagram-wrap">${buildThreatModelTree(categories)}</div>`
+    ? `<div class="tm-diagram-wrap tm-main-diagram">${buildThreatHeatmap(categories, (e) => e.verdict.severity_confirmed || 'informational')}</div>`
     : '<div class="hint" style="padding:30px 4px;">No findings have a confirmed Threat Model run yet — open a finding and use its "Agent Runs" menu to run Threat Model.</div>';
 
   contentEl.innerHTML = `
     ${renderAppThreatModelSection()}
     ${diagramHtml}
-    <div id="tm-detail-panel" class="tm-detail-panel"><div class="hint">Click a finding node above to see its attack path.</div></div>
+    <div id="tm-cell-findings" class="tm-cell-findings" hidden></div>
+    <div id="tm-detail-panel" class="tm-detail-panel"><div class="hint">Click a cell above to see the report for its findings.</div></div>
   `;
 
-  contentEl.querySelectorAll('[data-finding-id]').forEach((el) => {
-    el.addEventListener('click', () => selectThreatModelFinding(el.dataset.findingId));
+  contentEl.querySelectorAll('.tm-main-diagram .tm-heat-cell.has-findings').forEach((el) => {
+    el.addEventListener('click', () => {
+      const cellEntries = entries.filter((e) => (e.verdict.owasp || 'Unclassified') === el.dataset.category && (e.verdict.severity_confirmed || 'informational') === el.dataset.sev);
+      contentEl.querySelectorAll('.tm-main-diagram .tm-heat-cell').forEach((c) => c.classList.toggle('selected', c === el));
+      renderTmCellFindings(cellEntries);
+    });
   });
   // Only the summary bar toggles the accordion — the expanded body is a child of .atm-row,
-  // but risk cards/leaf boxes inside it aren't listening on .atm-row-summary so they never
+  // but risk cards/heat cells inside it aren't listening on .atm-row-summary so they never
   // trigger a collapse when clicked.
   contentEl.querySelectorAll('.atm-row-summary').forEach((el) => {
     el.addEventListener('click', () => toggleAppThreatModelRow(el.closest('.atm-row').dataset.atmRunId));
   });
-  contentEl.querySelectorAll('[data-risk-index]').forEach((el) => {
+  contentEl.querySelectorAll('.atm-risk-card').forEach((el) => {
     el.addEventListener('click', () => {
       const scope = el.closest('.atm-row-body');
       if (!scope) return;
-      const idx = el.dataset.riskIndex;
-      scope.querySelectorAll('[data-risk-index]').forEach((e2) => e2.classList.toggle('selected', e2.dataset.riskIndex === idx));
-      const card = scope.querySelector(`.atm-risk-card[data-risk-index="${idx}"]`);
-      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      scope.querySelectorAll('.atm-risk-card').forEach((c) => c.classList.toggle('selected', c === el));
+    });
+  });
+  contentEl.querySelectorAll('.atm-row-body .tm-heat-cell.has-findings').forEach((el) => {
+    el.addEventListener('click', () => {
+      const scope = el.closest('.atm-row-body');
+      if (!scope) return;
+      scope.querySelectorAll('.tm-heat-cell').forEach((c) => c.classList.toggle('selected', c === el));
+      let first = null;
+      scope.querySelectorAll('.atm-risk-card').forEach((card) => {
+        const match = card.dataset.owasp === el.dataset.category && card.dataset.severity === el.dataset.sev;
+        card.classList.toggle('selected', match);
+        if (match && !first) first = card;
+      });
+      if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
   });
   reattachAppThreatModelLiveRefs();
   updateTmViewingLabel();
 }
 
+// A heat map cell aggregates every finding in one category+severity bucket — for the common
+// case of exactly one, jump straight to its attack-path report; otherwise show a small picker
+// of finding titles (the "report" the cell represents) so the user chooses which one to read.
+function renderTmCellFindings(cellEntries) {
+  const listEl = document.getElementById('tm-cell-findings');
+  if (!cellEntries.length) return;
+  if (cellEntries.length === 1) {
+    listEl.hidden = true;
+    listEl.innerHTML = '';
+    selectThreatModelFinding(cellEntries[0].findingId);
+    return;
+  }
+  listEl.hidden = false;
+  listEl.innerHTML = cellEntries.map((e, i) => `<button type="button" class="tm-cell-finding-item${i === 0 ? ' active' : ''}" data-finding-id="${escapeHtml(e.findingId)}">${escapeHtml(e.findingTitle)}</button>`).join('');
+  listEl.querySelectorAll('[data-finding-id]').forEach((el) => {
+    el.addEventListener('click', () => {
+      listEl.querySelectorAll('.tm-cell-finding-item').forEach((b) => b.classList.toggle('active', b === el));
+      selectThreatModelFinding(el.dataset.findingId);
+    });
+  });
+  selectThreatModelFinding(cellEntries[0].findingId);
+}
+
 // ---------- app-level (whole-directory) threat models ----------
-// Independent of the per-finding radial map above: these are holistic, architecture-level
+// Independent of the per-finding heat map above: these are holistic, architecture-level
 // runs (agents/app_threat_model.md) fired from the "New app threat model" form on this same
-// page. Not tied to any finding, so they get their own list + detail panel rather than a leaf
-// node on the OWASP diagram.
+// page. Not tied to any finding, so they get their own list + accordion detail (with its own
+// heat map built from top_risks) rather than a cell on the per-finding map above.
 //
 // Live stats: like scan cards, a running row shows tool/file/token counts, elapsed time, and
 // a context-window fill bar (`appThreatModelRuns`, runId -> tracking object, mirrors
@@ -2023,7 +2175,7 @@ function renderAppThreatModelDetail(record) {
   `).join('') || '<div class="hint">None identified.</div>';
   const risks = v.top_risks || [];
   const risksHtml = risks.map((risk, i) => `
-    <div class="atm-risk-card" id="atm-risk-${i}" data-risk-index="${i}">
+    <div class="atm-risk-card" id="atm-risk-${i}" data-risk-index="${i}" data-owasp="${escapeHtml(risk.owasp || 'Unclassified')}" data-severity="${escapeHtml(risk.severity || 'informational')}">
       <div class="atm-risk-top">
         <span class="badge ${escapeHtml(risk.severity || 'informational')}">${escapeHtml(risk.severity || 'informational')}</span>
         <b>${escapeHtml(risk.title || '')}</b>
@@ -2033,7 +2185,13 @@ function renderAppThreatModelDetail(record) {
     </div>
   `).join('') || '<div class="hint">No structural risks flagged.</div>';
   const recommendationsHtml = (v.recommendations || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('') || '<li class="hint">None given.</li>';
-  const diagramHtml = risks.length ? `<div class="tm-diagram-wrap">${buildAppThreatModelTree(risks)}</div>` : '';
+  const riskCategories = [...risks.reduce((groups, risk) => {
+    const key = risk.owasp || 'Unclassified';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(risk);
+    return groups;
+  }, new Map()).entries()].sort((a, b) => b[1].length - a[1].length);
+  const diagramHtml = risks.length ? `<div class="tm-diagram-wrap">${buildThreatHeatmap(riskCategories, (r) => r.severity || 'informational')}</div>` : '';
 
   return `
     ${diagramHtml}
@@ -2054,7 +2212,6 @@ function renderAppThreatModelDetail(record) {
 function selectThreatModelFinding(findingId, runId) {
   const runs = allThreatModelEntriesForFinding(findingId);
   if (!runs.length) return;
-  document.querySelectorAll('.tm-tree-leaf-box').forEach((el) => el.classList.toggle('selected', el.dataset.findingId === findingId));
   renderThreatModelDetail(findingId, runId || runs[0].runId);
 }
 
@@ -2062,7 +2219,7 @@ function renderThreatModelDetail(findingId, runId) {
   const runs = allThreatModelEntriesForFinding(findingId);
   const entry = runs.find((e) => e.runId === runId) || runs[0];
   if (!entry) return;
-  const inMap = Array.from(document.querySelectorAll('.tm-tree-leaf-box')).some((el) => el.dataset.findingId === findingId);
+  const inMap = tmMapFindingIds.has(findingId);
   document.getElementById('tm-detail-panel').innerHTML = renderAttackPathFlow(entry, runs, inMap);
   document.getElementById('tm-run-select')?.addEventListener('change', (e) => renderThreatModelDetail(findingId, e.target.value));
   document.getElementById('tm-view-finding-btn')?.addEventListener('click', () => openFindingDetail(findingId));
@@ -2170,7 +2327,7 @@ function renderScanFindingsBody(body, scanFindings, scanId) {
   if (scanId) {
     const linkRow = document.createElement('div');
     linkRow.style.cssText = 'padding:2px 14px 8px;';
-    linkRow.innerHTML = '<button class="link-btn" type="button">View all in Findings →</button>';
+    linkRow.innerHTML = '<button class="link-btn" type="button">View all in Agent Triage →</button>';
     linkRow.querySelector('button').addEventListener('click', (e) => { e.stopPropagation(); openFindingsFilteredByScan(scanId); });
     body.appendChild(linkRow);
   }
@@ -2242,7 +2399,7 @@ function updateScanCardActions(run) {
     if (run.scanId && run.status === 'done') {
       const viewBtn = document.createElement('button');
       viewBtn.className = 'secondary';
-      viewBtn.textContent = 'View in Findings →';
+      viewBtn.textContent = 'View in Agent Triage →';
       viewBtn.addEventListener('click', () => openFindingsFilteredByScan(run.scanId));
       el.appendChild(viewBtn);
     }
@@ -2272,7 +2429,7 @@ async function deleteScanRun(run) {
   timelineEntries = timelineEntries.filter((e) => e.runId !== run.runId);
   renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
-  if (currentView === 'timeline') renderTimeline();
+  if (timelineDrawerOpen) renderTimeline();
 }
 
 function renderScanCardResults(run, scanFindings) {
@@ -2463,10 +2620,6 @@ function startScan() {
     return;
   }
   const instruction = scanInstructionInput.value.trim();
-  if (scanType === 'custom' && !instruction) {
-    alert('Custom reasoning pass needs instructions — describe what you want this pass to focus on.');
-    return;
-  }
   const branch = scanBranchInput.value.trim();
   const app = scanAppInput.value.trim();
   const baseBranch = scanBaseBranchInput.value.trim();
@@ -2509,19 +2662,20 @@ scaStartBtn.addEventListener('click', startScaScan);
 
 const scanInstructionWrap = document.getElementById('scan-instruction-wrap');
 const scanNoteToggleBtn = document.getElementById('scan-note-toggle-btn');
-scanNoteToggleBtn.addEventListener('click', () => {
-  scanInstructionWrap.hidden = !scanInstructionWrap.hidden;
-  scanNoteToggleBtn.textContent = scanInstructionWrap.hidden ? '+ instructions' : '− instructions';
-  if (!scanInstructionWrap.hidden) scanInstructionInput.focus();
-});
-
 const scaInstructionWrap = document.getElementById('sca-instruction-wrap');
 const scaNoteToggleBtn = document.getElementById('sca-note-toggle-btn');
-scaNoteToggleBtn.addEventListener('click', () => {
-  scaInstructionWrap.hidden = !scaInstructionWrap.hidden;
-  scaNoteToggleBtn.textContent = scaInstructionWrap.hidden ? '+ instructions' : '− instructions';
-  if (!scaInstructionWrap.hidden) scaInstructionInput.focus();
-});
+
+// Shared by the Scans and SCA pages' "+ instructions" toggle — same show/hide + label-swap
+// behavior, just a different wrap/button/input triple.
+function wireNoteToggle(toggleBtn, wrapEl, inputEl) {
+  toggleBtn.addEventListener('click', () => {
+    wrapEl.hidden = !wrapEl.hidden;
+    toggleBtn.textContent = wrapEl.hidden ? '+ instructions' : '− instructions';
+    if (!wrapEl.hidden) inputEl.focus();
+  });
+}
+wireNoteToggle(scanNoteToggleBtn, scanInstructionWrap, scanInstructionInput);
+wireNoteToggle(scaNoteToggleBtn, scaInstructionWrap, scaInstructionInput);
 
 function handleScanServerMessage(msg) {
   const run = msg.runId ? scanRuns.get(msg.runId) : null;
@@ -2617,12 +2771,12 @@ async function loadFindings() {
 }
 
 function statusLabel(status) {
-  return { new: 'Not started', in_review: 'In review', remediation_ready: 'Remediation ready', closed: 'Closed' }[status] || status;
+  return { new: 'Not started', in_review: 'In review', remediation_ready: 'Remediation ready', remediation_generated: 'Remediation generated', closed: 'Closed' }[status] || status;
 }
 function severityLabel(sev) { return sev.charAt(0).toUpperCase() + sev.slice(1); }
 
 const SEV_ORDER_MAP = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
-const STATUS_ORDER_MAP = { new: 0, in_review: 1, remediation_ready: 2, closed: 3 };
+const STATUS_ORDER_MAP = { new: 0, in_review: 1, remediation_ready: 2, remediation_generated: 3, closed: 4 };
 
 const FINDINGS_TYPE_LABEL = { all: 'All', reasoning: 'Reasoning', sca: 'SCA' };
 const FINDINGS_COLUMNS = {
@@ -2675,25 +2829,48 @@ function renderFindingsView() {
   renderFindingsTable();
 }
 
+function scanFilterLabel(s) {
+  const kind = s.scanType === 'sca' ? 'SCA scan' : 'Reasoning scan';
+  return `${kind} on ${s.path} started ${formatRelativeTime(s.startedAt)}`;
+}
+
 // Only scans that actually produced findings still on record are worth offering as a filter —
 // a scan that found nothing (or whose findings were all deleted) would just be a dead-end option.
+// findingsScanFilter (set by an item click, or programmatically by openFindingsFilteredByScan())
+// is the single source of truth — see the bugfix note in git history: reading the old <select>'s
+// DOM value back as a fallback silently discarded a filter set via a link instead of the dropdown.
 function renderFindingsScanFilter() {
   const scansWithFindings = scansList.filter((s) => s.id && findings.some((f) => f.sourceScanId === s.id));
   scansWithFindings.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
 
-  findingsScanFilterEl.innerHTML = '<option value="all">All scans</option>' + scansWithFindings.map((s) => {
-    const label = `${s.path}${s.app ? ' · ' + s.app : ''} — ${formatRelativeTime(s.startedAt)}`;
-    return `<option value="${escapeHtml(s.id)}">${escapeHtml(truncate(label, 64))}</option>`;
-  }).join('');
-
-  // findingsScanFilter (set by the dropdown's own change handler, or programmatically by
-  // openFindingsFilteredByScan()) is the single source of truth — the <select>'s DOM value is
-  // a render target, never read back as state. Reading `findingsScanFilterEl.value` here as a
-  // fallback was the bug: the element's value defaults to the truthy string "all" until the
-  // user touches it, so `el.value || findingsScanFilter` always picked "all" and silently
-  // discarded any filter set via a "View in Findings" link instead of the dropdown itself.
   if (!scansWithFindings.some((s) => s.id === findingsScanFilter)) findingsScanFilter = 'all';
-  findingsScanFilterEl.value = findingsScanFilter;
+  const current = findingsScanFilter === 'all' ? null : scansWithFindings.find((s) => s.id === findingsScanFilter);
+  findingsScanFilterBtn.textContent = current ? truncate(scanFilterLabel(current), 46) : 'All scans';
+  findingsScanFilterBtn.title = current ? scanFilterLabel(current) : 'All scans';
+
+  findingsScanFilterMenuEl.innerHTML = '';
+  const selectScan = (scanId) => {
+    findingsScanFilter = scanId;
+    findingsScanFilterMenuEl.hidden = true;
+    renderFindingsView();
+  };
+
+  const allItem = document.createElement('button');
+  allItem.type = 'button';
+  allItem.className = 'scan-filter-item' + (findingsScanFilter === 'all' ? ' active' : '');
+  allItem.textContent = 'All scans';
+  allItem.addEventListener('click', () => selectScan('all'));
+  findingsScanFilterMenuEl.appendChild(allItem);
+
+  for (const s of scansWithFindings) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'scan-filter-item' + (findingsScanFilter === s.id ? ' active' : '');
+    item.textContent = scanFilterLabel(s);
+    item.title = scanFilterLabel(s);
+    item.addEventListener('click', () => selectScan(s.id));
+    findingsScanFilterMenuEl.appendChild(item);
+  }
 }
 
 function renderFindingsTypeTabs(scanScoped) {
@@ -2752,11 +2929,43 @@ function findingsCellHtml(f, key) {
   }
 }
 
+function updateAutoRemediateBtn() {
+  const n = selectedFindingIds.size;
+  autoRemediateBtn.textContent = `Auto-remediate selected (${n})`;
+  autoRemediateBtn.disabled = n === 0;
+}
+
 function renderFindingsTable() {
   const columns = FINDINGS_COLUMNS[findingsTypeFilter] || FINDINGS_COLUMNS.all;
 
+  const scanScoped = findingsScanScoped();
+  const rows = (findingsTypeFilter === 'all' ? scanScoped.slice() : scanScoped.filter((f) => f.scanType === findingsTypeFilter));
+  rows.sort((a, b) => {
+    const va = findingsSortValue(a, findingsSort.key);
+    const vb = findingsSortValue(b, findingsSort.key);
+    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return findingsSort.dir === 'asc' ? cmp : -cmp;
+  });
+  // Dropping a row that's no longer visible (filtered out, deleted) from the selection keeps
+  // the "select all" checkbox and the Auto-remediate count honest to what's on screen.
+  const visibleIds = new Set(rows.map((f) => f.id));
+  for (const id of [...selectedFindingIds]) if (!visibleIds.has(id)) selectedFindingIds.delete(id);
+
   findingsTableHeadEl.innerHTML = '';
   const headRow = document.createElement('tr');
+  const selectAllTh = document.createElement('th');
+  selectAllTh.className = 'ft-select-col';
+  const selectAllCb = document.createElement('input');
+  selectAllCb.type = 'checkbox';
+  selectAllCb.checked = rows.length > 0 && rows.every((f) => selectedFindingIds.has(f.id));
+  selectAllCb.addEventListener('change', () => {
+    if (selectAllCb.checked) rows.forEach((f) => selectedFindingIds.add(f.id));
+    else rows.forEach((f) => selectedFindingIds.delete(f.id));
+    renderFindingsTable();
+    updateAutoRemediateBtn();
+  });
+  selectAllTh.appendChild(selectAllCb);
+  headRow.appendChild(selectAllTh);
   for (const col of columns) {
     const th = document.createElement('th');
     th.textContent = col.label;
@@ -2780,20 +2989,12 @@ function renderFindingsTable() {
   }
   findingsTableHeadEl.appendChild(headRow);
 
-  const scanScoped = findingsScanScoped();
-  const rows = (findingsTypeFilter === 'all' ? scanScoped.slice() : scanScoped.filter((f) => f.scanType === findingsTypeFilter));
-  rows.sort((a, b) => {
-    const va = findingsSortValue(a, findingsSort.key);
-    const vb = findingsSortValue(b, findingsSort.key);
-    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-    return findingsSort.dir === 'asc' ? cmp : -cmp;
-  });
-
+  updateAutoRemediateBtn();
   findingsTableBodyEl.innerHTML = '';
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = columns.length;
+    td.colSpan = columns.length + 1;
     td.className = 'ft-empty';
     td.textContent = scanScoped.length
       ? 'No findings match this type.'
@@ -2808,7 +3009,17 @@ function renderFindingsTable() {
   for (const f of rows) {
     const tr = document.createElement('tr');
     tr.dataset.findingId = f.id;
-    tr.innerHTML = columns.map((col) => `<td>${findingsCellHtml(f, col.key)}</td>`).join('');
+    const checkedAttr = selectedFindingIds.has(f.id) ? 'checked' : '';
+    tr.innerHTML = `<td class="ft-select-col"><input type="checkbox" ${checkedAttr}></td>`
+      + columns.map((col) => `<td>${findingsCellHtml(f, col.key)}</td>`).join('');
+    const cb = tr.querySelector('.ft-select-col input');
+    cb.addEventListener('click', (e) => e.stopPropagation());
+    cb.addEventListener('change', () => {
+      if (cb.checked) selectedFindingIds.add(f.id);
+      else selectedFindingIds.delete(f.id);
+      updateAutoRemediateBtn();
+      selectAllCb.checked = rows.every((r) => selectedFindingIds.has(r.id));
+    });
     tr.addEventListener('click', () => openFindingDetail(f.id));
     tr.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -2824,6 +3035,7 @@ function updateFindingListItem(findingId, patch) {
   if (currentView === 'findings') renderFindingsTable();
   if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
   if (currentView === 'dashboard') renderDashboard();
+  if (currentView === 'remediation' && remediationBatchIds.includes(findingId)) renderRemediationView();
 }
 
 // ---------- finding loading (used to build context for a fresh agent run) ----------
@@ -2836,6 +3048,58 @@ async function ensureFindingCached(findingId) {
   findingCache.set(findingId, finding);
   return finding;
 }
+
+// ---------- auto-remediate: run Remediation on every checked Agent Triage row, then show a
+// side-by-side original/corrected-code report for the batch ----------
+
+async function autoRemediateSelected() {
+  const ids = [...selectedFindingIds];
+  if (!ids.length) return;
+  selectedFindingIds.clear();
+  remediationBatchIds = ids;
+  showView('remediation');
+  renderRemediationView();
+  for (const id of ids) {
+    const finding = await ensureFindingCached(id);
+    if (!finding) continue;
+    renderRemediationView();
+    startStage(id, 'remediation', buildBaseContext(finding), '');
+  }
+}
+
+function remediationRowStateHtml(finding) {
+  const latest = finding.runs && finding.runs.length ? finding.runs[finding.runs.length - 1] : null;
+  if (!latest || latest.agent !== 'remediation') return '<span class="hint">Waiting to start…</span>';
+  if (latest.status === 'running') return '<span class="hint">Generating…</span>';
+  if (latest.status === 'error' || latest.status === 'cancelled') return '<span class="hint">Run failed — no corrected code produced.</span>';
+  const correctedCode = latest.verdict && latest.verdict.corrected_code;
+  if (correctedCode) return `<div class="remediation-code-cell"><pre class="code-block"><code>${highlightCode(correctedCode)}</code></pre></div>`;
+  return '<span class="hint">No corrected code produced for this finding.</span>';
+}
+
+function renderRemediationView() {
+  const bodyEl = document.getElementById('remediation-table-body');
+  const emptyEl = document.getElementById('remediation-empty');
+  emptyEl.hidden = remediationBatchIds.length > 0;
+  bodyEl.innerHTML = remediationBatchIds.map((id) => {
+    const finding = findingCache.get(id);
+    if (!finding) return '';
+    const codeCell = finding.code
+      ? `<div class="remediation-code-cell"><pre class="code-block"><code>${highlightCode(finding.code)}</code></pre></div>`
+      : '<span class="hint">No code on file for this finding.</span>';
+    return `
+      <tr>
+        <td><span class="badge ${escapeHtml(finding.severity)}">${escapeHtml(severityLabel(finding.severity))}</span></td>
+        <td><div class="ft-title">${escapeHtml(finding.title)}</div></td>
+        <td>${codeCell}</td>
+        <td>${remediationRowStateHtml(finding)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+autoRemediateBtn.addEventListener('click', autoRemediateSelected);
+document.getElementById('remediation-back-btn').addEventListener('click', () => showView('findings'));
 
 function buildBaseContext(finding) {
   const latestRun = finding.runs && finding.runs.length ? finding.runs[finding.runs.length - 1] : null;
@@ -3217,7 +3481,10 @@ document.addEventListener('click', (e) => {
   if (!contextMenuEl.hidden && !contextMenuEl.contains(e.target)) closeContextMenu();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeContextMenu(); closeStageModal(); closeFindingModal(); }
+  if (e.key === 'Escape') {
+    closeContextMenu(); closeStageModal(); closeFindingModal();
+    if (timelineDrawerOpen) closeTimelineDrawer();
+  }
 });
 
 // ---------- stage modal (continue / re-run / branch / fresh run w/ instructions) ----------
@@ -3276,9 +3543,14 @@ function openFindingModal() {
 }
 function closeFindingModal() { findingModalOverlay.hidden = true; }
 
-findingsScanFilterEl.addEventListener('change', (e) => {
-  findingsScanFilter = e.target.value;
-  renderFindingsView();
+findingsScanFilterBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  findingsScanFilterMenuEl.hidden = !findingsScanFilterMenuEl.hidden;
+});
+document.addEventListener('click', (e) => {
+  if (!findingsScanFilterMenuEl.hidden && !e.target.closest('.scan-filter-dropdown')) {
+    findingsScanFilterMenuEl.hidden = true;
+  }
 });
 
 addFindingBtn.addEventListener('click', openFindingModal);
@@ -3524,7 +3796,7 @@ async function clearSession() {
   renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
   if (currentView === 'findings') renderFindingsView();
-  if (currentView === 'timeline') renderTimeline();
+  if (timelineDrawerOpen) renderTimeline();
   if (currentView === 'threatmodel') renderThreatModelView();
 }
 
@@ -3533,7 +3805,6 @@ document.getElementById('clear-session-btn').addEventListener('click', clearSess
 // ---------- init ----------
 
 async function init() {
-  renderScanTypeSelection();
   await loadAgents();
   await loadFindings();
   await loadScans();
