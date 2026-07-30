@@ -90,16 +90,20 @@ dots do.
   "SCA" — the nav item is an action/page name, not just the technique's acronym, and "SCA
   Scan" reads more clearly as a peer to "Reasoning Scan"), structurally identical
   to Reasoning Scan (target directory, branch/app, scope toggle now in the header, Start
-  button, live cards, a clock-icon timeline button) but with a run-after-scan pill row still
-  present (`scaAgentsList`/`renderScaAgentSelection()` — this one genuinely is wired, unlike
-  the removed Reasoning Scan copy) since the whole point of this page is that the type is
-  fixed. It reuses the exact same underlying mechanism as Reasoning Scan — the same WS
-  `'scan'` message, the same `scanRuns` Map, the same `makeScanCard()` — just with a different
-  target container (`#sca-live-container`) and `scanType: 'sca'` hardcoded
-  (`startScaScan()`/`beginScanRun()` in `index.html`, factored out of the old single `startScan()`
-  so both pages share the run-tracking/live-card machinery instead of duplicating it). Its own
-  nav badge (`#nav-badge-sca`) mirrors Reasoning Scan's but filters to `scanType === 'sca'`
-  scans only, so the two pages' "something's running" indicators never cross-contaminate.
+  button, live cards, a clock-icon timeline button). It reuses the exact same underlying
+  mechanism as Reasoning Scan — the same WS `'scan'` message, the same `scanRuns` Map, the
+  same `makeScanCard()` — just with a different target container (`#sca-live-container`) and
+  `scanType: 'sca'` hardcoded (`startScaScan()`/`beginScanRun()` in `index.html`, factored out
+  of the old single `startScan()` so both pages share the run-tracking/live-card machinery
+  instead of duplicating it). Its own nav badge (`#nav-badge-sca`) mirrors Reasoning Scan's but
+  filters to `scanType === 'sca'` scans only, so the two pages' "something's running"
+  indicators never cross-contaminate. This page used to also carry a "Run after scan" pill row
+  (`scaAgentsList`/`scaSelectedAgents`/`renderScaAgentSelection()`) — removed, since on
+  inspection it turned out to be dead the same way the earlier Reasoning Scan copy was: the
+  selected agents were rendered and toggleable but never actually read by `startScaScan()` or
+  sent to the server, so there was no real "run after scan" behavior behind the UI. The shared
+  `renderAgentPillSelection()` helper it depended on, and the now-unused `.agent-pill`/`.ap-dot`
+  CSS, were removed with it.
 - **Timeline** — every scan *and* every per-finding agent run, newest first, date-grouped,
   filterable by a `kind` tag (`scan` / `triage` / `threat_model` / `remediation`, color-coded
   via `AGENT_META` in `index.html`). This is **not a top-level nav destination** — it used to

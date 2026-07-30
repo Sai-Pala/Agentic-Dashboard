@@ -347,19 +347,7 @@
   .scan-field-row { display: flex; gap: 10px; }
   .label-optional { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .7; }
   .scan-section { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .scan-agents-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .scan-agents-caption { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; flex-shrink: 0; }
-  #scan-agents-list { display: flex; gap: 6px; flex-wrap: wrap; }
-  .agent-pill {
-    display: flex; align-items: center; gap: 6px; padding: 5px 11px 5px 9px; border-radius: 20px;
-    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
-    font-size: 11.5px; font-weight: 600; cursor: pointer; box-shadow: none; white-space: nowrap;
-  }
-  .agent-pill:hover:not(:disabled) { filter: none; box-shadow: none; background: var(--panel-3); }
-  .agent-pill .ap-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
-  .agent-pill.selected { background: var(--pill-bg); border-color: var(--pill-color); color: var(--pill-color); }
-  .agent-pill.selected .ap-dot { background: var(--pill-color); box-shadow: 0 0 5px -1px var(--pill-color); }
-  .agent-pill:disabled { opacity: .4; cursor: not-allowed; }
   #scan-note-toggle-btn { margin-left: auto; font-size: 11px; }
 
   .scan-scope-row { gap: 10px; }
@@ -850,9 +838,7 @@
         </div>
       </div>
 
-      <div class="scan-agents-row">
-        <span class="scan-agents-caption">Run after scan:</span>
-        <div id="sca-agents-list"></div>
+      <div>
         <button class="link-btn" id="sca-note-toggle-btn" type="button">+ instructions</button>
       </div>
       <div id="sca-instruction-wrap" hidden>
@@ -1309,11 +1295,9 @@ const scaAppInput = document.getElementById('sca-app-input');
 const scaInstructionInput = document.getElementById('sca-instruction-input');
 const scaStartBtn = document.getElementById('sca-start-btn');
 const scaLiveContainer = document.getElementById('sca-live-container');
-const scaAgentsList = document.getElementById('sca-agents-list');
 const scaBaseBranchWrap = document.getElementById('sca-base-branch-wrap');
 const scaBaseBranchInput = document.getElementById('sca-base-branch-input');
 
-let scaSelectedAgents = new Set();
 const scanType = 'reasoning';
 let scanScope = 'full';
 let scaScope = 'full';
@@ -1437,41 +1421,6 @@ async function loadAgents() {
     opt.value = a; opt.textContent = a;
     stageModalAgent.appendChild(opt);
   }
-  renderScaAgentSelection();
-}
-
-// Shared by the Scans and SCA pages' "Run after scan" pill rows — same pill markup, just a
-// different container element and selected-agents Set per page.
-function renderAgentPillSelection(containerEl, selectedSet) {
-  containerEl.innerHTML = '';
-  for (const agentName of agentsList) {
-    // Threat Model doesn't fit a per-finding "run after scan" pill the way Triage/Remediation
-    // do — a raw scan finding has no exploit-chain context yet for it to refine. Whole-app
-    // threat modeling is its own action on the Threat Model page's "New app threat model"
-    // form, not a per-finding auto-run choice.
-    if (agentName === 'threat_model') continue;
-    const meta = agentMeta(agentName);
-    const isSelected = selectedSet.has(agentName);
-
-    const pill = document.createElement('button');
-    pill.type = 'button';
-    pill.className = 'agent-pill' + (isSelected ? ' selected' : '');
-    pill.style.setProperty('--pill-color', meta.color);
-    pill.style.setProperty('--pill-bg', hexToRgba(meta.color, .14));
-    pill.title = meta.role || `${meta.label} agent`;
-    pill.innerHTML = `<span class="ap-dot"></span>${escapeHtml(meta.label)}`;
-    pill.addEventListener('click', () => {
-      if (selectedSet.has(agentName)) selectedSet.delete(agentName);
-      else selectedSet.add(agentName);
-      renderAgentPillSelection(containerEl, selectedSet);
-    });
-
-    containerEl.appendChild(pill);
-  }
-}
-
-function renderScaAgentSelection() {
-  renderAgentPillSelection(scaAgentsList, scaSelectedAgents);
 }
 
 // Shared by the Scans and SCA pages' scope toggles — same full/diff behavior, just a
