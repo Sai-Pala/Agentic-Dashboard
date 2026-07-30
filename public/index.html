@@ -290,11 +290,6 @@
   .agent-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent-row-status { font-size: 11px; color: var(--muted); text-align: right; flex-shrink: 0; }
 
-  .status-line { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); font-size: 12px; color: var(--text-dim); }
-  .status-line:last-child { border-bottom: none; }
-  .status-line .s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
-  .status-line.warn .s-dot { background: var(--warn); }
-
   .link-btn { color: var(--accent); text-decoration: none; cursor: pointer; background: none; border: none; font-size: 11.5px; font-weight: 600; padding: 0; }
 
   .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 20px; }
@@ -1409,23 +1404,21 @@ function renderScaAgentSelection() {
   renderAgentPillSelection(scaAgentsList, scaSelectedAgents);
 }
 
-document.querySelectorAll('#scan-scope-toggle .group-toggle-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    scanScope = btn.dataset.scope;
-    document.querySelectorAll('#scan-scope-toggle .group-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    scanBaseBranchWrap.hidden = scanScope !== 'diff';
-    if (scanScope === 'diff') scanBaseBranchInput.focus();
+// Shared by the Scans and SCA pages' scope toggles — same full/diff behavior, just a
+// different toggle element, base-branch wrap/input, and where the chosen scope is stored.
+function wireScopeToggle(toggleSelector, baseBranchWrapEl, baseBranchInputEl, setScope) {
+  document.querySelectorAll(`${toggleSelector} .group-toggle-btn`).forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const scope = btn.dataset.scope;
+      setScope(scope);
+      document.querySelectorAll(`${toggleSelector} .group-toggle-btn`).forEach((b) => b.classList.toggle('active', b === btn));
+      baseBranchWrapEl.hidden = scope !== 'diff';
+      if (scope === 'diff') baseBranchInputEl.focus();
+    });
   });
-});
-
-document.querySelectorAll('#sca-scope-toggle .group-toggle-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    scaScope = btn.dataset.scope;
-    document.querySelectorAll('#sca-scope-toggle .group-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    scaBaseBranchWrap.hidden = scaScope !== 'diff';
-    if (scaScope === 'diff') scaBaseBranchInput.focus();
-  });
-});
+}
+wireScopeToggle('#scan-scope-toggle', scanBaseBranchWrap, scanBaseBranchInput, (s) => { scanScope = s; });
+wireScopeToggle('#sca-scope-toggle', scaBaseBranchWrap, scaBaseBranchInput, (s) => { scaScope = s; });
 
 function startAppThreatModel() {
   const targetPath = atmPathInput.value.trim();
@@ -2669,19 +2662,20 @@ scaStartBtn.addEventListener('click', startScaScan);
 
 const scanInstructionWrap = document.getElementById('scan-instruction-wrap');
 const scanNoteToggleBtn = document.getElementById('scan-note-toggle-btn');
-scanNoteToggleBtn.addEventListener('click', () => {
-  scanInstructionWrap.hidden = !scanInstructionWrap.hidden;
-  scanNoteToggleBtn.textContent = scanInstructionWrap.hidden ? '+ instructions' : '− instructions';
-  if (!scanInstructionWrap.hidden) scanInstructionInput.focus();
-});
-
 const scaInstructionWrap = document.getElementById('sca-instruction-wrap');
 const scaNoteToggleBtn = document.getElementById('sca-note-toggle-btn');
-scaNoteToggleBtn.addEventListener('click', () => {
-  scaInstructionWrap.hidden = !scaInstructionWrap.hidden;
-  scaNoteToggleBtn.textContent = scaInstructionWrap.hidden ? '+ instructions' : '− instructions';
-  if (!scaInstructionWrap.hidden) scaInstructionInput.focus();
-});
+
+// Shared by the Scans and SCA pages' "+ instructions" toggle — same show/hide + label-swap
+// behavior, just a different wrap/button/input triple.
+function wireNoteToggle(toggleBtn, wrapEl, inputEl) {
+  toggleBtn.addEventListener('click', () => {
+    wrapEl.hidden = !wrapEl.hidden;
+    toggleBtn.textContent = wrapEl.hidden ? '+ instructions' : '− instructions';
+    if (!wrapEl.hidden) inputEl.focus();
+  });
+}
+wireNoteToggle(scanNoteToggleBtn, scanInstructionWrap, scanInstructionInput);
+wireNoteToggle(scaNoteToggleBtn, scaInstructionWrap, scaInstructionInput);
 
 function handleScanServerMessage(msg) {
   const run = msg.runId ? scanRuns.get(msg.runId) : null;
