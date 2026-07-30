@@ -165,7 +165,12 @@ dots do.
   header "select all visible" checkbox that only ever affects the currently-filtered/sorted
   `rows` array, not the full findings list — checking/unchecking updates a header button,
   "Auto-remediate selected (N)" (`#auto-remediate-btn`, disabled at N=0), which feeds the
-  Remediation screen below. A **Scan** filter sits beside the type tabs — not a native
+  Remediation screen below. Every row also carries a trailing **`.ft-actions-col`** with a
+  small three-dot button (reusing the `.console-toggle-btn` icon-button style) that opens the
+  exact same per-agent dropdown as right-clicking the row — added because right-click alone
+  isn't discoverable, especially without a mouse; the button just calls
+  `openFindingContextMenu()` positioned under itself via `getBoundingClientRect()`, same
+  pattern as the Finding Detail page's "Agent Runs ▾" button. A **Scan** filter sits beside the type tabs — not a native
   `<select>` but a small custom popover (`.scan-filter-dropdown`, `#findings-scan-filter-btn` +
   `#findings-scan-filter-menu`, `renderFindingsScanFilter()`), each item formatted as e.g.
   "Reasoning scan on `<path>` started 2h ago" / "SCA scan on `<path>` started..."

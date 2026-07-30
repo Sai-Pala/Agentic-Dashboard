@@ -464,6 +464,7 @@
   .findings-table .ft-mono { font-family: var(--mono); font-size: 11px; color: var(--text-dim); word-break: break-word; max-width: 220px; display: inline-block; }
   .findings-table .ft-sev-cell { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
   .findings-table .ft-select-col { width: 1%; padding-right: 0; }
+  .findings-table .ft-actions-col { width: 1%; text-align: right; }
   .ft-empty { padding: 40px; text-align: center; color: var(--muted); font-size: 12.5px; }
   .remediation-table td { max-width: 340px; }
   .remediation-code-cell { max-height: 260px; overflow-y: auto; }
@@ -1220,6 +1221,7 @@ const ICONS = {
   shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6L12 3Z"/><path d="m9 12 2 2 4-4"/>',
   clipboard: '<path d="M8 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M9.5 3.5h5a1 1 0 0 1 1 1V6h-7V4.5a1 1 0 0 1 1-1Z"/><path d="m9.5 11 1.5 1.5L14 9M9.5 15.5h5"/>',
   terminal: '<rect x="3" y="4.5" width="18" height="15" rx="1.8"/><path d="m7.5 9.5 3 2.7-3 2.7"/><path d="M13 15.2h4"/>',
+  more: '<circle cx="12" cy="5.5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.7" fill="currentColor" stroke="none"/>',
 };
 function icon(name, cls) {
   return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -1599,7 +1601,7 @@ function computeBriefing() {
     parts.push('No agents currently running');
   }
   parts.push(`${notTriaged} finding${notTriaged === 1 ? '' : 's'} awaiting remediation`);
-  parts.push(`${knownAgentsAvailableCount()}/${KNOWN_AGENTS.length} pipeline agents available`);
+  parts.push(`${agentsList.length} agent${agentsList.length === 1 ? '' : 's'} available`);
   return parts.join('. ') + '.';
 }
 
@@ -1650,12 +1652,12 @@ function renderNavStatus() {
   const navStatusEl = document.getElementById('nav-status');
   const connected = statusEl.classList.contains('connected');
   const runningScanCount = scansList.filter((s) => s.status === 'running').length;
-  const knownAvailable = knownAgentsAvailableCount();
+  const missingCoreAgent = knownAgentsAvailableCount() < KNOWN_AGENTS.length;
   const line = (warn, text) => `<div class="nav-status-line${warn ? ' warn' : ''}" title="${escapeHtml(text)}"><span class="s-dot"></span><span class="ns-text">${escapeHtml(text)}</span></div>`;
   navStatusEl.innerHTML = [
     line(!connected, connected ? 'Connected' : 'Disconnected'),
     line(false, `${findings.length} finding${findings.length === 1 ? '' : 's'}`),
-    line(knownAvailable < KNOWN_AGENTS.length, `${knownAvailable}/${KNOWN_AGENTS.length} agents ready`),
+    line(missingCoreAgent, missingCoreAgent ? `${knownAgentsAvailableCount()}/${KNOWN_AGENTS.length} core agents ready` : `${agentsList.length} agent${agentsList.length === 1 ? '' : 's'} ready`),
     line(runningScanCount > 0, `${scansList.length} scan${scansList.length === 1 ? '' : 's'}${runningScanCount ? ` · ${runningScanCount} running` : ''}`),
   ].join('');
   renderNavBadges();
@@ -3408,6 +3410,7 @@ function renderFindingsTable() {
     }
     headRow.appendChild(th);
   }
+  headRow.appendChild(document.createElement('th')); // actions column — no label, see ft-actions-col below
   findingsTableHeadEl.appendChild(headRow);
 
   updateAutoRemediateBtn();
@@ -3415,7 +3418,7 @@ function renderFindingsTable() {
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = columns.length + 1;
+    td.colSpan = columns.length + 2;
     td.className = 'ft-empty';
     td.textContent = scanScoped.length
       ? 'No findings match this type.'
@@ -3432,7 +3435,8 @@ function renderFindingsTable() {
     tr.dataset.findingId = f.id;
     const checkedAttr = selectedFindingIds.has(f.id) ? 'checked' : '';
     tr.innerHTML = `<td class="ft-select-col"><input type="checkbox" ${checkedAttr}></td>`
-      + columns.map((col) => `<td>${findingsCellHtml(f, col.key)}</td>`).join('');
+      + columns.map((col) => `<td>${findingsCellHtml(f, col.key)}</td>`).join('')
+      + `<td class="ft-actions-col"><button class="console-toggle-btn" type="button" data-run-agent-btn title="Run agent…">${icon('more')}</button></td>`;
     const cb = tr.querySelector('.ft-select-col input');
     cb.addEventListener('click', (e) => e.stopPropagation());
     cb.addEventListener('change', () => {
@@ -3440,6 +3444,11 @@ function renderFindingsTable() {
       else selectedFindingIds.delete(f.id);
       updateAutoRemediateBtn();
       selectAllCb.checked = rows.every((r) => selectedFindingIds.has(r.id));
+    });
+    tr.querySelector('[data-run-agent-btn]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      openFindingContextMenu(rect.right, rect.bottom + 4, f.id);
     });
     tr.addEventListener('click', () => openFindingDetail(f.id));
     tr.addEventListener('contextmenu', (e) => {
@@ -4209,7 +4218,7 @@ function renderSettings() {
   env.innerHTML = `
     <div class="hint">Findings and scans are stored in-memory on the server and reset whenever it restarts — there's no database yet.</div>
     <div class="hint">Scans run <code>claude</code> against whatever directory path you give them, using this machine's own filesystem permissions — this app does not sandbox or restrict which directories can be scanned. Only point it at directories you trust reading.</div>
-    <div class="hint">${knownAgentsAvailableCount()}/${KNOWN_AGENTS.length} pipeline agents available · ${agentsList.length} agent${agentsList.length === 1 ? '' : 's'} total (including custom) · ${escapeHtml(String(scansList.length))} scan${scansList.length === 1 ? '' : 's'} run this session.</div>
+    <div class="hint">${agentsList.length} per-finding agent${agentsList.length === 1 ? '' : 's'} available (${knownAgentsAvailableCount()}/${KNOWN_AGENTS.length} core) · ${escapeHtml(String(scansList.length))} scan${scansList.length === 1 ? '' : 's'} run this session.</div>
   `;
 }
 
