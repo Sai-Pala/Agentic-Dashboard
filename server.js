@@ -33,7 +33,12 @@ const SCAN_TYPE_FRAMING = {
 // Shipped with the app and load-bearing for other hardcoded UI (the scan flow,
 // the Dashboard's pipeline health panel) — editable, but not deletable via the
 // Agents screen.
-const BUILTIN_AGENTS = ['triage', 'threat_model', 'remediation', 'scan', 'app_threat_model'];
+const BUILTIN_AGENTS = ['triage', 'threat_model', 'remediation', 'scan', 'app_threat_model', 'controls_assist'];
+// Agent .md files that operate on a whole directory via their own dedicated flow
+// (Scans, App Threat Model, Controls Assist) rather than the per-finding stage/branch
+// UI — excluded from the per-finding agent dropdown and the SCA "run after scan" pill
+// row, but still editable in Agent Configuration (see the `all` query flag below).
+const NON_FINDING_AGENTS = ['scan', 'app_threat_model', 'controls_assist'];
 
 function agentFilePath(name) {
   return path.join(AGENTS_DIR, `${name}.md`);
@@ -45,12 +50,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/agents', (req, res) => {
   const files = fs.readdirSync(AGENTS_DIR).filter((f) => f.endsWith('.md'));
-  // 'scan' and 'app_threat_model' are agent .md files but not per-finding pipeline
-  // agents — they run against a whole directory via their own dedicated flows
-  // (Scans, and the Dashboard's "Also threat-model this app" action), not the
-  // per-finding stage/branch UI.
-  const names = files.map((f) => f.replace(/\.md$/, '')).filter((n) => n !== 'scan' && n !== 'app_threat_model');
-  res.json(names);
+  const names = files.map((f) => f.replace(/\.md$/, ''));
+  // `?all=1` is used by the Agent Configuration screen, which manages every agent .md
+  // file including the whole-directory ones. Everywhere else (the per-finding stage/
+  // branch dropdown, the SCA "run after scan" pill row) wants the filtered list.
+  if (req.query.all) {
+    res.json(names);
+    return;
+  }
+  res.json(names.filter((n) => !NON_FINDING_AGENTS.includes(n)));
 });
 
 app.get('/api/agents/:name', (req, res) => {
@@ -339,6 +347,45 @@ app.get('/api/app-threat-models/:id', (req, res) => {
   res.json(toAppThreatModelListItem(record));
 });
 
+// ---------- in-memory control assessments store ----------
+// A control assessment is a single holistic run (agents/controls_assist.md) against an
+// entire directory — identifies which NIST 800-53 controls the application layer provides
+// evidence for and drafts SSP-ready narratives, for RMF/ISSO staff. Same shape and same
+// independent-from-findings relationship as the app-level threat model store above.
+
+const controlAssessments = new Map(); // id -> record
+const controlAssessmentRunIndex = new Map(); // runId -> record, for O(1) lookup on done/error/cancel
+
+function toControlAssessmentListItem(record) {
+  return {
+    id: record.id,
+    runId: record.runId,
+    path: record.path,
+    app: record.app,
+    branch: record.branch,
+    instruction: record.instruction,
+    status: record.status,
+    verdict: record.verdict,
+    error: record.error,
+    startedAt: record.startedAt,
+    finishedAt: record.finishedAt,
+  };
+}
+
+app.get('/api/control-assessments', (req, res) => {
+  const list = [...controlAssessments.values()].sort((a, b) => b.startedAt - a.startedAt).map(toControlAssessmentListItem);
+  res.json(list);
+});
+
+app.get('/api/control-assessments/:id', (req, res) => {
+  const record = controlAssessments.get(req.params.id);
+  if (!record) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.json(toControlAssessmentListItem(record));
+});
+
 app.get('/api/findings', (req, res) => {
   const list = [...findings.values()]
     .sort((a, b) => b.createdAt - a.createdAt)
@@ -511,6 +558,11 @@ wss.on('connection', (ws) => {
         atmIndexed.status = 'cancelled';
         atmIndexed.finishedAt = Date.now();
       }
+      const caIndexed = controlAssessmentRunIndex.get(runId);
+      if (caIndexed && caIndexed.status === 'running') {
+        caIndexed.status = 'cancelled';
+        caIndexed.finishedAt = Date.now();
+      }
       if (child) child.kill();
       return;
     }
@@ -522,6 +574,11 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'app_threat_model') {
       handleAppThreatModelMessage(msg, { children, send });
+      return;
+    }
+
+    if (msg.type === 'controls_assist') {
+      handleControlsAssistMessage(msg, { children, send });
       return;
     }
 
@@ -679,6 +736,11 @@ wss.on('connection', (ws) => {
       if (atmIndexed && atmIndexed.status === 'running') {
         atmIndexed.status = 'cancelled';
         atmIndexed.finishedAt = Date.now();
+      }
+      const caIndexed = controlAssessmentRunIndex.get(runId);
+      if (caIndexed && caIndexed.status === 'running') {
+        caIndexed.status = 'cancelled';
+        caIndexed.finishedAt = Date.now();
       }
       child.kill();
     }
@@ -1022,6 +1084,142 @@ function handleAppThreatModelMessage(msg, { children, send }) {
   });
 }
 
+function handleControlsAssistMessage(msg, { children, send }) {
+  const runId = String(msg.runId || '').trim();
+  if (!RUN_ID_RE.test(runId)) {
+    send({ type: 'controls-assist-error', message: 'Invalid or missing runId.' });
+    return;
+  }
+  if (children.has(runId)) {
+    send({ type: 'controls-assist-error', runId, message: 'This runId is already active.' });
+    return;
+  }
+
+  const targetPath = String(msg.path || '').trim();
+  const instruction = String(msg.instruction || '').trim();
+  const branch = String(msg.branch || '').trim();
+  const appLabel = String(msg.app || '').trim();
+
+  if (!targetPath) {
+    send({ type: 'controls-assist-error', runId, message: 'A target directory path is required.' });
+    return;
+  }
+
+  let stat;
+  try {
+    stat = fs.statSync(targetPath);
+  } catch (err) {
+    send({ type: 'controls-assist-error', runId, message: `Path not found: ${targetPath}` });
+    return;
+  }
+  if (!stat.isDirectory()) {
+    send({ type: 'controls-assist-error', runId, message: `Not a directory: ${targetPath}` });
+    return;
+  }
+
+  const agentPath = agentFilePath('controls_assist');
+  if (!fs.existsSync(agentPath)) {
+    send({ type: 'controls-assist-error', runId, message: 'Controls Assist agent (agents/controls_assist.md) is not available.' });
+    return;
+  }
+
+  let systemPrompt;
+  try {
+    systemPrompt = fs.readFileSync(agentPath, 'utf8');
+  } catch (err) {
+    send({ type: 'controls-assist-error', runId, message: `Failed to read agent prompt: ${err.message}` });
+    return;
+  }
+
+  const record = {
+    id: crypto.randomUUID(),
+    runId,
+    path: targetPath,
+    app: appLabel || null,
+    branch: branch || null,
+    instruction,
+    status: 'running',
+    verdict: null,
+    error: null,
+    startedAt: Date.now(),
+    finishedAt: null,
+  };
+  controlAssessments.set(record.id, record);
+  controlAssessmentRunIndex.set(runId, record);
+
+  const promptParts = [
+    'Analyze this codebase and identify which NIST 800-53 controls the application layer provides evidence for, drafting SSP-ready narratives for each.',
+    instruction,
+    `Target directory: ${targetPath}`,
+  ].filter(Boolean);
+  const userPrompt = promptParts.join('\n\n');
+
+  const args = [
+    '-p', userPrompt,
+    '--append-system-prompt', systemPrompt,
+    '--output-format', 'stream-json',
+    '--verbose',
+    '--allowedTools', 'Read,Grep,Glob',
+    '--permission-mode', 'acceptEdits',
+  ];
+
+  send({ type: 'controls-assist-started', runId, id: record.id, path: targetPath });
+
+  const child = spawn('claude', args, { cwd: targetPath, shell: false });
+  children.set(runId, child);
+
+  let stdoutBuffer = '';
+  let fullText = '';
+
+  child.stdout.on('data', (chunk) => {
+    stdoutBuffer += chunk.toString();
+    const lines = stdoutBuffer.split('\n');
+    stdoutBuffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let event;
+      try {
+        event = JSON.parse(line);
+      } catch (err) {
+        continue;
+      }
+      if (event.type === 'assistant' && event.message && Array.isArray(event.message.content)) {
+        for (const block of event.message.content) {
+          if (block.type === 'text' && typeof block.text === 'string') fullText += block.text;
+        }
+      }
+      send({ type: 'controls-assist-event', runId, id: record.id, event });
+    }
+  });
+
+  child.stderr.on('data', (chunk) => {
+    send({ type: 'controls-assist-stderr', runId, id: record.id, data: chunk.toString() });
+  });
+
+  child.on('close', (code) => {
+    const verdict = extractVerdict(fullText);
+    if (record.status === 'running') {
+      record.status = code === 0 && verdict ? 'done' : 'error';
+      record.error = code === 0 && verdict ? null : `claude exited with code ${code}`;
+    }
+    record.verdict = verdict;
+    record.finishedAt = Date.now();
+    send({ type: 'controls-assist-done', runId, id: record.id, code, verdict });
+    children.delete(runId);
+    controlAssessmentRunIndex.delete(runId);
+  });
+
+  child.on('error', (err) => {
+    record.status = 'error';
+    record.error = err.message;
+    record.finishedAt = Date.now();
+    send({ type: 'controls-assist-error', runId, id: record.id, message: `Failed to spawn claude: ${err.message}` });
+    children.delete(runId);
+    controlAssessmentRunIndex.delete(runId);
+  });
+}
+
 // Wipes every in-memory store (findings, scans, app-level threat models) back to empty — a
 // full reset for this session, no reseed. Refuses while anything is running: the per-connection
 // `children` map (inside wss.on('connection')) isn't reachable from a plain REST route, so a
@@ -1031,7 +1229,8 @@ function handleAppThreatModelMessage(msg, { children, send }) {
 app.post('/api/session/clear', (req, res) => {
   const anyRunning = [...findings.values()].some((f) => f.runs.some((r) => r.status === 'running'))
     || [...scans.values()].some((s) => s.status === 'running')
-    || [...appThreatModels.values()].some((r) => r.status === 'running');
+    || [...appThreatModels.values()].some((r) => r.status === 'running')
+    || [...controlAssessments.values()].some((r) => r.status === 'running');
   if (anyRunning) {
     res.status(409).json({ error: 'Cancel or wait for running scans/agent runs to finish before clearing the session.' });
     return;
@@ -1042,6 +1241,8 @@ app.post('/api/session/clear', (req, res) => {
   scanRunIndex.clear();
   appThreatModels.clear();
   appThreatModelRunIndex.clear();
+  controlAssessments.clear();
+  controlAssessmentRunIndex.clear();
   res.json({ ok: true });
 });
 
