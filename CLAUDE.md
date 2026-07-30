@@ -94,16 +94,24 @@ dots do.
   Instead it's a slide-in drawer (`#timeline-drawer` + `#timeline-drawer-backdrop`,
   `openTimelineDrawer()`/`closeTimelineDrawer()`) opened by a small clock-icon button
   (`.clock-btn`) in the `view-header` of Reasoning Scans, SCA, and Threat Model — each button
-  opens the *same* drawer and reuses the *same* filter pills (`#timeline-filters`,
-  `#timeline-list` — untouched markup/JS, just relocated from a full page into the drawer),
-  but pre-scopes it to that page's own activity: Reasoning Scans passes
-  `openTimelineDrawer('scan', 'reasoning')`, SCA passes `openTimelineDrawer('scan', 'sca')`,
-  Threat Model passes `openTimelineDrawer('threat_model', null)`. The second argument,
-  `timelineScanTypeFilter`, only narrows entries when `timelineFilter === 'scan'` (a scan-kind
-  timeline entry now carries `scanType`, added to `GET /api/timeline`'s scan-entry shape in
-  `server.js` specifically to make this narrowing possible) — clicking any filter pill inside
-  the drawer clears it, since a manual "Scan" pill click means "show every scan," not whichever
-  type the drawer happened to open with. This preset-then-broaden design keeps the drawer
+  opens the *same* drawer and reuses the *same* list (`#timeline-list` — untouched markup/JS,
+  just relocated from a full page into the drawer), but pre-scopes it to that page's own
+  activity: Reasoning Scans passes `openTimelineDrawer('scan', 'reasoning')`, SCA passes
+  `openTimelineDrawer('scan', 'sca')`, Threat Model passes `openTimelineDrawer('threat_model',
+  null)`. The second argument, `timelineScanTypeFilter`, only narrows entries when
+  `timelineFilter === 'scan'` (a scan-kind timeline entry now carries `scanType`, added to
+  `GET /api/timeline`'s scan-entry shape in `server.js` specifically to make this narrowing
+  possible). The filter pills (`#timeline-filters`, `renderTimelineFilters()`) are **All**,
+  **Reasoning Scan**, **SCA**, then one per agent kind (`agentsList`) — Reasoning Scan and SCA
+  are two distinct pills, not one shared "Scan" pill, specifically so SCA activity has its own
+  filter to click instead of being lumped in with reasoning scans (an earlier version had just
+  one combined "Scan" pill and no way to isolate SCA runs from the drawer's own filter row).
+  Both scan pills set `timelineFilter = 'scan'` and differ only in which `scanType` they set —
+  `makePill()`'s active-state check has to account for that (`timelineFilter === 'scan' &&
+  timelineScanTypeFilter === scanType`, not a plain key match like the agent-kind pills use).
+  Clicking any pill sets both fields explicitly, so a preset from a clock-icon button is fully
+  overridden by whichever pill is clicked next — there's no scanType leaking from initial state
+  into an unrelated pill selection. This preset-then-override design keeps the drawer
   contextually useful without losing the ability to browse everything from any entry point.
   The Dashboard's "View timeline" quick-action opens the same drawer with no preset
   (`openTimelineDrawer('all')`). The Escape key and clicking the backdrop both close it

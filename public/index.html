@@ -1657,17 +1657,27 @@ document.getElementById('tm-clock-btn').addEventListener('click', () => openTime
 function renderTimelineFilters() {
   const el = document.getElementById('timeline-filters');
   el.innerHTML = '';
-  const makePill = (key, label, color) => {
+  // scanType is only set for the two scan-kind pills (Reasoning Scan / SCA) — they both filter
+  // to kind === 'scan' but narrow further by scanType, so "active" has to check both fields
+  // instead of just matching key the way the plain agent-kind pills do.
+  const makePill = (key, label, color, scanType) => {
     const pill = document.createElement('button');
-    pill.className = 'filter-pill' + (timelineFilter === key ? ' active' : '');
+    const isActive = scanType
+      ? timelineFilter === 'scan' && timelineScanTypeFilter === scanType
+      : timelineFilter === key;
+    pill.className = 'filter-pill' + (isActive ? ' active' : '');
     pill.innerHTML = color ? `<span class="fp-dot" style="background:${color}"></span>${escapeHtml(label)}` : escapeHtml(label);
-    // Any manual pill click clears a clock-icon preset's scanType narrowing — a plain "Scan"
-    // pill click means "show every scan," not whichever type the drawer happened to open with.
-    pill.addEventListener('click', () => { timelineFilter = key; timelineScanTypeFilter = null; renderTimeline(); });
+    pill.addEventListener('click', () => {
+      timelineFilter = scanType ? 'scan' : key;
+      timelineScanTypeFilter = scanType || null;
+      renderTimeline();
+    });
     el.appendChild(pill);
   };
   makePill('all', 'All', null);
-  for (const kind of ['scan', ...agentsList]) makePill(kind, agentMeta(kind).label, agentMeta(kind).color);
+  makePill('scan', 'Reasoning Scan', SCAN_TYPE_META.reasoning.color, 'reasoning');
+  makePill('scan', 'SCA', SCAN_TYPE_META.sca.color, 'sca');
+  for (const kind of agentsList) makePill(kind, agentMeta(kind).label, agentMeta(kind).color);
 
   const subtitleEl = document.getElementById('timeline-drawer-subtitle');
   if (timelineFilter === 'scan' && timelineScanTypeFilter) {
