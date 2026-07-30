@@ -234,9 +234,9 @@
   /* ---------- dashboard ---------- */
   .briefing {
     border: 1px solid var(--border); border-left: 2px solid var(--accent); border-radius: 10px;
-    background: var(--panel); padding: 11px 14px; font-size: 12.5px; margin-bottom: 18px; color: var(--text-dim);
+    background: var(--panel); padding: 11px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 18px; color: var(--text-dim);
   }
-  .briefing .briefing-tag { color: var(--accent); font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 4px; }
+  .briefing .briefing-tag { color: var(--accent); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 4px; }
 
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
   .stat-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; }
@@ -244,9 +244,9 @@
     color: var(--muted); margin-bottom: 10px; width: 30px; height: 30px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center; background: var(--panel-3);
   }
-  .stat-tile .stat-value { font-size: 22px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-  .stat-tile .stat-label { font-size: 11px; color: var(--muted); margin-top: 5px; }
-  .stat-tile .stat-sub { font-size: 10.5px; margin-top: 3px; color: var(--muted); }
+  .stat-tile .stat-value { font-size: 26px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .stat-tile .stat-label { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .stat-tile .stat-sub { font-size: 11px; margin-top: 3px; color: var(--muted); }
   .stat-tile.accent-warn .stat-icon { color: var(--warn); background: var(--warn-soft); }
   .stat-tile.accent-warn .stat-sub { color: var(--warn); }
   .stat-tile.accent-ok .stat-icon { color: var(--ok); background: var(--ok-soft); }
@@ -255,7 +255,7 @@
   .stat-tile.accent-accent .stat-sub { color: var(--accent); }
 
   .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  .panel-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
+  .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
   .panel-clickable { cursor: pointer; }
   .panel-clickable:hover { border-color: var(--accent); }
   .panel-title-arrow { opacity: 0; transition: opacity .1s; }
@@ -286,7 +286,7 @@
   .agent-row .a-dot.online { background: var(--ok); }
   .agent-row .a-dot.offline { background: var(--muted); }
   .agent-row-main { flex: 1; min-width: 0; }
-  .agent-row-name { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .agent-row-name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
   .agent-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent-row-status { font-size: 11px; color: var(--muted); text-align: right; flex-shrink: 0; }
 
@@ -537,6 +537,13 @@
   .atm-risk-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .atm-recs { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-dim); line-height: 1.7; }
 
+  /* ---------- controls assist (NIST 800-53 control identification for SSP drafting) ---------- */
+  .ca-family-group { margin-bottom: 16px; }
+  .ca-family-header { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+  .ca-control-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .ca-control-top { font-size: 12.5px; margin-bottom: 2px; }
+  .ca-control-top b { color: var(--text); }
+
   /* ---------- threat model (category x severity heat map + attack-path report) ---------- */
   .tm-diagram-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; overflow-x: auto; }
   /* Category (row) x severity (column) grid, replacing an earlier tree/org-chart diagram which
@@ -624,6 +631,10 @@
   .badge.remediation_generated { background: var(--accent-soft); color: var(--accent); }
   .badge.new { background: rgba(109,108,104,.18); color: var(--muted); }
   .badge.closed { background: rgba(109,108,104,.18); color: var(--muted); }
+  .badge.whole-app { background: rgba(96,165,250,.16); color: #60a5fa; margin-left: 4px; }
+  .badge.app_addressed, .badge.implemented { background: var(--ok-soft); color: var(--ok); }
+  .badge.partially_addressed, .badge.partially_implemented, .badge.planned { background: var(--warn-soft); color: var(--warn); }
+  .badge.inherited, .badge.not_applicable { background: rgba(109,108,104,.18); color: var(--muted); }
 
   #context-menu { position: fixed; z-index: 70; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 4px; box-shadow: 0 8px 20px rgba(0,0,0,.35); min-width: 240px; }
   #context-menu button { display: block; width: 100%; text-align: left; background: none; color: var(--text-dim); border: none; padding: 8px 10px; font-size: 12px; font-weight: 400; border-radius: 6px; }
@@ -655,13 +666,17 @@
   </button>
   <button class="nav-item" data-view="scans">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/></svg>
-    <span>Reasoning Scans</span>
+    <span>Reasoning Scan</span>
     <span class="nav-badge" id="nav-badge-scans" hidden></span>
   </button>
   <button class="nav-item" data-view="sca">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.2 12 4l8.5 4.2v7.6L12 20 3.5 15.8V8.2Z"/><path d="M3.5 8.2 12 12l8.5-3.8"/><path d="M12 12v8"/></svg>
-    <span>SCA</span>
+    <span>SCA Scan</span>
     <span class="nav-badge" id="nav-badge-sca" hidden></span>
+  </button>
+  <button class="nav-item" data-view="controls-assist">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M9.5 3.5h5a1 1 0 0 1 1 1V6h-7V4.5a1 1 0 0 1 1-1Z"/><path d="m9.5 11 1.5 1.5L14 9M9.5 15.5h5"/></svg>
+    <span>Control Scan</span>
   </button>
   <button class="nav-item" data-view="findings">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.5h16M9.5 9.5V20"/></svg>
@@ -671,10 +686,6 @@
   <button class="nav-item" data-view="threatmodel">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/></svg>
     <span>Threat Model</span>
-  </button>
-  <button class="nav-item" data-view="agents">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h7.5L19 8v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 15.5h6M9 18h3.5"/></svg>
-    <span>Agent Configuration</span>
   </button>
   <button class="nav-item" data-view="reports">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h9L19.5 8v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M9 12v4M12 9.5v6.5M15 13v3"/></svg>
@@ -689,6 +700,10 @@
       <svg class="icon" id="nav-theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
       <svg class="icon" id="nav-theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>
       <span id="nav-theme-label">Dark theme</span>
+    </button>
+    <button class="nav-item" data-view="agents">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h7.5L19 8v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 15.5h6M9 18h3.5"/></svg>
+      <span>Agent Configuration</span>
     </button>
     <button class="nav-item" data-view="settings">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1l2.1-2.1M17 7l2.1-2.1"/></svg>
@@ -738,7 +753,7 @@
 <div id="view-scans" class="view" hidden>
   <div class="view-header">
     <div>
-      <h1>Reasoning Scans</h1>
+      <h1>Reasoning Scan</h1>
       <div class="view-subtitle">Kick off a reasoning scan and watch it run live</div>
     </div>
     <div class="view-header-actions">
@@ -794,11 +809,11 @@
 <div id="view-sca" class="view" hidden>
   <div class="view-header">
     <div>
-      <h1>SCA</h1>
+      <h1>SCA Scan</h1>
       <div class="view-subtitle">Software Composition Analysis — dependency manifests & lockfiles, checked separately from code reasoning</div>
     </div>
     <div class="view-header-actions">
-      <button class="clock-btn" id="sca-clock-btn" type="button" title="View SCA timeline">
+      <button class="clock-btn" id="sca-clock-btn" type="button" title="View SCA Scan timeline">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
         <span class="clock-btn-dot" id="sca-clock-dot" hidden></span>
       </button>
@@ -1004,16 +1019,54 @@
   </div>
 </div>
 
+<div id="view-controls-assist" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>Control Scan</h1>
+      <div class="view-subtitle">Identifies NIST 800-53 controls this codebase provides evidence for and drafts SSP-ready narratives — RMF staff still need to confirm inherited/platform controls separately</div>
+    </div>
+  </div>
+  <div class="view-body">
+    <div class="scan-form">
+      <div class="scan-form-title">New control scan</div>
+
+      <div>
+        <label for="ca-path-input">Target directory</label>
+        <input id="ca-path-input" class="path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
+      </div>
+
+      <div class="scan-field-row">
+        <div style="flex:1; min-width:0;">
+          <label for="ca-branch-input">Branch <span class="label-optional">optional</span></label>
+          <input id="ca-branch-input" class="path-input" placeholder="e.g. main" />
+        </div>
+        <div style="flex:1; min-width:0;">
+          <label for="ca-app-input">System / app name <span class="label-optional">optional</span></label>
+          <input id="ca-app-input" placeholder="e.g. Payments API" />
+        </div>
+      </div>
+
+      <div>
+        <label for="ca-instruction-input">Focus areas <span class="label-optional">optional</span></label>
+        <textarea id="ca-instruction-input" placeholder="e.g. Focus on authentication and audit logging, skip the admin CLI tool." style="min-height:44px;"></textarea>
+      </div>
+
+      <button id="ca-start-btn" class="scan-start-btn atm-start-btn" style="width:100%;">Start control scan</button>
+    </div>
+    <div id="ca-content"></div>
+  </div>
+</div>
+
 <div id="view-agents" class="view" hidden>
   <div class="view-header">
     <div>
       <h1>Agent Configuration</h1>
-      <div class="view-subtitle">Custom per-finding pipeline agents, defined as markdown system prompts</div>
+      <div class="view-subtitle">Every agent this app can run, defined as markdown system prompts</div>
     </div>
     <button id="new-agent-btn">+ New agent</button>
   </div>
   <div class="view-body">
-    <div class="hint" style="margin-bottom:14px;">Every agent here is selectable from a finding's "Select flow…" menu and as a "Run after scan" pill on the Dashboard. Built-in pipeline agents (Triage, Threat Model, Remediation) can be edited but not deleted.</div>
+    <div class="hint" style="margin-bottom:14px;">Per-finding agents are selectable from a finding's "Select flow…" menu and as a "Run after scan" pill on the SCA page. "Whole-app" agents (Scan, App Threat Model, Control Scan) run from their own dedicated pages instead. Built-in agents can be edited but not deleted.</div>
     <div class="agents-grid" id="agents-list"></div>
   </div>
 </div>
@@ -1172,6 +1225,7 @@ const ICONS = {
   edit: '<path d="M4 20h4l10-10a2 2 0 0 0 0-2.8L16.8 5a2 2 0 0 0-2.8 0L4 15v5Z"/><path d="m13.5 6.5 4 4"/>',
   branch: '<circle cx="6" cy="4.5" r="2.2"/><circle cx="6" cy="19.5" r="2.2"/><circle cx="18" cy="7.5" r="2.2"/><path d="M6 6.7V17.3"/><path d="M18 9.7A7 7 0 0 1 11 16.5"/>',
   shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6L12 3Z"/><path d="m9 12 2 2 4-4"/>',
+  clipboard: '<path d="M8 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M9.5 3.5h5a1 1 0 0 1 1 1V6h-7V4.5a1 1 0 0 1 1-1Z"/><path d="m9.5 11 1.5 1.5L14 9M9.5 15.5h5"/>',
 };
 function icon(name, cls) {
   return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -1186,7 +1240,13 @@ const AGENT_META = {
   threat_model: { label: 'Threat Model', icon: 'target', color: '#fb923c', role: 'Exploit path, preconditions, blast radius' },
   remediation: { label: 'Remediation', icon: 'wrench', color: '#2dd4bf', role: 'Concrete fix guidance, terminal stage' },
   app_threat_model: { label: 'App Threat Model', icon: 'shield', color: '#f472b6', role: 'Whole-app architecture-level threat model' },
+  controls_assist: { label: 'Control Scan', icon: 'clipboard', color: '#60a5fa', role: 'Whole-app NIST 800-53 control identification for SSP drafting' },
 };
+// Agent .md files that operate on a whole directory (via their own dedicated page/flow)
+// rather than a single finding — mirrors NON_FINDING_AGENTS in server.js. Used only to badge
+// these agents distinctly in Agent Configuration; agentsList (the per-finding dropdown/pill
+// source) already excludes them server-side.
+const NON_FINDING_AGENTS = ['scan', 'app_threat_model', 'controls_assist'];
 function agentMeta(name) {
   return AGENT_META[name] || { label: name, icon: 'gear', color: '#8f8a7b', role: '' };
 }
@@ -1236,6 +1296,13 @@ const atmAppInput = document.getElementById('atm-app-input');
 const atmInstructionInput = document.getElementById('atm-instruction-input');
 const atmStartBtn = document.getElementById('atm-start-btn');
 
+const caPathInput = document.getElementById('ca-path-input');
+const caBranchInput = document.getElementById('ca-branch-input');
+const caAppInput = document.getElementById('ca-app-input');
+const caInstructionInput = document.getElementById('ca-instruction-input');
+const caStartBtn = document.getElementById('ca-start-btn');
+const caContentEl = document.getElementById('ca-content');
+
 const scaPathInput = document.getElementById('sca-path-input');
 const scaBranchInput = document.getElementById('sca-branch-input');
 const scaAppInput = document.getElementById('sca-app-input');
@@ -1283,6 +1350,7 @@ const agentModalDropzone = document.getElementById('agent-modal-dropzone');
 
 let ws = null;
 let agentsList = [];
+let agentConfigList = [];  // GET /api/agents?all=1 — every agent .md file, for Agent Configuration only
 let findings = [];               // list-item shape from GET /api/findings
 let findingsTypeFilter = 'all';  // 'all' | 'reasoning' | 'sca'
 let findingsScanFilter = 'all';  // 'all' or a scan id — restricts the table to one scan's findings
@@ -1305,6 +1373,8 @@ let scansList = [];              // list-item shape from GET /api/scans
 let scansLoaded = false;
 let appThreatModelsList = [];    // list-item shape from GET /api/app-threat-models
 let appThreatModelsLoaded = false;
+let controlAssessmentsList = [];  // list-item shape from GET /api/control-assessments
+let controlAssessmentsLoaded = false;
 const scanRuns = new Map();      // runId -> live scan run state (mirrors a stage's shape)
 const scanDetailCache = new Map(); // scanId -> full scan detail (with findings)
 
@@ -1446,6 +1516,32 @@ function startAppThreatModel() {
 
 atmStartBtn.addEventListener('click', startAppThreatModel);
 
+function startControlsAssist() {
+  const targetPath = caPathInput.value.trim();
+  if (!targetPath) {
+    alert('Enter a target directory path.');
+    return;
+  }
+  const branch = caBranchInput.value.trim();
+  const app = caAppInput.value.trim();
+  const instruction = caInstructionInput.value.trim();
+  const runId = uid();
+  const startTime = Date.now();
+
+  const run = {
+    runId, toolCount: 0, fileCount: 0, tokenCount: 0, lastContextTokens: 0, startTime,
+    toolsEl: null, filesEl: null, tokensEl: null, elapsedEl: null, contextBarFillEl: null, contextBarLabelEl: null,
+    elapsedTimer: null,
+  };
+  controlAssistRuns.set(runId, run);
+  run.elapsedTimer = setInterval(() => updateControlsAssistElapsed(run), 1000);
+
+  upsertControlAssessment({ id: null, runId, path: targetPath, app: app || null, branch: branch || null, instruction, status: 'running', verdict: null, error: null, startedAt: startTime, finishedAt: null });
+  ws.send(JSON.stringify({ type: 'controls_assist', runId, path: targetPath, app, branch, instruction }));
+}
+
+caStartBtn.addEventListener('click', startControlsAssist);
+
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}`);
@@ -1497,6 +1593,7 @@ function showView(view, opts = {}) {
   document.getElementById('view-finding-detail').hidden = view !== 'finding-detail';
   document.getElementById('view-remediation').hidden = view !== 'remediation';
   document.getElementById('view-threatmodel').hidden = view !== 'threatmodel';
+  document.getElementById('view-controls-assist').hidden = view !== 'controls-assist';
   document.getElementById('view-agents').hidden = view !== 'agents';
   document.getElementById('view-reports').hidden = view !== 'reports';
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === view));
@@ -1506,6 +1603,7 @@ function showView(view, opts = {}) {
   if (view === 'dashboard') renderDashboard();
   if (view === 'findings') renderFindingsView();
   if (view === 'threatmodel') openThreatModelView();
+  if (view === 'controls-assist') renderControlsAssistView();
   if (view === 'settings') renderSettings();
   if (view === 'agents') loadAgentsView();
 }
@@ -2208,6 +2306,238 @@ function renderAppThreatModelDetail(record) {
   `;
 }
 
+// ---------- control assessments (whole-directory NIST 800-53 control identification) ----------
+// Same shape and same independent-from-findings relationship as the app-level threat models
+// above (agents/controls_assist.md, fired from the "New control scan" form on the
+// dedicated Control Scan page) — reuses the identical live-stats/accordion/reattach
+// pattern, just with its own tracking map and its own detail renderer since the report shape
+// (controls grouped by NIST family, no severity scale) genuinely differs from a threat
+// model's risk cards.
+const controlAssistRuns = new Map(); // runId -> { toolCount, fileCount, tokenCount, lastContextTokens, startTime, elapsedTimer, ...cached DOM refs }
+
+function updateControlsAssistElapsed(run) {
+  if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);
+}
+
+function stopControlsAssistElapsedTimer(run) {
+  if (run.elapsedTimer) {
+    clearInterval(run.elapsedTimer);
+    run.elapsedTimer = null;
+  }
+  updateControlsAssistElapsed(run);
+}
+
+function handleControlsAssistRawEvent(run, event) {
+  trackRunToolActivity(run, event);
+  trackRunTokens(run, event);
+}
+
+// Which control-assessment row is expanded — a real accordion (one at a time), mirrors
+// expandedAtmRunId. Persists across renderControlsAssistView() rebuilds since caRowHtml()
+// reads it directly when building each row's markup.
+let expandedCaRunId = null;
+
+function toggleControlsAssistRow(runId) {
+  expandedCaRunId = expandedCaRunId === runId ? null : runId;
+  renderControlsAssistView();
+}
+
+function caRowHtml(r) {
+  const statusCls = r.status === 'running' ? 'in_review' : r.status === 'error' ? 'high' : r.status === 'cancelled' ? 'high' : 'closed';
+  const statusText = r.status === 'running' ? 'Running' : r.status === 'error' ? 'Error' : r.status === 'cancelled' ? 'Cancelled' : 'Done';
+
+  const run = controlAssistRuns.get(r.runId);
+  let liveStatsHtml = '';
+  if (r.status === 'running' && run) {
+    const contextPct = Math.min(100, Math.round(((run.lastContextTokens || 0) / CONTEXT_WINDOW_TOKENS) * 100));
+    const contextCls = contextPct >= 85 ? ' danger' : contextPct >= 60 ? ' warn' : '';
+    liveStatsHtml = `
+      <div class="scan-stats atm-live-stats">
+        <span class="stat"><b class="ca-tools">${run.toolCount}</b> checks</span>
+        <span class="stat"><b class="ca-files">${run.fileCount}</b> files read</span>
+        <span class="stat"><b class="ca-tokens">${formatTokenCount(run.tokenCount)}</b> tokens</span>
+        <span class="stat"><b class="ca-elapsed">${formatElapsed(Date.now() - run.startTime)}</b> elapsed</span>
+      </div>
+      <div class="context-bar-wrap atm-context-wrap">
+        <div class="context-bar"><div class="context-bar-fill ca-context-fill${contextCls}" style="width:${contextPct}%;"></div></div>
+        <span class="context-bar-label ca-context-label">${contextPct}% of context window</span>
+      </div>
+    `;
+  }
+
+  const isExpanded = r.runId === expandedCaRunId;
+  const bodyHtml = isExpanded ? `<div class="atm-row-body">${renderControlsAssistDetail(r)}</div>` : '';
+
+  return `
+    <div class="atm-row${isExpanded ? ' expanded' : ''}" data-ca-run-id="${escapeHtml(r.runId)}">
+      <div class="atm-row-summary">
+        <div class="atm-row-main">
+          <div class="atm-row-title">${escapeHtml(truncate(r.path, 56))}${r.app ? ' · ' + escapeHtml(r.app) : ''}</div>
+          <div class="atm-row-sub">${escapeHtml(formatRelativeTime(r.startedAt))}</div>
+          ${liveStatsHtml}
+        </div>
+        <span class="badge ${statusCls}">${escapeHtml(statusText)}</span>
+      </div>
+      ${bodyHtml}
+    </div>
+  `;
+}
+
+function reattachControlsAssistLiveRefs() {
+  for (const run of controlAssistRuns.values()) {
+    const rowEl = document.querySelector(`.atm-row[data-ca-run-id="${run.runId}"]`);
+    if (!rowEl) continue;
+    run.toolsEl = rowEl.querySelector('.ca-tools');
+    run.filesEl = rowEl.querySelector('.ca-files');
+    run.tokensEl = rowEl.querySelector('.ca-tokens');
+    run.elapsedEl = rowEl.querySelector('.ca-elapsed');
+    run.contextBarFillEl = rowEl.querySelector('.ca-context-fill');
+    run.contextBarLabelEl = rowEl.querySelector('.ca-context-label');
+  }
+}
+
+function renderControlsAssistSection() {
+  if (!controlAssessmentsList.length) return '<div class="hint">No control scans yet — start one above.</div>';
+  const sorted = controlAssessmentsList.slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  return `<div class="atm-list">${sorted.map((r) => caRowHtml(r)).join('')}</div>`;
+}
+
+const APPLICABILITY_LABELS = {
+  app_addressed: 'App addressed', partially_addressed: 'Partially addressed',
+  inherited: 'Inherited', not_applicable: 'Not applicable',
+};
+const IMPLEMENTATION_STATUS_LABELS = {
+  implemented: 'Implemented', partially_implemented: 'Partially implemented',
+  planned: 'Planned', not_applicable: 'Not applicable',
+};
+
+function renderControlsAssistDetail(record) {
+  if (record.status === 'running') {
+    return '<div class="hint" style="padding:14px 4px;">Still running…</div>';
+  }
+  if (record.status === 'cancelled') {
+    return '<div class="fd-verdict-reasoning" style="padding:14px 4px;">Cancelled — no report produced.</div>';
+  }
+  if (record.status === 'error' || !record.verdict) {
+    return `<div class="fd-verdict-reasoning" style="padding:14px 4px;">${escapeHtml(record.error || 'Run failed — no report produced.')}</div>`;
+  }
+  const v = record.verdict;
+  const controls = v.controls || [];
+  const families = [...controls.reduce((groups, c) => {
+    const key = c.family || 'Unclassified';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+    return groups;
+  }, new Map()).entries()].sort((a, b) => b[1].length - a[1].length);
+
+  const familiesHtml = families.map(([family, list]) => `
+    <div class="ca-family-group">
+      <div class="ca-family-header">${escapeHtml(family)} <span class="hint">(${list.length})</span></div>
+      ${list.map((c) => `
+        <div class="ca-control-card">
+          <div class="ca-control-top">
+            <b>${escapeHtml(c.control_id || '')}</b> ${escapeHtml(c.control_name || '')}
+          </div>
+          <div class="tm-detail-badges" style="margin:4px 0 6px;">
+            ${c.applicability ? `<span class="badge ${escapeHtml(c.applicability)}">${escapeHtml(APPLICABILITY_LABELS[c.applicability] || c.applicability)}</span>` : ''}
+            ${c.implementation_status ? `<span class="badge ${escapeHtml(c.implementation_status)}">${escapeHtml(IMPLEMENTATION_STATUS_LABELS[c.implementation_status] || c.implementation_status)}</span>` : ''}
+          </div>
+          <div class="fd-verdict-reasoning">${escapeHtml(c.narrative || '')}</div>
+          ${(c.evidence || []).length ? `<div class="tm-detail-badges" style="margin-top:6px;">${(c.evidence || []).map((e) => `<span class="scan-type-chip scope-chip">${escapeHtml(e)}</span>`).join('')}</div>` : ''}
+          ${c.gaps ? `<div class="hint" style="margin-top:6px;">Gap: ${escapeHtml(c.gaps)}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `).join('') || '<div class="hint">No controls identified.</div>';
+
+  const recommendationsHtml = (v.recommendations || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('') || '<li class="hint">None given.</li>';
+
+  return `
+    <div class="fd-section-title">System description</div>
+    <div class="fd-prose" style="margin-bottom:14px;">${escapeHtml(v.system_description || '—')}</div>
+    <div class="fd-section-title">Summary</div>
+    <div class="fd-prose" style="margin-bottom:14px;">${escapeHtml(v.summary || '—')}</div>
+    <div class="fd-section-title">Controls</div>
+    <div style="margin-bottom:14px;">${familiesHtml}</div>
+    <div class="fd-section-title">Inherited controls</div>
+    <div class="fd-prose" style="margin-bottom:14px;">${escapeHtml(v.inherited_note || '—')}</div>
+    <div class="fd-section-title">Recommendations</div>
+    <ul class="atm-recs" style="margin-bottom:14px;">${recommendationsHtml}</ul>
+    <button class="secondary" type="button" data-action="download-ssp-draft">Download SSP draft (.md)</button>
+  `;
+}
+
+function downloadTextFile(filename, content) {
+  const blob = new Blob([content], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildControlAssessmentMarkdown(record) {
+  const v = record.verdict;
+  const lines = [];
+  lines.push(`# SSP draft: ${record.app || record.path}`);
+  lines.push('');
+  lines.push(`Generated by Control Scan — ${new Date(record.startedAt).toISOString()}`);
+  lines.push('');
+  lines.push('## System description');
+  lines.push(v.system_description || '—');
+  lines.push('');
+  lines.push('## Summary');
+  lines.push(v.summary || '—');
+  lines.push('');
+  lines.push('## Controls');
+  const controls = v.controls || [];
+  const families = [...controls.reduce((groups, c) => {
+    const key = c.family || 'Unclassified';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+    return groups;
+  }, new Map()).entries()];
+  for (const [family, list] of families) {
+    lines.push('');
+    lines.push(`### ${family}`);
+    for (const c of list) {
+      lines.push('');
+      lines.push(`**${c.control_id || ''} — ${c.control_name || ''}**`);
+      lines.push(`- Applicability: ${APPLICABILITY_LABELS[c.applicability] || c.applicability || '—'}`);
+      lines.push(`- Implementation status: ${IMPLEMENTATION_STATUS_LABELS[c.implementation_status] || c.implementation_status || '—'}`);
+      lines.push(`- Narrative: ${c.narrative || '—'}`);
+      if ((c.evidence || []).length) lines.push(`- Evidence: ${c.evidence.join(', ')}`);
+      if (c.gaps) lines.push(`- Gap: ${c.gaps}`);
+    }
+  }
+  lines.push('');
+  lines.push('## Inherited controls');
+  lines.push(v.inherited_note || '—');
+  lines.push('');
+  lines.push('## Recommendations');
+  for (const r of (v.recommendations || [])) lines.push(`- ${r}`);
+  return lines.join('\n');
+}
+
+function renderControlsAssistView() {
+  caContentEl.innerHTML = renderControlsAssistSection();
+  caContentEl.querySelectorAll('.atm-row-summary').forEach((el) => {
+    el.addEventListener('click', () => toggleControlsAssistRow(el.closest('.atm-row').dataset.caRunId));
+  });
+  caContentEl.querySelectorAll('[data-action="download-ssp-draft"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const runId = btn.closest('.atm-row').dataset.caRunId;
+      const record = controlAssessmentsList.find((r) => r.runId === runId);
+      if (!record || !record.verdict) return;
+      downloadTextFile(`ssp-draft-${runId}.md`, buildControlAssessmentMarkdown(record));
+    });
+  });
+  reattachControlsAssistLiveRefs();
+}
+
 // findingId: which finding's attack path to show. runId: optional, defaults to its latest run.
 function selectThreatModelFinding(findingId, runId) {
   const runs = allThreatModelEntriesForFinding(findingId);
@@ -2307,6 +2637,22 @@ async function loadAppThreatModels() {
   appThreatModelsList = await res.json();
   appThreatModelsLoaded = true;
   if (currentView === 'threatmodel') renderThreatModelView();
+}
+
+async function loadControlAssessments() {
+  const res = await fetch('/api/control-assessments');
+  controlAssessmentsList = await res.json();
+  controlAssessmentsLoaded = true;
+  if (currentView === 'controls-assist') renderControlsAssistView();
+}
+
+// Patches an in-flight or newly-started control assessment record by runId, adding it if
+// this is the first message seen for it (mirrors upsertAppThreatModel).
+function upsertControlAssessment(patch) {
+  const idx = controlAssessmentsList.findIndex((r) => r.runId === patch.runId);
+  if (idx >= 0) controlAssessmentsList[idx] = { ...controlAssessmentsList[idx], ...patch };
+  else controlAssessmentsList.unshift(patch);
+  if (currentView === 'controls-assist') renderControlsAssistView();
 }
 
 // Patches an in-flight or newly-started app-level threat model record by runId, adding it
@@ -2756,6 +3102,34 @@ function handleAppThreatModelServerMessage(msg) {
   if (msg.type === 'app-threat-model-done') {
     if (run) stopAppThreatModelElapsedTimer(run);
     upsertAppThreatModel({ runId: msg.runId, id: msg.id, status: msg.code === 0 && msg.verdict ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
+    return;
+  }
+}
+
+function handleControlsAssistServerMessage(msg) {
+  const run = controlAssistRuns.get(msg.runId);
+
+  if (msg.type === 'controls-assist-started') {
+    upsertControlAssessment({ runId: msg.runId, id: msg.id });
+    return;
+  }
+  // The hot path — fires many times per run. Mutate the live row's cached DOM refs directly,
+  // no upsertControlAssessment()/re-render here, or the list would flicker/reflow constantly.
+  if (msg.type === 'controls-assist-event') {
+    if (run) handleControlsAssistRawEvent(run, msg.event);
+    return;
+  }
+  if (msg.type === 'controls-assist-stderr') {
+    return;
+  }
+  if (msg.type === 'controls-assist-error') {
+    if (run) stopControlsAssistElapsedTimer(run);
+    upsertControlAssessment({ runId: msg.runId, id: msg.id, status: 'error', error: msg.message, finishedAt: Date.now() });
+    return;
+  }
+  if (msg.type === 'controls-assist-done') {
+    if (run) stopControlsAssistElapsedTimer(run);
+    upsertControlAssessment({ runId: msg.runId, id: msg.id, status: msg.code === 0 && msg.verdict ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
     return;
   }
 }
@@ -3376,6 +3750,10 @@ function handleServerMessage(msg) {
     handleAppThreatModelServerMessage(msg);
     return;
   }
+  if (msg.type && msg.type.indexOf('controls-assist') === 0) {
+    handleControlsAssistServerMessage(msg);
+    return;
+  }
   if (msg.type && msg.type.indexOf('scan') === 0) {
     handleScanServerMessage(msg);
     return;
@@ -3684,7 +4062,9 @@ async function deleteAgent(name) {
 
 async function loadAgentsView() {
   agentsListEl.innerHTML = '<div class="hint">Loading…</div>';
-  const results = await Promise.all(agentsList.map(async (name) => {
+  const res = await fetch('/api/agents?all=1');
+  agentConfigList = res.ok ? await res.json() : [];
+  const results = await Promise.all(agentConfigList.map(async (name) => {
     const r = await fetch(`/api/agents/${encodeURIComponent(name)}`);
     return r.ok ? r.json() : null; // dropped rather than guessed — isBuiltIn is server-authoritative
   }));
@@ -3695,7 +4075,7 @@ async function loadAgentsView() {
 
 function renderAgentCards() {
   agentsListEl.innerHTML = '';
-  for (const name of agentsList) {
+  for (const name of agentConfigList) {
     const a = agentDetailsCache.get(name);
     if (!a) continue;
     const meta = agentMeta(a.name);
@@ -3707,6 +4087,7 @@ function renderAgentCards() {
         ${icon(meta.icon)}
         <span class="agent-card-name">${escapeHtml(a.name)}</span>
         ${a.isBuiltIn ? '<span class="badge core">Core</span>' : ''}
+        ${NON_FINDING_AGENTS.includes(a.name) ? '<span class="badge whole-app">Whole-app</span>' : ''}
       </div>
       <div class="agent-card-preview">${escapeHtml(truncate(firstLine, 140))}</div>
       <div class="agent-card-actions">
@@ -3809,6 +4190,7 @@ async function init() {
   await loadFindings();
   await loadScans();
   await loadAppThreatModels();
+  await loadControlAssessments();
   await loadTimeline();
   showView('dashboard');
   connect();
