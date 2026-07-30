@@ -171,7 +171,46 @@ dots do.
   exact same per-agent dropdown as right-clicking the row — added because right-click alone
   isn't discoverable, especially without a mouse; the button just calls
   `openFindingContextMenu()` positioned under itself via `getBoundingClientRect()`, same
-  pattern as the Finding Detail page's "Agent Runs ▾" button. A **Scan** filter sits beside the type tabs — not a native
+  pattern as the Finding Detail page's "Agent Runs ▾" button. Right next to it is a second,
+  teal-colored pencil button — **Fix & Verify** (`onFixVerifyClick()`) — the one place in this
+  app where an agent writes to the user's real files, gated behind a **Read-only** checkbox in
+  the view header (`#fix-verify-readonly-toggle`, checked by default). When Read-only is
+  checked, the pencil is just a shortcut into the existing advisory-only "Run Remediation…"
+  stage modal (same as the three-dot menu). When unchecked, it instead runs
+  `startFixAndVerify()`: disabled entirely (`opacity:.3`) unless the finding has a resolvable
+  source directory (`findingSourcePath()`, via `sourceScanId` → the matching scan's `path` —
+  manually-added findings have nowhere to write to, so they never get this enabled), confirms
+  once via a native `confirm()` describing exactly what will happen, then sends one WS message,
+  `{type: 'fix_and_verify', findingId, remediationRunId, verifyRunId, context, instruction,
+  path}` — two client-generated runIds for what the server turns into two real, sequential
+  agent runs. See `handleFixAndVerifyMessage()` in `server.js`: it first requires the target to
+  be a **clean git working tree** (`git status --porcelain`, refusing an uncommitted or
+  non-git directory outright — see "Security posture" below) so anything it does is trivially
+  revertible entirely outside this app; then spawns Remediation with `cwd` set to that
+  directory and `--allowedTools 'Read,Grep,Glob,Edit,Write'` (the only place any agent in this
+  app gets write access — see the "apply mode" section added to `agents/remediation.md` for
+  what changes about its behavior when it has Edit/Write available: make the minimal correct
+  change, don't guess if unsure, still fill in `corrected_code`); captures `git diff` right
+  after and attaches it to that run's own verdict as `applied_diff` (real evidence of what
+  actually changed, independent of what the agent claims); then spawns Verify the normal
+  read-only way against the same directory, with the Remediation verdict folded into its
+  prompt so it's confirming a specific claimed fix, not just re-triaging from scratch. Both
+  stages are pushed onto `finding.runs` and relayed via the *exact same* `started`/`event`/
+  `done` message shapes the generic per-finding `run` path already uses — the client needed no
+  new message-type handling for either run's lifecycle, only two small additions to the
+  existing generic handler: `started` now pushes a run placeholder if one isn't already there
+  (Verify's placeholder can't be pushed at click-time the way every other run's can, since it
+  doesn't start until Remediation finishes), and `done` checks a small `fixVerifyRemediationRunIds`
+  Set to pop the diff modal (`openDiffModal()`, hand-rolled `+`/`-`/`@@` line coloring, no
+  external diff library) the moment the Remediation stage's `applied_diff` arrives. A precheck
+  failure (not a git repo, dirty tree) never gets a run pushed server-side, so it can't rely on
+  the normal error-badge-on-a-run treatment — the client's `error` handler special-cases
+  `fixVerifyRemediationRunIds` to `alert()` those messages directly instead. Verify's own
+  `still_vulnerable`/`partially_fixed` verdict on the second stage sends the finding back to
+  `in_review` exactly like a normal (non-write) Verify run would — no separate status logic was
+  needed, `deriveStatus()`'s existing `verified_fixed` branch (see the Verify bullet above)
+  already covers this path since it only looks at the finding's latest run, not how that run
+  was triggered. A **Scan** filter sits beside the type tabs — not a native
   `<select>` but a small custom popover (`.scan-filter-dropdown`, `#findings-scan-filter-btn` +
   `#findings-scan-filter-menu`, `renderFindingsScanFilter()`), each item formatted as e.g.
   "Reasoning scan on `<path>` started 2h ago" / "SCA scan on `<path>` started..."
@@ -788,7 +827,17 @@ recorded scan path, never from arbitrary user input, but the server applies the 
 "exists and is a directory" check and nothing more, so the trust boundary is the same one the
 scan-family handlers already accept. That's consistent with "local single-user tool trusted by
 its one user," not with exposing this app beyond localhost; don't add auth-free network
-exposure without revisiting this.
+exposure without revisiting this. **Fix & Verify's Remediation stage is the one and only place
+any agent in this app gets `Edit`/`Write` tools** (see the Agent Triage bullet above) — every
+other agent, including Verify itself, is read-only. The one guardrail is that
+`handleFixAndVerifyMessage()` refuses to run unless `git status --porcelain` against the
+target directory comes back both git-tracked and clean, so every edit it makes is trivially
+inspectable (`git diff`, surfaced back to the user automatically) and revertible (`git
+checkout`) entirely outside this app — but that check happens once, before either stage
+starts; nothing stops Remediation from touching more of the tree than the one file the finding
+named, the same way nothing stops it today from writing incorrect fix guidance. Treat this as
+the highest-trust action in the app: same "local single-user tool" posture as the rest of it,
+just with real consequences if the target directory isn't what the user thinks it is.
 
 **Not yet built**: disk persistence (both the findings store and the scans store are
 in-memory and reset on restart — there's no SQLite/JSON-file layer yet), CSV *ingestion*

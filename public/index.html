@@ -464,8 +464,20 @@
   .findings-table .ft-mono { font-family: var(--mono); font-size: 11px; color: var(--text-dim); word-break: break-word; max-width: 220px; display: inline-block; }
   .findings-table .ft-sev-cell { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
   .findings-table .ft-select-col { width: 1%; padding-right: 0; }
-  .findings-table .ft-actions-col { width: 1%; text-align: right; }
+  .findings-table .ft-actions-col { width: 1%; text-align: right; white-space: nowrap; }
   .ft-empty { padding: 40px; text-align: center; color: var(--muted); font-size: 12.5px; }
+  .fix-verify-btn { color: var(--remediation); }
+  .fix-verify-btn:disabled { opacity: .3; cursor: not-allowed; color: var(--muted); }
+  .fix-verify-toggle { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-dim); }
+
+  /* ---------- diff modal (Fix & Verify's git diff, the one place this app shows the result
+     of an agent actually writing to the user's real files) ---------- */
+  .diff-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 0; max-height: 50vh; overflow-y: auto; }
+  .diff-line { padding: 0 14px; }
+  .diff-line.add { background: var(--ok-soft); color: var(--ok); }
+  .diff-line.del { background: var(--err-soft); color: var(--err); }
+  .diff-line.hunk { color: var(--accent); }
+  .diff-line.meta { color: var(--muted); }
 
   /* ---------- finding detail (full page) ---------- */
   #fd-back-btn { font-size: 11px; margin-bottom: 6px; padding: 0; }
@@ -907,10 +919,15 @@
       <h1>Agent Triage</h1>
       <div class="view-subtitle" id="findings-subtitle"></div>
     </div>
-    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-      <button class="secondary" id="auto-remediate-btn" disabled>Auto-remediate selected (0)</button>
-      <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
-      <button id="add-finding-btn">+ Add</button>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+      <label class="fix-verify-toggle" title="When checked, each row's Fix &amp; Verify pencil button just runs Remediation for advice (like today) instead of writing to your files.">
+        <input type="checkbox" id="fix-verify-readonly-toggle" checked> Read-only
+      </label>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="secondary" id="auto-remediate-btn" disabled>Auto-remediate selected (0)</button>
+        <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
+        <button id="add-finding-btn">+ Add</button>
+      </div>
     </div>
   </div>
   <div class="view-body" id="findings-view-body">
@@ -1156,6 +1173,17 @@
     <div class="modal-actions">
       <button class="secondary" id="finding-modal-cancel">Cancel</button>
       <button id="finding-modal-save">Add finding</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="diff-modal-overlay" hidden>
+  <div class="modal">
+    <h3>Fix applied</h3>
+    <div class="view-subtitle" id="diff-modal-subtitle" style="margin-bottom:10px;"></div>
+    <pre class="diff-block" id="diff-modal-body"></pre>
+    <div class="modal-actions">
+      <button id="diff-modal-close">Done</button>
     </div>
   </div>
 </div>
@@ -3413,9 +3441,13 @@ function renderFindingsTable() {
     const tr = document.createElement('tr');
     tr.dataset.findingId = f.id;
     const checkedAttr = selectedFindingIds.has(f.id) ? 'checked' : '';
+    const hasSourcePath = !!findingSourcePath(f);
     tr.innerHTML = `<td class="ft-select-col"><input type="checkbox" ${checkedAttr}></td>`
       + columns.map((col) => `<td>${findingsCellHtml(f, col.key)}</td>`).join('')
-      + `<td class="ft-actions-col"><button class="console-toggle-btn" type="button" data-run-agent-btn title="Run agent…">${icon('more')}</button></td>`;
+      + `<td class="ft-actions-col">`
+      + `<button class="console-toggle-btn fix-verify-btn" type="button" data-fix-verify-btn${hasSourcePath ? '' : ' disabled'} title="${hasSourcePath ? 'Fix & Verify — apply and confirm a fix for this finding' : 'Fix & Verify needs a finding from a scan (known source directory)'}">${icon('edit')}</button>`
+      + `<button class="console-toggle-btn" type="button" data-run-agent-btn title="Run agent…">${icon('more')}</button>`
+      + `</td>`;
     const cb = tr.querySelector('.ft-select-col input');
     cb.addEventListener('click', (e) => e.stopPropagation());
     cb.addEventListener('change', () => {
@@ -3428,6 +3460,10 @@ function renderFindingsTable() {
       e.stopPropagation();
       const rect = e.currentTarget.getBoundingClientRect();
       openFindingContextMenu(rect.right, rect.bottom + 4, f.id);
+    });
+    tr.querySelector('[data-fix-verify-btn]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      onFixVerifyClick(f.id);
     });
     tr.addEventListener('click', () => openFindingDetail(f.id));
     tr.addEventListener('contextmenu', (e) => {
@@ -3486,6 +3522,90 @@ function findingSourcePath(finding) {
   return scan ? scan.path : null;
 }
 
+// ---------- Fix & Verify: the one flow where an agent writes to the user's real files ----------
+// Chains a real, Edit/Write-capable Remediation run against the finding's actual source
+// directory with a Verify run re-checking it, under one button click. Both runs are ordinary
+// per-finding runs as far as the client is concerned (same 'started'/'event'/'done' messages,
+// same finding.runs/Runs-column/status-badge machinery) — the only client-specific bit is
+// tracking which remediation runIds belong to this flow, so their 'done' message's
+// verdict.applied_diff can pop the diff modal instead of just sitting in the verdict JSON.
+const fixVerifyRemediationRunIds = new Set();
+
+async function onFixVerifyClick(findingId) {
+  const readOnly = document.getElementById('fix-verify-readonly-toggle').checked;
+  const finding = await ensureFindingCached(findingId);
+  if (!finding) return;
+  if (readOnly) {
+    openFreshStageModal(findingId, 'remediation', buildBaseContext(finding));
+    return;
+  }
+  const targetPath = findingSourcePath(finding);
+  if (!targetPath) {
+    alert('This finding has no known source directory (it wasn\'t produced by a scan), so there\'s nothing for Fix & Verify to write to.');
+    return;
+  }
+  const proceed = confirm(
+    `Fix & Verify will let the Remediation agent directly edit files in:\n${targetPath}\n\n` +
+    `The target must be a clean git working tree (no uncommitted changes) — the run will refuse ` +
+    `otherwise. You'll see the resulting diff once it's done. Continue?`
+  );
+  if (!proceed) return;
+  startFixAndVerify(findingId, finding, targetPath);
+}
+
+function startFixAndVerify(findingId, finding, targetPath) {
+  const remediationRunId = uid();
+  const verifyRunId = uid();
+
+  stages.set(remediationRunId, findingId);
+  stages.set(verifyRunId, findingId);
+  stageConsoles.set(remediationRunId, { runId: remediationRunId, consoleText: '', consoleOpen: false, consoleEl: null });
+  stageConsoles.set(verifyRunId, { runId: verifyRunId, consoleText: '', consoleOpen: false, consoleEl: null });
+  fixVerifyRemediationRunIds.add(remediationRunId);
+
+  const startedAt = Date.now();
+  const context = buildBaseContext(finding);
+  upsertTimelineEntry({
+    kind: 'remediation', runId: remediationRunId, findingId, findingTitle: finding.title, agent: 'remediation',
+    status: 'running', instruction: '', verdict: null, startedAt, finishedAt: null,
+  });
+  finding.runs.push({ runId: remediationRunId, agent: 'remediation', status: 'running', verdict: null, startedAt, finishedAt: null });
+  if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
+
+  ws.send(JSON.stringify({
+    type: 'fix_and_verify', findingId, remediationRunId, verifyRunId, context, instruction: '', path: targetPath,
+  }));
+}
+
+function closeDiffModal() {
+  document.getElementById('diff-modal-overlay').hidden = true;
+}
+document.getElementById('diff-modal-close').addEventListener('click', closeDiffModal);
+document.getElementById('diff-modal-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('diff-modal-overlay')) closeDiffModal();
+});
+
+// Minimal unified-diff line coloring — no external diff library, consistent with this app's
+// no-external-deps aesthetic. Only cares about the leading +/-/@@ marker per line.
+function diffLineHtml(line) {
+  let cls = '';
+  if (line.startsWith('+++') || line.startsWith('---')) cls = 'meta';
+  else if (line.startsWith('+')) cls = 'add';
+  else if (line.startsWith('-')) cls = 'del';
+  else if (line.startsWith('@@')) cls = 'hunk';
+  else if (line.startsWith('diff --git') || line.startsWith('index ')) cls = 'meta';
+  return `<div class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line) || '&nbsp;'}</div>`;
+}
+
+function openDiffModal(finding, diffText) {
+  document.getElementById('diff-modal-subtitle').textContent = `${finding.title} — applied by Remediation, confirmed by Verify`;
+  const bodyEl = document.getElementById('diff-modal-body');
+  bodyEl.innerHTML = diffText && diffText.trim()
+    ? diffText.split('\n').map(diffLineHtml).join('')
+    : '<div class="diff-line meta">(no changes were written)</div>';
+  document.getElementById('diff-modal-overlay').hidden = false;
+}
+
 function buildBaseContext(finding) {
   const latestRun = finding.runs && finding.runs.length ? finding.runs[finding.runs.length - 1] : null;
   const parts = [
@@ -3508,7 +3628,7 @@ function buildBaseContext(finding) {
 
 const fdBodyEl = document.getElementById('fd-body');
 const VERDICT_BADGE_FIELDS = ['verdict', 'severity_confirmed', 'confidence', 'priority'];
-const VERDICT_SKIP_FIELDS = new Set([...VERDICT_BADGE_FIELDS, 'reasoning', 'next_agent']);
+const VERDICT_SKIP_FIELDS = new Set([...VERDICT_BADGE_FIELDS, 'reasoning', 'next_agent', 'applied_diff']);
 
 async function openFindingDetail(findingId) {
   currentFindingDetailId = findingId;
@@ -3643,6 +3763,12 @@ function runCardHtml(run) {
     const v = run.verdict;
     const badgeFields = VERDICT_BADGE_FIELDS.filter((k) => v[k]);
     const otherFields = Object.keys(v).filter((k) => !VERDICT_SKIP_FIELDS.has(k) && v[k] != null && v[k] !== '' && !(Array.isArray(v[k]) && !v[k].length));
+    // applied_diff only exists on a Fix & Verify remediation run — the one place this app
+    // shows real evidence of a file it wrote, so it gets its own colored diff block rather
+    // than folding into the generic key/value grid above.
+    const appliedDiffHtml = v.applied_diff
+      ? `<div class="fd-section-title" style="margin-top:10px;">Applied diff</div><pre class="diff-block">${v.applied_diff.split('\n').map(diffLineHtml).join('')}</pre>`
+      : '';
     verdictHtml = `
       ${badgeFields.length ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">${badgeFields.map((k) => `<span class="badge ${escapeHtml(String(v[k]))}">${escapeHtml(String(v[k]))}</span>`).join('')}</div>` : ''}
       ${v.reasoning ? `<div class="fd-verdict-reasoning">${escapeHtml(v.reasoning)}</div>` : ''}
@@ -3651,6 +3777,7 @@ function runCardHtml(run) {
           ${otherFields.map((k) => `<div class="fd-verdict-item"><b>${escapeHtml(k)}:</b>${escapeHtml(Array.isArray(v[k]) ? v[k].join(', ') : String(v[k]))}</div>`).join('')}
         </div>
       ` : ''}
+      ${appliedDiffHtml}
     `;
   } else if (run.status === 'error') {
     verdictHtml = '<div class="fd-verdict-reasoning">Run failed — no verdict produced.</div>';
@@ -3794,7 +3921,18 @@ function handleServerMessage(msg) {
   }
   if (!findingId) return;
 
-  if (msg.type === 'started') return;
+  if (msg.type === 'started') {
+    // Fix & Verify's second stage (Verify) only starts once Remediation finishes, so it has no
+    // optimistic "running" placeholder from click-time the way every other run gets — push one
+    // now if it's missing. A plain no-op duplicate-check for every other run, which already
+    // pushed its own placeholder before sending.
+    const finding = findingCache.get(findingId);
+    if (finding && !finding.runs.some((r) => r.runId === msg.runId)) {
+      finding.runs.push({ runId: msg.runId, agent: msg.agent, status: 'running', verdict: null, startedAt: Date.now(), finishedAt: null });
+      if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
+    }
+    return;
+  }
   if (msg.type === 'event') {
     // No live stats UI for per-finding runs (see CLAUDE.md) — the only thing fed here is the
     // opt-in console panel's text buffer, via the same trackConsoleText() scans/whole-app runs use.
@@ -3806,12 +3944,24 @@ function handleServerMessage(msg) {
     return; // CLI-internal chatter, not actionable
   }
   if (msg.type === 'error') {
+    // A Fix & Verify precheck failure (not a git repo, dirty tree, etc.) never gets a run
+    // pushed server-side, so there's nothing for the normal error badge to attach to — surface
+    // it directly instead of leaving the user staring at a run that silently vanishes.
+    if (fixVerifyRemediationRunIds.has(msg.runId)) {
+      fixVerifyRemediationRunIds.delete(msg.runId);
+      alert(msg.message);
+    }
     upsertTimelineEntry({ runId: msg.runId, status: 'error', finishedAt: Date.now() });
     refreshFindingAfterRun(findingId);
     return;
   }
   if (msg.type === 'done') {
     upsertTimelineEntry({ runId: msg.runId, status: msg.code === 0 ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
+    if (fixVerifyRemediationRunIds.has(msg.runId)) {
+      fixVerifyRemediationRunIds.delete(msg.runId);
+      const finding = findingCache.get(findingId);
+      if (finding && msg.verdict && msg.verdict.applied_diff !== undefined) openDiffModal(finding, msg.verdict.applied_diff);
+    }
     refreshFindingAfterRun(findingId);
     return;
   }

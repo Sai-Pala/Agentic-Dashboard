@@ -587,6 +587,11 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (msg.type === 'fix_and_verify') {
+      handleFixAndVerifyMessage(msg, { children, send });
+      return;
+    }
+
     if (msg.type !== 'run') return;
 
     const runId = String(msg.runId || '').trim();
@@ -773,6 +778,190 @@ wss.on('connection', (ws) => {
     children.clear();
   });
 });
+
+// The only flow in this app where an agent writes to the user's real files. Chains two real
+// runs — Remediation (with Edit/Write access to the finding's actual target directory) then
+// Verify (read-only, re-checking what Remediation just did) — under the one button click the
+// client calls "Fix & Verify". Each stage is pushed onto finding.runs and relayed to the
+// client with the exact same started/event/done message shapes the generic per-finding `run`
+// path already uses, registered in the same `runIndex`/`children` maps, so cancellation and
+// the client's existing run-rendering code both work unmodified — nothing about this needs a
+// new client-side message type except the top-level 'fix_and_verify' request itself.
+function handleFixAndVerifyMessage(msg, { children, send }) {
+  const findingId = msg.findingId ? String(msg.findingId) : null;
+  const remediationRunId = String(msg.remediationRunId || '').trim();
+  const verifyRunId = String(msg.verifyRunId || '').trim();
+  const context = String(msg.context || '');
+  const instruction = String(msg.instruction || '');
+  const targetPath = String(msg.path || '').trim();
+
+  if (!RUN_ID_RE.test(remediationRunId) || !RUN_ID_RE.test(verifyRunId)) {
+    send({ type: 'error', message: 'Invalid or missing run id(s).' });
+    return;
+  }
+  if (children.has(remediationRunId) || children.has(verifyRunId)) {
+    send({ type: 'error', runId: remediationRunId, findingId, message: 'This run is already active.' });
+    return;
+  }
+  const finding = findingId ? findings.get(findingId) : null;
+  if (!finding) {
+    send({ type: 'error', runId: remediationRunId, findingId, message: 'Unknown finding.' });
+    return;
+  }
+  if (!targetPath) {
+    send({ type: 'error', runId: remediationRunId, findingId, message: 'A target directory is required for Fix & Verify.' });
+    return;
+  }
+
+  let stat;
+  try {
+    stat = fs.statSync(targetPath);
+  } catch (err) {
+    send({ type: 'error', runId: remediationRunId, findingId, message: `Path not found: ${targetPath}` });
+    return;
+  }
+  if (!stat.isDirectory()) {
+    send({ type: 'error', runId: remediationRunId, findingId, message: `Not a directory: ${targetPath}` });
+    return;
+  }
+
+  // Safety gate: refuse to write unless the target is a clean git working tree, so every
+  // change this makes is trivially inspectable (git diff) and revertible (git checkout)
+  // entirely outside this app.
+  let gitStatus;
+  try {
+    gitStatus = execFileSync('git', ['status', '--porcelain'], { cwd: targetPath, encoding: 'utf8' });
+  } catch (err) {
+    send({ type: 'error', runId: remediationRunId, findingId, message: `Fix & Verify requires a git repository — "${targetPath}" doesn't look like one: ${String(err.message).split('\n')[0]}` });
+    return;
+  }
+  if (gitStatus.trim()) {
+    send({ type: 'error', runId: remediationRunId, findingId, message: 'Target directory has uncommitted changes. Commit or stash them first so the fix stays cleanly revertible.' });
+    return;
+  }
+
+  const remediationAgentPath = agentFilePath('remediation');
+  const verifyAgentPath = agentFilePath('verify');
+  if (!fs.existsSync(remediationAgentPath) || !fs.existsSync(verifyAgentPath)) {
+    send({ type: 'error', runId: remediationRunId, findingId, message: 'Remediation or Verify agent file is missing.' });
+    return;
+  }
+
+  let remediationPrompt, verifyPrompt;
+  try {
+    remediationPrompt = fs.readFileSync(remediationAgentPath, 'utf8');
+    verifyPrompt = fs.readFileSync(verifyAgentPath, 'utf8');
+  } catch (err) {
+    send({ type: 'error', runId: remediationRunId, findingId, message: `Failed to read agent prompt: ${err.message}` });
+    return;
+  }
+
+  function runStage(runId, agentName, systemPrompt, userPrompt, allowedTools) {
+    return new Promise((resolve) => {
+      const runRecord = {
+        runId, agent: agentName, instruction, context: userPrompt,
+        status: 'running', verdict: null, fullText: '',
+        startedAt: Date.now(), finishedAt: null,
+      };
+      finding.runs.push(runRecord);
+      runIndex.set(runId, { findingId: finding.id, run: runRecord });
+
+      send({ type: 'started', runId, findingId, agent: agentName });
+
+      const args = [
+        '-p', userPrompt,
+        '--append-system-prompt', systemPrompt,
+        '--output-format', 'stream-json',
+        '--verbose',
+        '--allowedTools', allowedTools,
+        '--permission-mode', 'acceptEdits',
+      ];
+      const child = spawn('claude', args, { cwd: targetPath, shell: false });
+      children.set(runId, child);
+
+      let stdoutBuffer = '';
+      let fullText = '';
+
+      child.stdout.on('data', (chunk) => {
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split('\n');
+        stdoutBuffer = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let event;
+          try {
+            event = JSON.parse(line);
+          } catch (err) {
+            continue;
+          }
+          if (event.type === 'assistant' && event.message && Array.isArray(event.message.content)) {
+            for (const block of event.message.content) {
+              if (block.type === 'text' && typeof block.text === 'string') fullText += block.text;
+            }
+          }
+          send({ type: 'event', runId, findingId, event });
+        }
+      });
+
+      child.stderr.on('data', (chunk) => {
+        send({ type: 'stderr', runId, findingId, data: chunk.toString() });
+      });
+
+      child.on('close', (code) => {
+        const cancelled = runRecord.status === 'cancelled';
+        const verdict = extractVerdict(fullText);
+        if (runRecord.status === 'running') runRecord.status = code === 0 ? 'done' : 'error';
+        runRecord.verdict = verdict;
+        runRecord.fullText = fullText;
+        runRecord.finishedAt = Date.now();
+        children.delete(runId);
+        runIndex.delete(runId);
+        resolve({ code, verdict, cancelled });
+      });
+
+      child.on('error', (err) => {
+        runRecord.status = 'error';
+        runRecord.finishedAt = Date.now();
+        children.delete(runId);
+        runIndex.delete(runId);
+        send({ type: 'error', runId, findingId, message: `Failed to spawn claude: ${err.message}` });
+        resolve({ code: 1, verdict: null, cancelled: false });
+      });
+    });
+  }
+
+  (async () => {
+    const remediationUserPrompt = `${instruction}\n\nFinding context:\n${context}\n\nYou have Edit and Write access to this repository (apply mode — see your instructions). Apply the fix directly to the file(s) instead of only describing it.`;
+    const rem = await runStage(remediationRunId, 'remediation', remediationPrompt, remediationUserPrompt, 'Read,Grep,Glob,Edit,Write');
+    finding.status = deriveStatus(finding);
+
+    if (rem.cancelled || rem.code !== 0 || !rem.verdict) {
+      send({ type: 'done', runId: remediationRunId, findingId, code: rem.code, verdict: rem.verdict, fullText: '' });
+      return; // nothing was successfully applied — no point running Verify against a no-op
+    }
+
+    // Capture what actually changed, independent of whatever the agent claims in its own
+    // verdict — this is the real evidence a human reviews. Attached to the remediation run's
+    // own verdict (not a new message type) so it shows up wherever that verdict already
+    // renders once the client re-fetches the finding.
+    let diff = '';
+    try {
+      diff = execFileSync('git', ['diff'], { cwd: targetPath, encoding: 'utf8' });
+    } catch (err) {
+      diff = `(failed to capture git diff: ${String(err.message).split('\n')[0]})`;
+    }
+    rem.verdict.applied_diff = diff || null;
+    const remRunRecord = finding.runs.find((r) => r.runId === remediationRunId);
+    if (remRunRecord) remRunRecord.verdict = rem.verdict;
+
+    send({ type: 'done', runId: remediationRunId, findingId, code: rem.code, verdict: rem.verdict, fullText: '' });
+
+    const verifyUserPrompt = `${instruction}\n\nFinding context:\n${context}\n\nThe Remediation agent just ran against this exact directory and reported:\n${JSON.stringify(rem.verdict, null, 2)}\n\nConfirm whether the fix it describes actually landed and resolves the finding.`;
+    const ver = await runStage(verifyRunId, 'verify', verifyPrompt, verifyUserPrompt, 'Read,Grep,Glob');
+    finding.status = deriveStatus(finding);
+    send({ type: 'done', runId: verifyRunId, findingId, code: ver.code, verdict: ver.verdict, fullText: '' });
+  })();
+}
 
 function handleScanMessage(msg, { children, send }) {
   const runId = String(msg.runId || '').trim();
