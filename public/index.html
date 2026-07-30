@@ -621,6 +621,7 @@
   .badge.needs_review, .badge.medium, .badge.p1, .badge.in_review { background: var(--warn-soft); color: var(--warn); }
   .badge.false_positive, .badge.low, .badge.p2, .badge.p3, .badge.informational, .badge.duplicate, .badge.remediation_ready { background: var(--ok-soft); color: var(--ok); }
   .badge.remediation_generated { background: var(--accent-soft); color: var(--accent); }
+  .badge.verified_fixed { background: var(--ok-soft); color: var(--ok); font-weight: 700; }
   .badge.new { background: rgba(109,108,104,.18); color: var(--muted); }
   .badge.closed { background: rgba(109,108,104,.18); color: var(--muted); }
   .badge.whole-app { background: rgba(96,165,250,.16); color: #60a5fa; margin-left: 4px; }
@@ -1067,6 +1068,7 @@
     <div>
       <label for="stage-modal-agent">Agent</label>
       <select id="stage-modal-agent"></select>
+      <div class="hint" id="stage-modal-verify-hint" style="margin-top:6px;" hidden></div>
     </div>
     <div>
       <label for="stage-modal-context">Context passed to agent</label>
@@ -1207,12 +1209,13 @@ function icon(name, cls) {
 
 // ---------- agent metadata (shared across dashboard / timeline / findings) ----------
 
-const KNOWN_AGENTS = ['triage', 'threat_model', 'remediation'];
+const KNOWN_AGENTS = ['triage', 'threat_model', 'remediation', 'verify'];
 const AGENT_META = {
   scan: { label: 'Scan', icon: 'radar', color: '#38bdf8', role: 'Reads a directory and creates findings' },
   triage: { label: 'Triage', icon: 'search', color: '#a78bfa', role: 'First pass: real finding or noise, how urgent' },
   threat_model: { label: 'Threat Model', icon: 'target', color: '#fb923c', role: 'Exploit path, preconditions, blast radius' },
-  remediation: { label: 'Remediation', icon: 'wrench', color: '#2dd4bf', role: 'Concrete fix guidance, terminal stage' },
+  remediation: { label: 'Remediation', icon: 'wrench', color: '#2dd4bf', role: 'Concrete fix guidance' },
+  verify: { label: 'Verify', icon: 'checkCircle', color: '#4ade80', role: 'Re-checks the live code to confirm a fix actually landed' },
   app_threat_model: { label: 'App Threat Model', icon: 'shield', color: '#f472b6', role: 'Whole-app architecture-level threat model' },
   controls_assist: { label: 'Control Scan', icon: 'clipboard', color: '#60a5fa', role: 'Whole-app NIST 800-53 control identification for SSP drafting' },
 };
@@ -3170,12 +3173,12 @@ async function loadFindings() {
 }
 
 function statusLabel(status) {
-  return { new: 'Not started', in_review: 'In review', remediation_ready: 'Remediation ready', remediation_generated: 'Remediation generated', closed: 'Closed' }[status] || status;
+  return { new: 'Not started', in_review: 'In review', remediation_ready: 'Remediation ready', remediation_generated: 'Remediation generated', verified_fixed: 'Verified fixed', closed: 'Closed' }[status] || status;
 }
 function severityLabel(sev) { return sev.charAt(0).toUpperCase() + sev.slice(1); }
 
 const SEV_ORDER_MAP = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
-const STATUS_ORDER_MAP = { new: 0, in_review: 1, remediation_ready: 2, remediation_generated: 3, closed: 4 };
+const STATUS_ORDER_MAP = { new: 0, in_review: 1, remediation_ready: 2, remediation_generated: 3, closed: 4, verified_fixed: 5 };
 
 const FINDINGS_TYPE_LABEL = { all: 'All', reasoning: 'Reasoning', sca: 'SCA' };
 const FINDINGS_COLUMNS = {
@@ -3474,6 +3477,15 @@ async function autoRemediateSelected() {
 
 autoRemediateBtn.addEventListener('click', autoRemediateSelected);
 
+// The directory a finding's Verify run should re-check against — the target path of the scan
+// that originally produced it, if known. null for manually-added findings (verify.md is
+// written to handle that gracefully rather than reasoning over the wrong codebase).
+function findingSourcePath(finding) {
+  if (!finding || !finding.sourceScanId) return null;
+  const scan = scansList.find((s) => s.id === finding.sourceScanId);
+  return scan ? scan.path : null;
+}
+
 function buildBaseContext(finding) {
   const latestRun = finding.runs && finding.runs.length ? finding.runs[finding.runs.length - 1] : null;
   const parts = [
@@ -3749,7 +3761,12 @@ function startStage(findingId, agent, context, instruction) {
     if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
   }
 
-  ws.send(JSON.stringify({ type: 'run', runId, findingId, agent, context, instruction }));
+  const runMsg = { type: 'run', runId, findingId, agent, context, instruction };
+  if (agent === 'verify') {
+    const path = findingSourcePath(finding);
+    if (path) runMsg.path = path;
+  }
+  ws.send(JSON.stringify(runMsg));
   return runId;
 }
 
@@ -3885,6 +3902,21 @@ document.addEventListener('keydown', (e) => {
 
 let stageModalState = null;
 
+// Verify is the one agent whose behavior depends on something not visible in the editable
+// context textarea (the cwd it gets spawned with) — this makes that visible so starting a
+// Verify run isn't a black box about whether it can actually check live code.
+function updateStageModalVerifyHint() {
+  const hintEl = document.getElementById('stage-modal-verify-hint');
+  if (stageModalAgent.value !== 'verify' || !stageModalState) { hintEl.hidden = true; return; }
+  const finding = findingCache.get(stageModalState.findingId);
+  const path = findingSourcePath(finding);
+  hintEl.hidden = false;
+  hintEl.textContent = path
+    ? `Will re-check the live code at: ${path}`
+    : 'No known source directory for this finding — review will be based on the saved snippet only.';
+}
+stageModalAgent.addEventListener('change', updateStageModalVerifyHint);
+
 function openFreshStageModal(findingId, agent, context) {
   stageModalState = { findingId };
   stageModalTitle.textContent = `Run ${agentMeta(agent).label} with instructions`;
@@ -3893,6 +3925,7 @@ function openFreshStageModal(findingId, agent, context) {
   stageModalInstruction.value = '';
   stageModalOverlay.hidden = false;
   stageModalInstruction.focus();
+  updateStageModalVerifyHint();
 }
 
 function closeStageModal() {

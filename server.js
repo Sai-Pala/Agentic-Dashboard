@@ -33,7 +33,7 @@ const SCAN_TYPE_FRAMING = {
 // Shipped with the app and load-bearing for other hardcoded UI (the scan flow,
 // the Dashboard's pipeline health panel) — editable, but not deletable via the
 // Agents screen.
-const BUILTIN_AGENTS = ['triage', 'threat_model', 'remediation', 'scan', 'app_threat_model', 'controls_assist'];
+const BUILTIN_AGENTS = ['triage', 'threat_model', 'remediation', 'verify', 'scan', 'app_threat_model', 'controls_assist'];
 // Agent .md files that operate on a whole directory via their own dedicated flow
 // (Scans, App Threat Model, Controls Assist) rather than the per-finding stage/branch
 // UI — excluded from the per-finding agent dropdown and the SCA "run after scan" pill
@@ -149,6 +149,11 @@ function deriveStatus(finding) {
   if (latest.status === 'error' || latest.status === 'cancelled') return 'in_review';
   const v = latest.verdict && latest.verdict.verdict;
   if (v === 'false_positive' || v === 'duplicate') return 'closed';
+  // Verify's own verdict vocabulary (verified_fixed/still_vulnerable/partially_fixed/
+  // inconclusive) doesn't overlap with any check below, so only verified_fixed needs its own
+  // branch — the other three fall through to the generic in_review default at the bottom,
+  // which is the right outcome: still needs more work, or couldn't be confirmed either way.
+  if (latest.agent === 'verify' && v === 'verified_fixed') return 'verified_fixed';
   if (latest.agent === 'remediation' && latest.verdict && latest.verdict.corrected_code && (v === 'confirmed' || v === 'needs_review')) return 'remediation_generated';
   if (v === 'confirmed' && !latest.verdict.next_agent) return 'remediation_ready';
   if (v === 'confirmed' || v === 'needs_review') return 'in_review';
@@ -644,18 +649,39 @@ wss.on('connection', (ws) => {
 
     const userPrompt = `${instruction}\n\nFinding context:\n${context}`;
 
+    // Per-finding agents normally run with cwd = this app's own directory and no Glob, since
+    // they reason primarily over the `code` snippet already embedded in context. Verify is the
+    // exception: confirming a fix actually landed requires reading the finding's real target
+    // codebase, not this dashboard's. If the client resolved a source path (from the finding's
+    // originating scan) and it's still a valid directory, spawn there with Glob added;
+    // otherwise fall back to the default — verify.md is written to recognize that case and
+    // return `inconclusive` rather than silently reasoning over the wrong repo.
+    let runCwd = process.cwd();
+    let allowedTools = 'Read,Grep';
+    const requestedPath = String(msg.path || '').trim();
+    if (requestedPath) {
+      try {
+        if (fs.statSync(requestedPath).isDirectory()) {
+          runCwd = requestedPath;
+          allowedTools = 'Read,Grep,Glob';
+        }
+      } catch (err) {
+        // Path no longer exists (e.g. a temp checkout was cleaned up) — fall back silently.
+      }
+    }
+
     const args = [
       '-p', userPrompt,
       '--append-system-prompt', systemPrompt,
       '--output-format', 'stream-json',
       '--verbose',
-      '--allowedTools', 'Read,Grep',
+      '--allowedTools', allowedTools,
       '--permission-mode', 'acceptEdits',
     ];
 
     send({ type: 'started', runId, findingId, agent: agentName });
 
-    const child = spawn('claude', args, { cwd: process.cwd(), shell: false });
+    const child = spawn('claude', args, { cwd: runCwd, shell: false });
     children.set(runId, child);
 
     let stdoutBuffer = '';

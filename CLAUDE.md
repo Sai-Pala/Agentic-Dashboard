@@ -404,7 +404,7 @@ dots do.
   above — it's a config/admin screen, not a workflow step) for managing every file under
   `agents/` from the browser instead of by hand: create/edit/delete via
   `GET/POST/PUT/DELETE /api/agents(/:name)` in `server.js`. Built-in agents
-  (`triage`/`threat_model`/`remediation`/`scan`/`app_threat_model`/`controls_assist`,
+  (`triage`/`threat_model`/`remediation`/`verify`/`scan`/`app_threat_model`/`controls_assist`,
   `BUILTIN_AGENTS` server-side) can be edited but not deleted (403). This screen fetches
   `GET /api/agents?all=1` into its own `agentConfigList` — deliberately a *different* list
   from `agentsList` (the plain `GET /api/agents`, still filtered by `NON_FINDING_AGENTS =
@@ -442,31 +442,56 @@ dots do.
   `scanDetailCache`), stops and clears any live `scanRuns`/`appThreatModelRuns` tracking
   objects, clears both live-scan containers, and re-renders whichever view is currently open.
 
-**Pipeline shape**: `Scan → Agent Triage → Remediation` is the conceptual path, but **no agent
-ever runs automatically** — every run requires an explicit, reviewable action so there's
-always an audit trail before anything executes against a finding (an earlier version
+**Pipeline shape**: `Scan → Agent Triage → Remediation → Verify` is the conceptual path, but
+**no agent ever runs automatically** — every run requires an explicit, reviewable action so
+there's always an audit trail before anything executes against a finding (an earlier version
 defaulted straight to Remediation on click, which read as auto-fixing without review — this
-was a deliberate correction). Note "Remediation" names two different things in this app: the
-`remediation` agent/pipeline stage (run one finding at a time, from the stage modal like any
-other agent) and the standalone **Remediation** screen (a batch of those same runs, kicked off
-together via Agent Triage's "Auto-remediate selected" button — see the Remediation bullet
-above). They share an agent and a verdict shape; the screen is just a different entry point
-and a different view of the results, not a separate pipeline. Both the Finding Detail page's
-"Agent Runs ▾" button and the right-click context menu on an Agent Triage table row open the
-same dynamic per-agent menu
-(one "Run <Agent>…" item per entry in `agentsList`) as equally-weighted shortcuts into the
-same small stage modal (agent dropdown + editable context + optional instructions,
-`openFreshStageModal()`) — none of them run instantly, and none is "the default" over the
-others. Because a tester can
-jump straight to Remediation without Triage or Threat Model ever having run,
-`remediation.md` has to be able to stand on its own: if there's no prior verdict in its
-context, it does Triage's confirm/severity/framework-mapping call itself before writing fix
-guidance (see the "check your context before you start" section at the top of
-`agents/remediation.md`). `agents/scan.md`, `agents/app_threat_model.md`, and
-`agents/controls_assist.md` are three further agent files but are *not* per-finding
-pipeline agents — `GET /api/agents` (`NON_FINDING_AGENTS` server-side) filters all three out
-of the Triage/Threat Model/Remediation list on purpose; `GET /api/agents?all=1` is the
-unfiltered variant Agent Configuration uses instead (see its bullet above).
+was a deliberate correction). "Auto-remediate selected" on Agent Triage is the one bulk
+exception, and even that still requires an explicit click per batch, just skips the per-run
+stage-modal review step — see the Agent Triage bullet above. Both the Finding Detail page's
+"Agent Runs ▾" button and the right-click context menu (or its visible three-dot equivalent)
+on an Agent Triage table row open the same dynamic per-agent menu (one "Run <Agent>…" item per
+entry in `agentsList`) as equally-weighted shortcuts into the same small stage modal (agent
+dropdown + editable context + optional instructions, `openFreshStageModal()`) — none of them
+run instantly, and none is "the default" over the others. Because a tester can jump straight to
+Remediation without Triage or Threat Model ever having run, `remediation.md` has to be able to
+stand on its own: if there's no prior verdict in its context, it does Triage's
+confirm/severity/framework-mapping call itself before writing fix guidance (see the "check your
+context before you start" section at the top of `agents/remediation.md`).
+
+**Verify** (`agents/verify.md`) is the newest stage, closing a gap the pipeline used to have no
+answer for: nothing previously confirmed a fix actually worked, only that Remediation had
+*proposed* one. It's a genuinely different kind of stage from Triage/Threat Model/Remediation —
+those three reason primarily over the finding's already-captured `code` snippet and whatever
+`Read`/`Grep` happens to turn up in this app's own directory (the fixed `cwd` every per-finding
+run gets by default); Verify's whole point is to re-check the *current* state of the finding's
+real target codebase, which requires it to be spawned with a different `cwd`. The client resolves
+that path from the finding's `sourceScanId` (via `findingSourcePath()` in `index.html`, walking
+`sourceScanId` → the matching `scansList` entry's `path`) and sends it as an optional `path`
+field on the WS `run` message; `server.js`'s per-finding run handler validates it's still a real
+directory and, only then, spawns with `cwd: path` and `--allowedTools 'Read,Grep,Glob'` instead
+of the usual `cwd: process.cwd()` / `Read,Grep` — Glob is added because Verify may need to
+relocate a file, not just re-read one at a known path. Findings with no `sourceScanId`
+(manually added via "+ Add") fall back to the old default `cwd`, which for Verify's purposes is
+effectively "no live access" — `verify.md` is written to recognize that (sanity-check whether
+what it actually read plausibly matches the finding at all) and return `inconclusive` rather
+than reasoning over an unrelated repository. The stage modal surfaces this transparently: a
+hint line under the agent dropdown (`updateStageModalVerifyHint()`, only shown when `verify` is
+selected) states either "Will re-check the live code at: <path>" or "No known source directory
+for this finding — review will be based on the saved snippet only," resolved fresh whenever the
+agent dropdown changes. Verify's own verdict vocabulary (`verified_fixed | still_vulnerable |
+partially_fixed | inconclusive`) doesn't reuse Triage's `verdict` values on purpose — it isn't
+re-litigating whether the finding is real, only whether it's still open. `deriveStatus()` in
+`server.js` derives a new `verified_fixed` status when the latest run is `agent === 'verify'`
+with `verdict === 'verified_fixed'`; the other three verdict values all fall through to the
+existing generic `in_review` default, which is the right outcome for "still needs work" and
+"couldn't confirm either way" alike — `still_vulnerable`/`partially_fixed` send the finding back
+into the queue, `inconclusive` just doesn't advance it. `agents/scan.md`,
+`agents/app_threat_model.md`, and `agents/controls_assist.md` are three further agent files but
+are *not* per-finding pipeline agents — `GET /api/agents` (`NON_FINDING_AGENTS` server-side)
+filters all three out of the Triage/Threat Model/Remediation/Verify list on purpose;
+`GET /api/agents?all=1` is the unfiltered variant Agent Configuration uses instead (see its
+bullet above).
 
 ## Commands
 
@@ -526,7 +551,11 @@ agents/*.md         Agent system prompts (passed via --append-system-prompt). Pl
                     markdown, no code — this is the only place agent-specific analysis
                     logic lives. New *per-finding* agent = new .md file, no server
                     changes needed beyond it existing on disk (see "not yet built" below
-                    on hardcoded assumptions elsewhere). `scan.md`, `app_threat_model.md`,
+                    on hardcoded assumptions elsewhere) — unless it needs live-codebase
+                    access like Verify does, in which case the client just needs to send a
+                    `path` on its `run` message (see the Verify bullet under "Pipeline
+                    shape"); that plumbing is generic, not specific to `verify.md`.
+                    `scan.md`, `app_threat_model.md`,
                     and `controls_assist.md` are the three exceptions — each is invoked
                     through its own dedicated code path (`handleScanMessage` /
                     `handleAppThreatModelMessage` / `handleControlsAssistMessage` in
@@ -583,15 +612,17 @@ evidence, gaps}`. No `findingIds`/`runs` chain, same reason as app-level threat 
 surface: `GET /api/control-assessments`, `GET /api/control-assessments/:id`.
 
 **Request flow (per-finding agents)**: browser opens a WebSocket → user starts a stage →
-client sends `{type: "run", runId, findingId, agent, context, instruction}` → server reads
-`agents/<agent>.md`, spawns `claude -p "<instruction>\n\nFinding context:\n<context>"
---append-system-prompt "<agent .md contents>" --output-format stream-json --verbose
---allowedTools "Read,Grep" --permission-mode acceptEdits` (cwd = the app's own directory)
-→ each parsed stdout line is relayed immediately as `{type: "event", runId, findingId,
-event}` (this is the "live" part) → on process exit, the server regex-searches the
-accumulated assistant text for a fenced ` ```json ` block, records the verdict against the
-finding's run history, and sends `{type: "done", runId, findingId, code, verdict,
-fullText}`.
+client sends `{type: "run", runId, findingId, agent, context, instruction}`, optionally with a
+`path` field (see the Verify bullet above — only `startStage()` populates this, and only for
+`agent === 'verify'`) → server reads `agents/<agent>.md`, spawns `claude -p
+"<instruction>\n\nFinding context:\n<context>" --append-system-prompt "<agent .md contents>"
+--output-format stream-json --verbose --allowedTools "Read,Grep" --permission-mode
+acceptEdits` with `cwd = the app's own directory` — *unless* a valid `path` was given, in which
+case `cwd` becomes that directory and `--allowedTools` becomes `"Read,Grep,Glob"` instead → each
+parsed stdout line is relayed immediately as `{type: "event", runId, findingId, event}` (this is
+the "live" part) → on process exit, the server regex-searches the accumulated assistant text for
+a fenced ` ```json ` block, records the verdict against the finding's run history, and sends
+`{type: "done", runId, findingId, code, verdict, fullText}`.
 
 **Request flow (scans)**: client sends `{type: "scan", runId, path, instruction}` →
 server validates `path` exists and is a directory, spawns `claude -p` with
@@ -731,21 +762,32 @@ two-field scale: `applicability` (`app_addressed | partially_addressed | inherit
 not_applicable`) and `implementation_status` (`implemented | partially_implemented | planned
 | not_applicable | null`) — purpose-built to keep the agent from over-claiming coverage for
 controls that are normally satisfied by the hosting platform or org process rather than
-application code (see the Control Scan bullet above).
+application code (see the Control Scan bullet above). `verify.md` also breaks from the
+Triage-derived taxonomy on purpose: its `verdict` field uses its own vocabulary
+(`verified_fixed | still_vulnerable | partially_fixed | inconclusive`), not
+`confirmed`/`needs_review`/`false_positive`/`duplicate`, because it isn't re-litigating whether
+the finding is real — that was already decided upstream — only whether it's still open. It
+keeps `confidence` (reusing Triage's scale, see the Verify bullet above) but has no
+`priority`/framework-mapping fields at all, since it's not re-triaging.
 
 **Security posture**: this is a local single-user dev tool. No auth on the
 WebSocket or REST endpoints; `--permission-mode acceptEdits` and `--allowedTools`
-("Read,Grep" for per-finding agents, "Read,Grep,Glob" for scans, app-level threat models, and
-control assessments) are set loosely for a fast test loop, not for anything beyond localhost
-use. Both `agent` names and `runId`s from client messages are validated against
-`^[a-zA-Z0-9_-]+$` before being used (agent name is joined into a filesystem path) — don't
-relax either when adding features. The scan features (Reasoning Scan and SCA Scan) and, the same
-way, app-level threat models and control assessments are a deliberate widening of that
-posture: all three spawn `claude` with `cwd` set to **any directory path the client sends**,
-gated only by "does this path exist and is it a directory" (`fs.statSync` in
-`handleScanMessage` / `handleAppThreatModelMessage` / `handleControlsAssistMessage`) — there's
-no allowlist of scannable roots. That's consistent with "local single-user tool trusted by its
-one user," not with exposing this app beyond localhost; don't add auth-free network
+("Read,Grep" for per-finding agents by default, "Read,Grep,Glob" for scans, app-level threat
+models, control assessments, and — only when a `path` was resolved — Verify runs too) are set
+loosely for a fast test loop, not for anything beyond localhost use. Both `agent` names and
+`runId`s from client messages are validated against `^[a-zA-Z0-9_-]+$` before being used (agent
+name is joined into a filesystem path) — don't relax either when adding features. The scan
+features (Reasoning Scan and SCA Scan) and, the same way, app-level threat models and control
+assessments are a deliberate widening of that posture: all three spawn `claude` with `cwd` set
+to **any directory path the client sends**, gated only by "does this path exist and is it a
+directory" (`fs.statSync` in `handleScanMessage` / `handleAppThreatModelMessage` /
+`handleControlsAssistMessage`) — there's no allowlist of scannable roots. The generic
+per-finding `run` handler now accepts the same kind of client-supplied `path` for exactly this
+reason (see the Verify bullet above) — the client only ever populates it from a finding's own
+recorded scan path, never from arbitrary user input, but the server applies the identical
+"exists and is a directory" check and nothing more, so the trust boundary is the same one the
+scan-family handlers already accept. That's consistent with "local single-user tool trusted by
+its one user," not with exposing this app beyond localhost; don't add auth-free network
 exposure without revisiting this.
 
 **Not yet built**: disk persistence (both the findings store and the scans store are
