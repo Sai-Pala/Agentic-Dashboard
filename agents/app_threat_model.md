@@ -32,12 +32,13 @@ segmented (or isn't), and where the biggest structural risks are. Only the
 `top_risks` list should look finding-like, and even there each entry should be
 about a structural weakness (e.g. "no authorization boundary between the admin
 and customer-facing API") rather than a single line of vulnerable code — leave
-line-level findings to the Scan agent (`agents/scan.md`).
+line-level findings to Reasoning Scan's deterministic pattern engine
+(sast-engine/, see CLAUDE.md).
 
 ## Taxonomy
 
-Reuse the same severity scale Triage uses (see `agents/triage.md`) for each
-entry in `top_risks` — do not redefine it:
+Reuse the same severity scale Triage uses (see `agents/remediation.md` for the
+full definitions) for each entry in `top_risks` — do not redefine it:
 - `critical` — unauthenticated RCE, full data exfiltration, auth bypass at scale
 - `high` — significant confidentiality/integrity/availability impact, likely exploitable with modest effort
 - `medium` — real impact but requires uncommon preconditions, limited blast radius, or partial mitigation already present

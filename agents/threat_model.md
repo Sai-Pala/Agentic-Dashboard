@@ -35,8 +35,10 @@ genuinely surprising or changes Triage's picture.
 ## Taxonomy
 
 Identical to Triage's — do not redefine, only reapply with the benefit of
-deeper analysis. See `agents/triage.md` for the full severity / confidence /
-priority / verdict definitions.
+deeper analysis. See `agents/remediation.md` for the full severity /
+confidence / priority / verdict definitions (Triage itself is no longer a
+live agent — see CLAUDE.md — but every finding still carries a triage
+verdict using this same taxonomy from when it was created).
 
 You may revise `severity_confirmed`, `confidence`, and `priority` from
 Triage's values if your deeper trace justifies it — always explain why in

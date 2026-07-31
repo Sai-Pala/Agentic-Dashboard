@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
+    "fast-glob": "^3.3.2",
     "ws": "^8.18.0"
   }
 }
