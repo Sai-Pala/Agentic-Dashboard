@@ -156,43 +156,63 @@ dots do.
   Reasoning shows a merged **Location** column (file path if it's a code-pattern finding,
   endpoint+method if it's an attack-surface one — a reasoning-scan finding can be either, or
   even both, now that there's no separate DAST scanType to gate the field on) plus Rule/CWE;
-  SCA shows Package + Fixed-in (`FINDINGS_COLUMNS` in `index.html`). Every type's Runs column shows the run count plus the
-  latest run's agent and, if that run produced a verdict, the verdict in parens (e.g. "2 runs
-  · Threat Model (needs_review)") — a lightweight way to see a finding's most recent pipeline
-  state without opening it. Severity/Title/Status columns are click-to-sort
-  (`findingsSort`, toggling asc/desc on the same header). Every row also carries a **checkbox**
-  in a leading `.ft-select-col` column (`selectedFindingIds`, a `Set` of finding IDs) plus a
-  header "select all visible" checkbox that only ever affects the currently-filtered/sorted
-  `rows` array, not the full findings list — checking/unchecking updates a header button,
-  "Auto-remediate selected (N)" (`#auto-remediate-btn`, disabled at N=0), which bulk-runs
-  Remediation on every checked row in place (see the Auto-remediate bullet below — there is no
-  separate results screen). Every row also carries a trailing **`.ft-actions-col`** with a
-  small three-dot button (reusing the `.console-toggle-btn` icon-button style) that opens the
-  exact same per-agent dropdown as right-clicking the row — added because right-click alone
-  isn't discoverable, especially without a mouse; the button just calls
-  `openFindingContextMenu()` positioned under itself via `getBoundingClientRect()`, same
-  pattern as the Finding Detail page's "Agent Runs ▾" button. Right next to it is a second,
-  teal-colored pencil button — **Fix & Verify** (`onFixVerifyClick()`) — the one place in this
-  app where an agent writes to the user's real files, gated behind a **Read-only** checkbox in
-  the view header (`#fix-verify-readonly-toggle`, checked by default). When Read-only is
-  checked, the pencil is just a shortcut into the existing advisory-only "Run Remediation…"
-  stage modal (same as the three-dot menu). When unchecked, it instead runs
-  `startFixAndVerify()`: disabled entirely (`opacity:.3`) unless the finding has a resolvable
-  source directory (`findingSourcePath()`, via `sourceScanId` → the matching scan's `path` —
-  manually-added findings have nowhere to write to, so they never get this enabled), confirms
-  once via a native `confirm()` describing exactly what will happen, then sends one WS message,
-  `{type: 'fix_and_verify', findingId, remediationRunId, verifyRunId, context, instruction,
-  path}` — two client-generated runIds for what the server turns into two real, sequential
-  agent runs. See `handleFixAndVerifyMessage()` in `server.js`: it first requires the target to
-  be a **clean git working tree** (`git status --porcelain`, refusing an uncommitted or
-  non-git directory outright — see "Security posture" below) so anything it does is trivially
-  revertible entirely outside this app; then spawns Remediation with `cwd` set to that
-  directory and `--allowedTools 'Read,Grep,Glob,Edit,Write'` (the only place any agent in this
-  app gets write access — see the "apply mode" section added to `agents/remediation.md` for
-  what changes about its behavior when it has Edit/Write available: make the minimal correct
-  change, don't guess if unsure, still fill in `corrected_code`); captures `git diff` right
-  after and attaches it to that run's own verdict as `applied_diff` (real evidence of what
-  actually changed, independent of what the agent claims); then spawns Verify the normal
+  SCA shows Package + Fixed-in (`FINDINGS_COLUMNS` in `index.html`). Severity/Title/
+  **Remediation Loop** columns are click-to-sort (`findingsSort`, toggling asc/desc on the same
+  header). Every row also carries a **checkbox** in a leading `.ft-select-col` column
+  (`selectedFindingIds`, a `Set` of finding IDs) plus a header "select all visible" checkbox
+  that only ever affects the currently-filtered/sorted `rows` array, not the full findings list
+  — checking/unchecking updates a header button, "Auto-remediate selected (N)"
+  (`#auto-remediate-btn`, disabled at N=0), which bulk-runs Remediation on every checked row in
+  place (see the Auto-remediate bullet below — there is no separate results screen). Every row
+  also carries a trailing **`.ft-actions-col`** with a small three-dot button (reusing the
+  `.console-toggle-btn` icon-button style) that opens the exact same per-agent dropdown as
+  right-clicking the row — added because right-click alone isn't discoverable, especially
+  without a mouse; the button just calls `openFindingContextMenu()` positioned under itself via
+  `getBoundingClientRect()`, same pattern as the Finding Detail page's "Agent Runs ▾" button.
+
+  **The Remediation Loop column** (`findingLoopCellHtml()`, replacing what used to be separate
+  Status and Runs columns) is the main way this table now communicates progress — a compact
+  3-segment stepper (`loopStepperHtml()`: Found → Fixed → Verified, each segment gray/pending,
+  amber/running, green/done, or red/attention) plus one primary action button whose label
+  changes with the finding's actual state, derived by `findingLoopState()` from `f.status` +
+  `f.latestRun` (Found is always "done" — the finding exists; Fixed/Verified only ever move
+  because of a `remediation`/`verify` run specifically, so a finding that's only been
+  Triaged or Threat-Modeled correctly still reads as untouched here — those are separate,
+  optional analyses, not part of this loop, see "Pipeline shape" below). This replaced an
+  earlier version of the same idea that was two separate, easy-to-miss pieces: a plain status
+  *badge* using taxonomy terms (`REMEDIATION_GENERATED`, etc.) you had to already know how to
+  read, plus a small pencil icon buried at the far right of the table requiring horizontal
+  scroll to even see, gated by a page-level **Read-only** checkbox in the view header that
+  silently changed what clicking the *same* pencil did — removed as confusing (what you click
+  should be what happens, not something depending on hidden state elsewhere on the page).
+  The button states: nothing run yet → teal **"Fix & Verify →"**; a `remediation`/`verify` run
+  currently `running` → a plain "Running…" hint, no button; Remediation failed → red **"Fix
+  failed — retry →"**; Verify came back `still_vulnerable`/`partially_fixed`/`inconclusive` →
+  red **"Not fixed yet — try again →"**; Verify came back `verified_fixed` → green **"✓
+  Verified fixed — view diff"** (`onViewDiffClick()`, re-fetches the finding and pulls
+  `applied_diff` off its most recent `remediation` run to reopen the same diff modal). Every
+  "Fix & Verify"-family button is disabled (`opacity:.35`) when `findingSourcePath()` can't
+  resolve a directory for the finding (no `sourceScanId` — manually-added findings have nowhere
+  to write to). A `status === 'closed'` finding (false positive/duplicate) shows neither
+  stepper nor button — the loop doesn't apply to something dismissed as not real.
+
+  **Fix & Verify** itself (`onFixVerifyClick()`) is the one place in this app where an agent
+  writes to the user's real files — always the real flow now, no read-only variant behind it
+  (if you just want advisory guidance with no writes, the three-dot menu's "Run Remediation…"
+  is still there, unchanged, and always has been read-only). Clicking it confirms once via a
+  native `confirm()` naming the exact target directory and the clean-git-tree requirement, then
+  sends one WS message, `{type: 'fix_and_verify', findingId, remediationRunId, verifyRunId,
+  context, instruction, path}` — two client-generated runIds for what the server turns into two
+  real, sequential agent runs. See `handleFixAndVerifyMessage()` in `server.js`: it first
+  requires the target to be a **clean git working tree** (`git status --porcelain`, refusing an
+  uncommitted or non-git directory outright — see "Security posture" below) so anything it does
+  is trivially revertible entirely outside this app; then spawns Remediation with `cwd` set to
+  that directory and `--allowedTools 'Read,Grep,Glob,Edit,Write'` (the only place any agent in
+  this app gets write access — see the "apply mode" section added to `agents/remediation.md`
+  for what changes about its behavior when it has Edit/Write available: make the minimal
+  correct change, don't guess if unsure, still fill in `corrected_code`); captures `git diff`
+  right after and attaches it to that run's own verdict as `applied_diff` (real evidence of
+  what actually changed, independent of what the agent claims); then spawns Verify the normal
   read-only way against the same directory, with the Remediation verdict folded into its
   prompt so it's confirming a specific claimed fix, not just re-triaging from scratch. Both
   stages are pushed onto `finding.runs` and relayed via the *exact same* `started`/`event`/
@@ -552,10 +572,13 @@ Agent Triage table (or a timeline agent-run row) to open its full-page detail vi
 agent, review the context/instructions in the small stage modal, and explicitly start it;
 nothing runs without that step. Alternatively, check one or more rows' checkboxes on Agent
 Triage and click "Auto-remediate selected" to run Remediation on all of them at once, right
-there in the table — no separate screen, just watch each row's Status/Runs columns update as
-the runs land. The detail page's Agent runs section updates live once a run finishes (or shows
-a "running" placeholder immediately, via an optimistic push in `startStage()`). There is no
-automated test for the WebSocket flow — verification is manual, through the browser.
+there in the table — no separate screen, just watch each row's Remediation Loop column update
+as the runs land. Or click a row's "Fix & Verify →" button directly to have Remediation write
+a real fix and Verify confirm it in one action (needs a finding that came from a scan — the
+button is disabled otherwise). The detail page's Agent runs section updates live once a run
+finishes (or shows a "running" placeholder immediately, via an optimistic push in
+`startStage()`). There is no automated test for the WebSocket flow — verification is manual,
+through the browser.
 
 ## Architecture
 

@@ -466,9 +466,25 @@
   .findings-table .ft-select-col { width: 1%; padding-right: 0; }
   .findings-table .ft-actions-col { width: 1%; text-align: right; white-space: nowrap; }
   .ft-empty { padding: 40px; text-align: center; color: var(--muted); font-size: 12.5px; }
-  .fix-verify-btn { color: var(--remediation); }
-  .fix-verify-btn:disabled { opacity: .3; cursor: not-allowed; color: var(--muted); }
-  .fix-verify-toggle { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-dim); }
+  /* ---------- remediation-loop column (Agent Triage) — replaces the old separate
+     Status + Runs columns with one compact "where does this finding stand" cell: a 3-segment
+     Found/Fixed/Verified stepper plus the single next action, so the loop reads as a loop
+     instead of a text badge you need to already know the taxonomy to parse. ---------- */
+  .loop-cell { display: flex; flex-direction: column; gap: 6px; min-width: 150px; }
+  .loop-stepper { display: flex; align-items: center; gap: 3px; }
+  .loop-seg { flex: 1; height: 5px; border-radius: 3px; background: var(--border); }
+  .loop-seg.done { background: var(--ok); }
+  .loop-seg.running { background: var(--warn); animation: pulse 1.2s infinite ease-in-out; }
+  .loop-seg.attention { background: var(--err); }
+  .loop-stepper-labels { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-top: 1px; }
+  .ft-loop-btn { font-size: 11.5px; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--border); background: transparent; cursor: pointer; text-align: left; width: fit-content; }
+  .ft-loop-btn.primary { color: var(--remediation); border-color: var(--remediation); }
+  .ft-loop-btn.primary:hover { background: var(--remediation-soft); }
+  .ft-loop-btn.attention { color: var(--err); border-color: var(--err); }
+  .ft-loop-btn.attention:hover { background: var(--err-soft); }
+  .ft-loop-btn.done { color: var(--ok); border-color: var(--ok); }
+  .ft-loop-btn.done:hover { background: var(--ok-soft); }
+  .ft-loop-btn:disabled { opacity: .35; cursor: not-allowed; }
 
   /* ---------- diff modal (Fix & Verify's git diff, the one place this app shows the result
      of an agent actually writing to the user's real files) ---------- */
@@ -919,15 +935,10 @@
       <h1>Agent Triage</h1>
       <div class="view-subtitle" id="findings-subtitle"></div>
     </div>
-    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-      <label class="fix-verify-toggle" title="When checked, each row's Fix &amp; Verify pencil button just runs Remediation for advice (like today) instead of writing to your files.">
-        <input type="checkbox" id="fix-verify-readonly-toggle" checked> Read-only
-      </label>
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <button class="secondary" id="auto-remediate-btn" disabled>Auto-remediate selected (0)</button>
-        <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
-        <button id="add-finding-btn">+ Add</button>
-      </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <button class="secondary" id="auto-remediate-btn" disabled>Auto-remediate selected (0)</button>
+      <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
+      <button id="add-finding-btn">+ Add</button>
     </div>
   </div>
   <div class="view-body" id="findings-view-body">
@@ -3214,8 +3225,7 @@ const FINDINGS_COLUMNS = {
     { key: 'severity', label: 'Severity', sortable: true },
     { key: 'type', label: 'Type' },
     { key: 'title', label: 'Title', sortable: true },
-    { key: 'status', label: 'Status', sortable: true },
-    { key: 'runs', label: 'Runs' },
+    { key: 'loop', label: 'Remediation Loop', sortable: true },
   ],
   // A reasoning-scan finding can be file-based (a code pattern) or endpoint-based (an
   // attack-surface observation) — the merged 'location' cell shows whichever it has, since
@@ -3225,22 +3235,20 @@ const FINDINGS_COLUMNS = {
     { key: 'title', label: 'Title', sortable: true },
     { key: 'location', label: 'Location' },
     { key: 'rule', label: 'Rule / CWE' },
-    { key: 'status', label: 'Status', sortable: true },
-    { key: 'runs', label: 'Runs' },
+    { key: 'loop', label: 'Remediation Loop', sortable: true },
   ],
   sca: [
     { key: 'severity', label: 'Severity', sortable: true },
     { key: 'title', label: 'Title', sortable: true },
     { key: 'package', label: 'Package' },
     { key: 'fix', label: 'Fixed in' },
-    { key: 'status', label: 'Status', sortable: true },
-    { key: 'runs', label: 'Runs' },
+    { key: 'loop', label: 'Remediation Loop', sortable: true },
   ],
 };
 
 function findingsSortValue(f, key) {
   if (key === 'severity') return SEV_ORDER_MAP[f.severity] ?? 99;
-  if (key === 'status') return STATUS_ORDER_MAP[f.status] ?? 99;
+  if (key === 'status' || key === 'loop') return STATUS_ORDER_MAP[f.status] ?? 99;
   if (key === 'title') return f.title.toLowerCase();
   return '';
 }
@@ -3319,6 +3327,65 @@ function renderFindingsTypeTabs(scanScoped) {
   }
 }
 
+// ---------- remediation loop cell (Agent Triage's "Remediation Loop" column) ----------
+// Reduces the finding's status/latestRun down to where it stands in the Found -> Fixed ->
+// Verified loop, rather than a status-taxonomy badge the user has to already know how to
+// read. Only Remediation/Verify runs move this forward — Triage/Threat Model are separate,
+// optional analyses (see CLAUDE.md's Pipeline shape) and deliberately don't touch it, so a
+// finding that's only been triaged still correctly reads as "nothing done yet" here.
+function findingLoopState(f) {
+  const latest = f.latestRun;
+  let fixed = 'pending';
+  let verified = 'pending';
+  if (latest) {
+    if (latest.agent === 'remediation') {
+      if (latest.status === 'running') fixed = 'running';
+      else if (f.status === 'remediation_generated') fixed = 'done';
+      else if (latest.status === 'error' || latest.status === 'cancelled') fixed = 'attention';
+    } else if (latest.agent === 'verify') {
+      // Verify only ever runs after a successful, corrected_code-producing Remediation run in
+      // this app's one path to it (Fix & Verify) — safe to treat "Fixed" as already reached.
+      fixed = 'done';
+      if (latest.status === 'running') verified = 'running';
+      else if (f.status === 'verified_fixed') verified = 'done';
+      else verified = 'attention'; // still_vulnerable / partially_fixed / inconclusive / error
+    }
+  }
+  return { fixed, verified };
+}
+
+function loopStepperHtml(fixed, verified) {
+  return `
+    <div class="loop-stepper" title="Found → Fixed → Verified">
+      <span class="loop-seg done"></span>
+      <span class="loop-seg ${fixed}"></span>
+      <span class="loop-seg ${verified}"></span>
+    </div>
+  `;
+}
+
+function findingLoopCellHtml(f) {
+  if (f.status === 'closed') {
+    return `<div class="loop-cell"><span class="hint">Closed — not applicable</span></div>`;
+  }
+  const { fixed, verified } = findingLoopState(f);
+  const hasPath = !!findingSourcePath(f);
+
+  let actionHtml;
+  if (verified === 'done') {
+    actionHtml = `<button class="ft-loop-btn done" type="button" data-view-diff-btn="${escapeHtml(f.id)}">✓ Verified fixed — view diff</button>`;
+  } else if (fixed === 'running' || verified === 'running') {
+    actionHtml = `<span class="hint">Running…</span>`;
+  } else if (verified === 'attention') {
+    actionHtml = `<button class="ft-loop-btn attention" type="button" data-fix-verify-btn="${escapeHtml(f.id)}"${hasPath ? '' : ' disabled'}>Not fixed yet — try again →</button>`;
+  } else if (fixed === 'attention') {
+    actionHtml = `<button class="ft-loop-btn attention" type="button" data-fix-verify-btn="${escapeHtml(f.id)}"${hasPath ? '' : ' disabled'}>Fix failed — retry →</button>`;
+  } else {
+    actionHtml = `<button class="ft-loop-btn primary" type="button" data-fix-verify-btn="${escapeHtml(f.id)}"${hasPath ? '' : ' disabled'} title="${hasPath ? 'Apply and confirm a real fix for this finding' : 'No known source directory — this finding wasn\'t produced by a scan'}">Fix &amp; Verify →</button>`;
+  }
+  return `<div class="loop-cell">${loopStepperHtml(fixed, verified)}${actionHtml}</div>`;
+}
+
 function findingsCellHtml(f, key) {
   switch (key) {
     case 'severity':
@@ -3345,15 +3412,8 @@ function findingsCellHtml(f, key) {
       return f.endpoint ? `<span class="ft-mono">${escapeHtml(f.endpoint)}</span>` : '<span class="hint">—</span>';
     case 'method':
       return f.method ? escapeHtml(f.method.toUpperCase()) : '<span class="hint">—</span>';
-    case 'status':
-      return `<span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span>`;
-    case 'runs': {
-      if (!f.runCount) return '<span class="hint">No runs yet</span>';
-      const latest = f.latestRun;
-      if (!latest) return `${f.runCount} run${f.runCount === 1 ? '' : 's'}`;
-      const verdictSuffix = latest.verdict && latest.verdict.verdict ? ` (${latest.verdict.verdict})` : '';
-      return `${f.runCount} run${f.runCount === 1 ? '' : 's'} · ${escapeHtml(agentMeta(latest.agent).label)}${escapeHtml(verdictSuffix)}`;
-    }
+    case 'loop':
+      return findingLoopCellHtml(f);
     default:
       return '';
   }
@@ -3441,11 +3501,9 @@ function renderFindingsTable() {
     const tr = document.createElement('tr');
     tr.dataset.findingId = f.id;
     const checkedAttr = selectedFindingIds.has(f.id) ? 'checked' : '';
-    const hasSourcePath = !!findingSourcePath(f);
     tr.innerHTML = `<td class="ft-select-col"><input type="checkbox" ${checkedAttr}></td>`
       + columns.map((col) => `<td>${findingsCellHtml(f, col.key)}</td>`).join('')
       + `<td class="ft-actions-col">`
-      + `<button class="console-toggle-btn fix-verify-btn" type="button" data-fix-verify-btn${hasSourcePath ? '' : ' disabled'} title="${hasSourcePath ? 'Fix & Verify — apply and confirm a fix for this finding' : 'Fix & Verify needs a finding from a scan (known source directory)'}">${icon('edit')}</button>`
       + `<button class="console-toggle-btn" type="button" data-run-agent-btn title="Run agent…">${icon('more')}</button>`
       + `</td>`;
     const cb = tr.querySelector('.ft-select-col input');
@@ -3461,10 +3519,20 @@ function renderFindingsTable() {
       const rect = e.currentTarget.getBoundingClientRect();
       openFindingContextMenu(rect.right, rect.bottom + 4, f.id);
     });
-    tr.querySelector('[data-fix-verify-btn]').addEventListener('click', (e) => {
-      e.stopPropagation();
-      onFixVerifyClick(f.id);
-    });
+    const fixVerifyBtn = tr.querySelector('[data-fix-verify-btn]');
+    if (fixVerifyBtn) {
+      fixVerifyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onFixVerifyClick(f.id);
+      });
+    }
+    const viewDiffBtn = tr.querySelector('[data-view-diff-btn]');
+    if (viewDiffBtn) {
+      viewDiffBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onViewDiffClick(f.id);
+      });
+    }
     tr.addEventListener('click', () => openFindingDetail(f.id));
     tr.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -3531,14 +3599,15 @@ function findingSourcePath(finding) {
 // verdict.applied_diff can pop the diff modal instead of just sitting in the verdict JSON.
 const fixVerifyRemediationRunIds = new Set();
 
+// Fix & Verify always does the real write+verify flow — the confirm() below, naming the exact
+// directory and the git-clean requirement, is the friction point instead of a separate hidden
+// mode toggle (an earlier version had a page-level "Read-only" checkbox that silently changed
+// what this same button did; removed as confusing — what you click is what happens). If you
+// just want advisory guidance with no file writes, the three-dot menu's "Run Remediation…" is
+// still there, unchanged, and always has been read-only.
 async function onFixVerifyClick(findingId) {
-  const readOnly = document.getElementById('fix-verify-readonly-toggle').checked;
   const finding = await ensureFindingCached(findingId);
   if (!finding) return;
-  if (readOnly) {
-    openFreshStageModal(findingId, 'remediation', buildBaseContext(finding));
-    return;
-  }
   const targetPath = findingSourcePath(finding);
   if (!targetPath) {
     alert('This finding has no known source directory (it wasn\'t produced by a scan), so there\'s nothing for Fix & Verify to write to.');
@@ -3551,6 +3620,17 @@ async function onFixVerifyClick(findingId) {
   );
   if (!proceed) return;
   startFixAndVerify(findingId, finding, targetPath);
+}
+
+async function onViewDiffClick(findingId) {
+  const finding = await ensureFindingCached(findingId);
+  if (!finding) return;
+  const remRun = [...finding.runs].reverse().find((r) => r.agent === 'remediation' && r.verdict && r.verdict.applied_diff);
+  if (!remRun) {
+    alert('No diff on record for this finding.');
+    return;
+  }
+  openDiffModal(finding, remRun.verdict.applied_diff);
 }
 
 function startFixAndVerify(findingId, finding, targetPath) {
