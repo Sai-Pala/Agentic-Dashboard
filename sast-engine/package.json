@@ -1,0 +1,6 @@
+{
+  "name": "sast-engine",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic security-scanning engine adapted (MIT license, see LICENSE) from the open-source ship-safe project, trimmed to the built-in pattern agents + dependency audit used by this app's Reasoning Scan and SCA Scan."
+}

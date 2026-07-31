@@ -362,11 +362,25 @@
   #agent-modal-content { min-height: 220px; font-family: var(--mono); font-size: 12px; }
   #agent-modal-overlay .modal { width: 620px; }
 
-  #scan-live-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
+  /* Single column, full width — a Reasoning Scan card now shows two engine progress bars
+     (deterministic + reasoning) side by side, which needs more horizontal room than the old
+     2-column grid gave it. SCA Scan's #sca-live-container has no matching rule and already
+     stacks full-width by default (single engine, nothing to widen for). */
+  #scan-live-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+  .scan-engine-bars { display: flex; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); }
+  .scan-engine-bar { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .scan-engine-bar-label { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+  .scan-engine-bar-label .engine-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .scan-engine-bar-track { height: 5px; border-radius: 4px; background: var(--panel-3); overflow: hidden; }
+  .scan-engine-bar-fill { height: 100%; border-radius: 4px; transition: width .3s ease; }
+  .scan-engine-bar-fill.done { opacity: .55; }
+  .scan-engine-bar-stat { font-size: 11px; color: var(--muted); }
   .stage-agent .path-text { font-size: 12.5px; }
   .scan-meta-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); }
   .scan-type-chip { display: inline-flex; align-items: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
   .scan-type-chip.scope-chip { background: var(--panel-3); color: var(--muted); }
+  /* Which of Reasoning Scan's two engines found this finding — see findingSourceTagHtml(). */
+  .finding-source-tag { display: inline-flex; align-items: center; margin-left: 7px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 20px; white-space: nowrap; vertical-align: middle; }
   .scan-meta-text { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
   .scan-stats { display: flex; align-items: center; gap: 14px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
   .scan-stats .stat b { color: var(--text-dim); font-weight: 600; }
@@ -378,6 +392,10 @@
   .context-bar-fill.danger { background: var(--err); }
   .context-bar-label { font-size: 10px; color: var(--muted); flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .scan-error-msg { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11.5px; color: var(--err); }
+  /* Non-fatal: a partial engine/module failure the scan still recovered from (e.g. one
+     reasoning module hit its budget cap, or the deterministic half errored but the reasoning
+     half still produced results) — amber, not red, and never stops the scan or its timer. */
+  .scan-warning-msg { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11.5px; color: var(--warn); white-space: pre-line; }
   .scan-sev-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); min-height: 15px; }
   .sev-chip { font-size: 10.5px; font-weight: 700; text-transform: capitalize; padding: 2px 8px; border-radius: 20px; }
   .scan-live-findings { padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
@@ -463,30 +481,51 @@
   .findings-table .ft-title { font-weight: 600; line-height: 1.4; max-width: 340px; }
   .findings-table .ft-mono { font-family: var(--mono); font-size: 11px; color: var(--text-dim); word-break: break-word; max-width: 220px; display: inline-block; }
   .findings-table .ft-sev-cell { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
-  .findings-table .ft-select-col { width: 1%; padding-right: 0; }
   .findings-table .ft-actions-col { width: 1%; text-align: right; white-space: nowrap; }
+  .ft-actions-cell { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
   .ft-empty { padding: 40px; text-align: center; color: var(--muted); font-size: 12.5px; }
-  /* ---------- remediation-loop column (Agent Triage) — replaces the old separate
-     Status + Runs columns with one compact "where does this finding stand" cell: a 3-segment
-     Found/Fixed/Verified stepper plus the single next action, so the loop reads as a loop
-     instead of a text badge you need to already know the taxonomy to parse. ---------- */
-  .loop-cell { display: flex; flex-direction: column; gap: 6px; min-width: 150px; }
-  .loop-stepper { display: flex; align-items: center; gap: 3px; }
-  .loop-seg { flex: 1; height: 5px; border-radius: 3px; background: var(--border); }
-  .loop-seg.done { background: var(--ok); }
-  .loop-seg.running { background: var(--warn); animation: pulse 1.2s infinite ease-in-out; }
+  /* ---------- remediation-loop column (Agent Triage, reasoning findings only — SCA findings
+     use the plain 'status' badge cell instead, see findingLoopCellHtml()) — a compact
+     Triaged / Fixed / Verified status track (3 tiny dots, same small-dot convention as the
+     sidebar's .nav-badge — not a wide bar; "Found" is dropped from the visual since a finding
+     is always already "found" the moment it exists, so showing it as a 4th stage never carried
+     real information) plus a status label. The actual advance/run-all controls are NOT rendered
+     here — they live in the row's own actions column (see findingLoopActionsHtml(), wired in
+     next to the "…" menu button) so this column stays a pure status readout and the row's
+     action controls live in one place. ---- */
+  /* Caps the column's rendered width via [data-col] on the th/td themselves — table.findings-table
+     uses the browser's default auto layout (no table-layout:fixed), which otherwise hands this
+     column any left-over horizontal space in the row even though the 3-dot track + short label
+     never need it. */
+  .findings-table th[data-col="loop"], .findings-table td[data-col="loop"] { width: 104px; max-width: 104px; }
+  .loop-cell { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .loop-track { display: flex; align-items: center; gap: 5px; }
+  .loop-seg { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--border); }
+  .loop-seg.done { background: var(--ok); box-shadow: 0 0 6px -1px var(--ok); }
+  .loop-seg.running { background: var(--warn); box-shadow: 0 0 8px 1px var(--warn); animation: pulse 1.2s infinite ease-in-out; }
   .loop-seg.attention { background: var(--err); }
-  .loop-stepper-labels { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-top: 1px; }
-  .ft-loop-btn { font-size: 11.5px; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--border); background: transparent; cursor: pointer; text-align: left; width: fit-content; }
-  .ft-loop-btn.primary { color: var(--remediation); border-color: var(--remediation); }
-  .ft-loop-btn.primary:hover { background: var(--remediation-soft); }
-  .ft-loop-btn.attention { color: var(--err); border-color: var(--err); }
-  .ft-loop-btn.attention:hover { background: var(--err-soft); }
-  .ft-loop-btn.done { color: var(--ok); border-color: var(--ok); }
-  .ft-loop-btn.done:hover { background: var(--ok-soft); }
-  .ft-loop-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .loop-status-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .loop-status-text { font-size: 11px; color: var(--muted); }
+  .loop-status-text.accent { color: var(--remediation); }
+  .loop-status-text.ok { color: var(--ok); font-weight: 600; }
+  .loop-status-text.attention { color: var(--err); }
+  /* advance/run-all buttons: rendered in the actions column, "on the side" of the row rather
+     than inside the loop cell — same visual treatment regardless of where they're placed. */
+  .loop-advance-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; padding: 0; flex-shrink: 0; }
+  .loop-advance-btn .icon { width: 13px; height: 13px; }
+  .loop-advance-btn:hover:not(:disabled) { border-color: var(--remediation); color: var(--remediation); background: var(--remediation-soft); }
+  .loop-advance-btn.attention { border-color: var(--err); color: var(--err); }
+  .loop-advance-btn.attention:hover:not(:disabled) { background: var(--err-soft); }
+  .loop-advance-btn:disabled { opacity: .3; cursor: not-allowed; }
+  .loop-run-all-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--remediation); background: transparent; color: var(--remediation); cursor: pointer; padding: 0; flex-shrink: 0; }
+  .loop-run-all-btn .icon { width: 13px; height: 13px; }
+  .loop-run-all-btn:hover:not(:disabled) { background: var(--remediation-soft); }
+  .loop-run-all-btn:disabled { opacity: .3; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
+  .loop-view-diff { display: inline-flex; align-items: center; gap: 3px; background: none; border: none; padding: 0; color: var(--ok); font-size: 11px; font-weight: 600; cursor: pointer; }
+  .loop-view-diff .icon { width: 12px; height: 12px; }
+  .loop-view-diff:hover { text-decoration: underline; }
 
-  /* ---------- diff modal (Fix & Verify's git diff, the one place this app shows the result
+  /* ---------- diff modal (a write-capable Remediation run's git diff, the one place this app shows the result
      of an agent actually writing to the user's real files) ---------- */
   .diff-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 0; max-height: 50vh; overflow-y: auto; }
   .diff-line { padding: 0 14px; }
@@ -661,7 +700,6 @@
   #context-menu button { display: block; width: 100%; text-align: left; background: none; color: var(--text-dim); border: none; padding: 8px 10px; font-size: 12px; font-weight: 400; border-radius: 6px; }
   #context-menu button:hover:not(:disabled) { background: var(--panel-3); color: var(--text); }
   #context-menu button:disabled { color: var(--muted); opacity: .5; }
-  #context-menu hr { border: none; border-top: 1px solid var(--border-soft); margin: 4px 0; }
 
   .modal-overlay { position: fixed; inset: 0; background: rgba(4,5,7,.6); z-index: 60; display: flex; align-items: center; justify-content: center; }
   .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: 480px; max-width: 90vw; padding: 18px; display: flex; flex-direction: column; gap: 10px; max-height: 88vh; overflow-y: auto; }
@@ -797,7 +835,17 @@
   </div>
   <div class="view-body">
     <div class="scan-form">
-      <div class="scan-form-title">New reasoning scan</div>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <div class="scan-form-title">New reasoning scan</div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span class="scan-agents-caption">Budget cap</span>
+          <div class="group-toggle" id="scan-budget-toggle">
+            <button class="group-toggle-btn active" data-budget="on" type="button">On</button>
+            <button class="group-toggle-btn" data-budget="off" type="button">Off</button>
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="scan-budget-hint" hidden style="margin-top:-6px;">No cap — each module/cross-cutting call can run unbounded on spend until it finishes on its own. Turn this off only if a scan is getting cut short by the cap and you want it to finish regardless of cost.</div>
 
       <div>
         <label for="scan-path-input">Target directory</label>
@@ -813,13 +861,6 @@
           <label for="scan-app-input">App / service <span class="label-optional">optional</span></label>
           <input id="scan-app-input" placeholder="e.g. Payments API" />
         </div>
-      </div>
-
-      <div>
-        <button class="link-btn" id="scan-note-toggle-btn" type="button">+ instructions</button>
-      </div>
-      <div id="scan-instruction-wrap" hidden>
-        <textarea id="scan-instruction-input" placeholder="e.g. Focus on the API routes under src/api, skip test fixtures." style="min-height:44px;"></textarea>
       </div>
 
       <button id="scan-start-btn" class="scan-start-btn" style="width:100%;">Start scan</button>
@@ -859,24 +900,6 @@
           <label for="sca-app-input">App / service <span class="label-optional">optional</span></label>
           <input id="sca-app-input" placeholder="e.g. Payments API" />
         </div>
-      </div>
-
-      <div class="scan-section scan-scope-row">
-        <span class="scan-agents-caption">Scope:</span>
-        <div class="group-toggle" id="sca-scope-toggle">
-          <button class="group-toggle-btn active" data-scope="full" type="button">Full scan</button>
-          <button class="group-toggle-btn" data-scope="diff" type="button">Diff only</button>
-        </div>
-        <div id="sca-base-branch-wrap" style="flex:1; min-width:170px;" hidden>
-          <input id="sca-base-branch-input" class="path-input" placeholder="Base branch to diff against, e.g. main" />
-        </div>
-      </div>
-
-      <div>
-        <button class="link-btn" id="sca-note-toggle-btn" type="button">+ instructions</button>
-      </div>
-      <div id="sca-instruction-wrap" hidden>
-        <textarea id="sca-instruction-input" placeholder="e.g. Only check direct dependencies, skip devDependencies." style="min-height:44px;"></textarea>
       </div>
 
       <button id="sca-start-btn" class="scan-start-btn" style="width:100%;">Start SCA scan</button>
@@ -936,7 +959,6 @@
       <div class="view-subtitle" id="findings-subtitle"></div>
     </div>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-      <button class="secondary" id="auto-remediate-btn" disabled>Auto-remediate selected (0)</button>
       <button class="secondary" id="export-csv-btn" title="Export all findings as CSV">Export</button>
       <button id="add-finding-btn">+ Add</button>
     </div>
@@ -1188,17 +1210,6 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="diff-modal-overlay" hidden>
-  <div class="modal">
-    <h3>Fix applied</h3>
-    <div class="view-subtitle" id="diff-modal-subtitle" style="margin-bottom:10px;"></div>
-    <pre class="diff-block" id="diff-modal-body"></pre>
-    <div class="modal-actions">
-      <button id="diff-modal-close">Done</button>
-    </div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="agent-modal-overlay" hidden>
   <div class="modal">
     <h3 id="agent-modal-title">New agent</h3>
@@ -1211,7 +1222,7 @@
       <label for="agent-modal-content">Markdown system prompt</label>
       <textarea id="agent-modal-content" placeholder="# Role&#10;...&#10;&#10;End your response with exactly one fenced json block, e.g.:&#10;&#10;```json&#10;{ &quot;verdict&quot;: ... }&#10;```"></textarea>
     </div>
-    <div class="hint">To match the taxonomy other agents use, keep severity/confidence/priority definitions and OWASP/CWE/NIST 800-53 mapping consistent with <span style="font-family:var(--mono)">agents/triage.md</span>, and close the response with one fenced ```json block.</div>
+    <div class="hint">To match the taxonomy other agents use, keep severity/confidence/priority definitions and OWASP/CWE/NIST 800-53 mapping consistent with <span style="font-family:var(--mono)">agents/remediation.md</span>, and close the response with one fenced ```json block.</div>
     <div class="modal-actions">
       <button class="secondary" id="agent-modal-cancel">Cancel</button>
       <button id="agent-modal-save">Save agent</button>
@@ -1241,6 +1252,13 @@ const ICONS = {
   clipboard: '<path d="M8 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M9.5 3.5h5a1 1 0 0 1 1 1V6h-7V4.5a1 1 0 0 1 1-1Z"/><path d="m9.5 11 1.5 1.5L14 9M9.5 15.5h5"/>',
   terminal: '<rect x="3" y="4.5" width="18" height="15" rx="1.8"/><path d="m7.5 9.5 3 2.7-3 2.7"/><path d="M13 15.2h4"/>',
   more: '<circle cx="12" cy="5.5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.7" fill="currentColor" stroke="none"/>',
+  arrowRight: '<path d="M4 12h16"/><path d="m13 5 7 7-7 7"/>',
+  fastForward: '<path d="m5 5 7 7-7 7"/><path d="m13 5 7 7-7 7"/>',
+  // Distinct from each other on purpose (Remediation Loop's advance vs. run-all buttons sit
+  // right next to each other at small size — a single chevron vs. a skip-to-end glyph reads
+  // clearly apart, where two chevron variants (arrowRight/fastForward above) didn't).
+  chevronRight: '<path d="m9 5 7 7-7 7"/>',
+  skipForward: '<path d="M6 5v14l10-7L6 5Z"/><path d="M19 5v14"/>',
 };
 function icon(name, cls) {
   return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -1294,13 +1312,11 @@ const findingsScanFilterBtn = document.getElementById('findings-scan-filter-btn'
 const findingsScanFilterMenuEl = document.getElementById('findings-scan-filter-menu');
 const addFindingBtn = document.getElementById('add-finding-btn');
 const exportCsvBtn = document.getElementById('export-csv-btn');
-const autoRemediateBtn = document.getElementById('auto-remediate-btn');
 const contextMenuEl = document.getElementById('context-menu');
 
 const scanPathInput = document.getElementById('scan-path-input');
 const scanBranchInput = document.getElementById('scan-branch-input');
 const scanAppInput = document.getElementById('scan-app-input');
-const scanInstructionInput = document.getElementById('scan-instruction-input');
 const scanStartBtn = document.getElementById('scan-start-btn');
 const scanLiveContainer = document.getElementById('scan-live-container');
 const scanBaseBranchWrap = document.getElementById('scan-base-branch-wrap');
@@ -1322,15 +1338,18 @@ const caContentEl = document.getElementById('ca-content');
 const scaPathInput = document.getElementById('sca-path-input');
 const scaBranchInput = document.getElementById('sca-branch-input');
 const scaAppInput = document.getElementById('sca-app-input');
-const scaInstructionInput = document.getElementById('sca-instruction-input');
 const scaStartBtn = document.getElementById('sca-start-btn');
 const scaLiveContainer = document.getElementById('sca-live-container');
-const scaBaseBranchWrap = document.getElementById('sca-base-branch-wrap');
-const scaBaseBranchInput = document.getElementById('sca-base-branch-input');
 
 const scanType = 'reasoning';
+// SCA Scan has no scope toggle — a dependency audit always reads the whole manifest/lockfile,
+// there's no per-file "diff only" concept for it (see server.js's handleScanMessage).
 let scanScope = 'full';
-let scaScope = 'full';
+// Whether reasoning-half calls (modules + the cross-cutting pass, see runLLMReasoningScan() in
+// server.js) get a --max-budget-usd cap at all. Defaults on (the safe default — every reasoning
+// call is bounded); turning it off is an explicit opt-in for when a scan is getting cut short by
+// the cap and the user wants it to run to completion regardless of cost.
+let scanBudgetEnabled = true;
 
 const stageModalOverlay = document.getElementById('stage-modal-overlay');
 const stageModalTitle = document.getElementById('stage-modal-title');
@@ -1369,7 +1388,6 @@ let findings = [];               // list-item shape from GET /api/findings
 let findingsTypeFilter = 'all';  // 'all' | 'reasoning' | 'sca'
 let findingsScanFilter = 'all';  // 'all' or a scan id — restricts the table to one scan's findings
 let findingsSort = { key: 'severity', dir: 'asc' };
-let selectedFindingIds = new Set();  // checked rows on Agent Triage, feeds "Auto-remediate selected"
 let currentFindingDetailId = null;
 let currentView = 'dashboard';
 const findingCache = new Map();  // findingId -> full finding record (from GET /api/findings/:id)
@@ -1467,7 +1485,14 @@ function wireScopeToggle(toggleSelector, baseBranchWrapEl, baseBranchInputEl, se
   });
 }
 wireScopeToggle('#scan-scope-toggle', scanBaseBranchWrap, scanBaseBranchInput, (s) => { scanScope = s; });
-wireScopeToggle('#sca-scope-toggle', scaBaseBranchWrap, scaBaseBranchInput, (s) => { scaScope = s; });
+
+document.querySelectorAll('#scan-budget-toggle .group-toggle-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    scanBudgetEnabled = btn.dataset.budget === 'on';
+    document.querySelectorAll('#scan-budget-toggle .group-toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    document.getElementById('scan-budget-hint').hidden = scanBudgetEnabled;
+  });
+});
 
 function startAppThreatModel() {
   const targetPath = atmPathInput.value.trim();
@@ -2614,11 +2639,11 @@ function renderAttackPathFlow(entry, runs, inMap) {
 }
 
 // ---------- scans ----------
-// A scan runs the Scan agent (agents/scan.md) against a whole directory and,
-// on completion, creates zero or more new findings server-side. It's the
-// entry point of the workflow: Scan -> Findings -> Remediation, with Triage
-// and Threat Model available afterward as optional deeper-analysis actions
-// rather than gates in front of Remediation.
+// A scan runs sast-engine's deterministic pattern agents (reasoning) or dependency audit
+// (sca) against a whole directory and, on completion, creates zero or more new findings
+// server-side, each already carrying a triage verdict. It's the entry point of the workflow:
+// Scan -> Agent Triage -> Remediation, with Threat Model available afterward as an optional
+// deeper-analysis action rather than a gate in front of Remediation.
 
 async function loadScans() {
   const res = await fetch('/api/scans');
@@ -2698,6 +2723,28 @@ function makeScanCard(runId, targetPath, meta, containerEl) {
   ];
   if (meta.branch) metaTags.push(`<span class="scan-meta-text">${icon('branch')}${escapeHtml(meta.branch)}</span>`);
   if (meta.app) metaTags.push(`<span class="scan-meta-text">${escapeHtml(meta.app)}</span>`);
+  if (meta.scanType === 'reasoning' && meta.budgetEnabled === false) {
+    metaTags.push(`<span class="scan-meta-text" style="color:var(--warn);" title="Reasoning calls have no --max-budget-usd cap for this scan">No budget cap</span>`);
+  }
+
+  // Reasoning Scan runs two engines in parallel (sast-engine's deterministic pattern agents +
+  // a real claude -p reasoning pass, see server.js's runHybridReasoningScan) and merges their
+  // results — this pair of bars is the only place that's visible before findings land. SCA
+  // Scan is single-engine (just a dependency audit), so it never gets this block.
+  const engineBarsHtml = meta.scanType === 'reasoning' ? `
+    <div class="scan-engine-bars">
+      <div class="scan-engine-bar">
+        <span class="scan-engine-bar-label"><span class="engine-dot" style="background:var(--accent);"></span>Pattern match</span>
+        <div class="scan-engine-bar-track"><div class="scan-engine-bar-fill det-fill" style="width:0%; background:var(--accent);"></div></div>
+        <span class="scan-engine-bar-stat det-stat">Starting…</span>
+      </div>
+      <div class="scan-engine-bar">
+        <span class="scan-engine-bar-label"><span class="engine-dot" style="background:var(--warn);"></span>Reasoning</span>
+        <div class="scan-engine-bar-track"><div class="scan-engine-bar-fill reasoning-fill" style="width:0%; background:var(--warn);"></div></div>
+        <span class="scan-engine-bar-stat reasoning-stat">Starting…</span>
+      </div>
+    </div>
+  ` : '';
 
   const cardEl = document.createElement('article');
   cardEl.className = 'stage-card scan-card status-running';
@@ -2708,6 +2755,7 @@ function makeScanCard(runId, targetPath, meta, containerEl) {
       <button class="console-toggle-btn" type="button" style="margin-left:auto;" data-console-toggle data-run-id="${escapeHtml(runId)}" title="View model's live reasoning">${icon('terminal')}</button>
     </div>
     <div class="scan-meta-row">${metaTags.join('')}</div>
+    ${engineBarsHtml}
     <div class="scan-stats">
       <span class="stat scan-status-stat"><span class="status-dot running"></span><span class="status-text">Starting…</span></span>
       <span class="stat"><b class="ss-tokens">0</b> tokens</span>
@@ -2721,6 +2769,7 @@ function makeScanCard(runId, targetPath, meta, containerEl) {
     </div>
     <pre class="console-panel ss-console" hidden></pre>
     <div class="scan-error-msg" hidden></div>
+    <div class="scan-warning-msg" hidden></div>
     <div class="scan-sev-chips"><span class="hint">No candidates yet</span></div>
     <div class="scan-live-findings"></div>
     <div class="scan-results" hidden></div>
@@ -2968,11 +3017,78 @@ function reattachConsoleRefs(containerEl, runsMap, panelClass) {
   }
 }
 
+// Updates the "Pattern match" bar from a scan-progress message (deterministic engine only —
+// see server.js's runDeterministicPatternScan, which counts completed sast-engine agents out
+// of the fixed 29-agent total). No-op on an SCA Scan card (detFillEl is null there).
+function updateDetBar(run, done, total) {
+  if (!run.detFillEl) return;
+  run.detDone = done;
+  run.detTotal = total;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  run.detFillEl.style.width = pct + '%';
+  run.detFillEl.classList.toggle('done', done >= total && total > 0);
+  run.detStatEl.textContent = total ? `${done}/${total} agents done` : 'Starting…';
+}
+
+// Appended to the Reasoning bar's stat text whenever real spend is known (from a scan-progress
+// {engine:'reasoning'} message's costUsd — see updateReasoningModuleProgress()). '' before the
+// first module/pass has completed, since there's nothing real to report yet.
+function reasoningCostSuffix(run) {
+  return run.reasoningCostUsd ? ` · $${run.reasoningCostUsd.toFixed(2)}` : '';
+}
+
+// Updates the "Reasoning" bar from per-event tool-call activity. This is the fallback display
+// for when there's no real module total to show a percentage against — a "diff" scope scan (one
+// call over the changed-file list) or a "full" scope scan whose target directory only yielded a
+// single module (see partitionReasoningModules() in server.js) — in which case this is an
+// indeterminate-feeling fill that grows with tool-call count and settles at 100% once the run
+// reports its own `done`/`error` (see markReasoningBarDone below) rather than trying to predict
+// completion from activity alone. Once a scan has more than one module, updateReasoningModuleProgress()
+// below owns this same bar instead — real modules-done/total beats an indeterminate estimate.
+function updateReasoningBar(run) {
+  if (!run.reasoningFillEl) return;
+  if (run.reasoningModulesTotal > 1) return;
+  const pct = Math.min(90, run.toolCount * 8);
+  run.reasoningFillEl.style.width = pct + '%';
+  run.reasoningStatEl.textContent = (run.toolCount
+    ? `${run.toolCount} tool call${run.toolCount === 1 ? '' : 's'}`
+    : 'Starting…') + reasoningCostSuffix(run);
+}
+
+// Updates the "Reasoning" bar from a scan-progress {engine:'reasoning'} message — sent once per
+// completed module (and once for the cross-cutting pass, see CLAUDE.md) on a "Full" scope scan,
+// since server.js's runLLMReasoningScan() now partitions the target directory into modules and
+// runs one scoped claude -p call per module instead of a single unscoped pass (this exists to
+// keep token spend and hallucination surface from scaling with total repo size). A "diff" scope
+// scan, or a full scan whose directory only yielded one module, reports total <= 1 — nothing
+// module-like to show in that case, so the bar keeps using updateReasoningBar()'s per-event
+// tool-call estimate instead; real dollar spend (costUsd, aggregated server-side from each
+// call's actual stream-json result — not an estimate) is tracked either way, so it's still shown
+// once a call completes even when the module count itself isn't interesting enough to display.
+function updateReasoningModuleProgress(run, done, total, costUsd) {
+  if (!run.reasoningFillEl) return;
+  run.reasoningModulesDone = done;
+  run.reasoningModulesTotal = total;
+  if (typeof costUsd === 'number') run.reasoningCostUsd = costUsd;
+  if (total <= 1) { updateReasoningBar(run); return; }
+  const pct = Math.round((done / total) * 100);
+  run.reasoningFillEl.style.width = pct + '%';
+  run.reasoningFillEl.classList.toggle('done', done >= total);
+  run.reasoningStatEl.textContent = `${done}/${total} modules done` + reasoningCostSuffix(run);
+}
+
+function markReasoningBarDone(run) {
+  if (!run.reasoningFillEl) return;
+  run.reasoningFillEl.style.width = '100%';
+  run.reasoningFillEl.classList.add('done');
+}
+
 function handleScanRawEvent(run, event) {
   trackRunToolActivity(run, event);
   trackRunTokens(run, event);
   trackScanCandidates(run, event);
   trackConsoleText(run, event);
+  updateReasoningBar(run);
 }
 
 // Shared by the Scans and SCA pages — both kick off the exact same underlying WS 'scan'
@@ -2998,7 +3114,28 @@ function beginScanRun(targetPath, instruction, scanMeta, containerEl) {
     contextBarFillEl: cardEl.querySelector('.ss-context-fill'),
     contextBarLabelEl: cardEl.querySelector('.ss-context-label'),
     lastContextTokens: 0,
+    // Per-engine bars (Reasoning Scan only — null on SCA Scan cards, guarded on every use).
+    // The reasoning bar reuses toolCount/tokenCount below rather than tracking its own copy:
+    // the synthetic events the deterministic engine sends never carry tool_use/usage blocks,
+    // so trackRunToolActivity()/trackRunTokens() only ever fire for the real reasoning-pass
+    // events anyway — toolCount is already effectively "reasoning engine's tool calls".
+    detDone: 0,
+    detTotal: 0,
+    detFillEl: cardEl.querySelector('.det-fill'),
+    detStatEl: cardEl.querySelector('.det-stat'),
+    reasoningFillEl: cardEl.querySelector('.reasoning-fill'),
+    reasoningStatEl: cardEl.querySelector('.reasoning-stat'),
+    // Set once a scan-progress {engine:'reasoning'} message reports a real total > 1 (a "Full"
+    // scope scan whose directory partitioned into more than one module) — see
+    // updateReasoningModuleProgress() above for how this changes what drives the bar.
+    reasoningModulesDone: 0,
+    reasoningModulesTotal: 0,
+    // Real dollar spend across every reasoning-half claude -p call so far, aggregated
+    // server-side from each call's actual stream-json result.total_cost_usd (see
+    // reasoningCostSuffix() above) — not a token-count estimate.
+    reasoningCostUsd: 0,
     errorEl: cardEl.querySelector('.scan-error-msg'),
+    warningEl: cardEl.querySelector('.scan-warning-msg'),
     chipsEl: cardEl.querySelector('.scan-sev-chips'),
     findingsEl: cardEl.querySelector('.scan-live-findings'),
     resultsEl: cardEl.querySelector('.scan-results'),
@@ -3032,7 +3169,6 @@ function startScan() {
     alert('Enter a target directory path.');
     return;
   }
-  const instruction = scanInstructionInput.value.trim();
   const branch = scanBranchInput.value.trim();
   const app = scanAppInput.value.trim();
   const baseBranch = scanBaseBranchInput.value.trim();
@@ -3041,11 +3177,8 @@ function startScan() {
     return;
   }
 
-  const scanMeta = { branch, app, scanType, scope: scanScope, baseBranch: scanScope === 'diff' ? baseBranch : null };
-  beginScanRun(targetPath, instruction, scanMeta, scanLiveContainer);
-  scanInstructionInput.value = '';
-  scanInstructionWrap.hidden = true;
-  scanNoteToggleBtn.textContent = '+ instructions';
+  const scanMeta = { branch, app, scanType, scope: scanScope, baseBranch: scanScope === 'diff' ? baseBranch : null, budgetEnabled: scanBudgetEnabled };
+  beginScanRun(targetPath, '', scanMeta, scanLiveContainer);
 }
 
 function startScaScan() {
@@ -3054,41 +3187,15 @@ function startScaScan() {
     alert('Enter a target directory path.');
     return;
   }
-  const instruction = scaInstructionInput.value.trim();
   const branch = scaBranchInput.value.trim();
   const app = scaAppInput.value.trim();
-  const baseBranch = scaBaseBranchInput.value.trim();
-  if (scaScope === 'diff' && !baseBranch) {
-    alert('Enter a base branch to diff against (e.g. main).');
-    return;
-  }
 
-  const scanMeta = { branch, app, scanType: 'sca', scope: scaScope, baseBranch: scaScope === 'diff' ? baseBranch : null };
-  beginScanRun(targetPath, instruction, scanMeta, scaLiveContainer);
-  scaInstructionInput.value = '';
-  scaInstructionWrap.hidden = true;
-  scaNoteToggleBtn.textContent = '+ instructions';
+  const scanMeta = { branch, app, scanType: 'sca', scope: 'full', baseBranch: null };
+  beginScanRun(targetPath, '', scanMeta, scaLiveContainer);
 }
 
 scanStartBtn.addEventListener('click', startScan);
 scaStartBtn.addEventListener('click', startScaScan);
-
-const scanInstructionWrap = document.getElementById('scan-instruction-wrap');
-const scanNoteToggleBtn = document.getElementById('scan-note-toggle-btn');
-const scaInstructionWrap = document.getElementById('sca-instruction-wrap');
-const scaNoteToggleBtn = document.getElementById('sca-note-toggle-btn');
-
-// Shared by the Scans and SCA pages' "+ instructions" toggle — same show/hide + label-swap
-// behavior, just a different wrap/button/input triple.
-function wireNoteToggle(toggleBtn, wrapEl, inputEl) {
-  toggleBtn.addEventListener('click', () => {
-    wrapEl.hidden = !wrapEl.hidden;
-    toggleBtn.textContent = wrapEl.hidden ? '+ instructions' : '− instructions';
-    if (!wrapEl.hidden) inputEl.focus();
-  });
-}
-wireNoteToggle(scanNoteToggleBtn, scanInstructionWrap, scanInstructionInput);
-wireNoteToggle(scaNoteToggleBtn, scaInstructionWrap, scaInstructionInput);
 
 function handleScanServerMessage(msg) {
   const run = msg.runId ? scanRuns.get(msg.runId) : null;
@@ -3101,12 +3208,30 @@ function handleScanServerMessage(msg) {
   }
   if (!run) return;
 
+  if (msg.type === 'scan-progress') {
+    if (msg.engine === 'reasoning') updateReasoningModuleProgress(run, msg.done, msg.total, msg.costUsd);
+    else updateDetBar(run, msg.done, msg.total);
+    return;
+  }
   if (msg.type === 'scan-event') {
     handleScanRawEvent(run, msg.event);
     return;
   }
   if (msg.type === 'scan-stderr') {
     return; // CLI-internal chatter, not actionable — still in the raw stream-json toggle's source events if needed
+  }
+  if (msg.type === 'scan-warning') {
+    // A non-fatal note this app itself generated (a module hit its budget cap, one engine
+    // errored while the other still succeeded, etc.) — distinct from scan-stderr's raw CLI
+    // chatter above, so it's actually shown rather than silently discarded. Doesn't touch
+    // run.status or the elapsed timer; the scan is still running (or already succeeded).
+    if (run.warningEl) {
+      run.warningEl.hidden = false;
+      run.warningEl.textContent = run.warningEl.textContent
+        ? `${run.warningEl.textContent}\n${msg.message}`
+        : msg.message;
+    }
+    return;
   }
   if (msg.type === 'scan-error') {
     const cancelled = run.status === 'cancelled';
@@ -3117,6 +3242,7 @@ function handleScanServerMessage(msg) {
       setStageStatus(run, 'cancelled', 'Cancelled');
     }
     stopScanElapsedTimer(run);
+    markReasoningBarDone(run);
     updateScanCardActions(run);
     const finalStatus = cancelled ? 'cancelled' : 'error';
     if (listItem) { listItem.status = finalStatus; listItem.error = cancelled ? null : msg.message; listItem.finishedAt = Date.now(); }
@@ -3127,6 +3253,8 @@ function handleScanServerMessage(msg) {
   if (msg.type === 'scan-done') {
     const cancelled = run.status === 'cancelled';
     stopScanElapsedTimer(run);
+    markReasoningBarDone(run);
+    if (run.detFillEl && run.detTotal) updateDetBar(run, run.detTotal, run.detTotal); // in case the last scan-progress arrives after scan-done
     const n = msg.findings.length;
     const finalStatus = cancelled ? 'cancelled' : (msg.code === 0 ? 'done' : 'error');
     setStageStatus(run, finalStatus, cancelled ? 'Cancelled' : `${n} finding${n === 1 ? '' : 's'} created`);
@@ -3225,7 +3353,7 @@ const FINDINGS_COLUMNS = {
     { key: 'severity', label: 'Severity', sortable: true },
     { key: 'type', label: 'Type' },
     { key: 'title', label: 'Title', sortable: true },
-    { key: 'loop', label: 'Remediation Loop', sortable: true },
+    { key: 'loop', label: 'Loop', sortable: true },
   ],
   // A reasoning-scan finding can be file-based (a code pattern) or endpoint-based (an
   // attack-surface observation) — the merged 'location' cell shows whichever it has, since
@@ -3235,14 +3363,18 @@ const FINDINGS_COLUMNS = {
     { key: 'title', label: 'Title', sortable: true },
     { key: 'location', label: 'Location' },
     { key: 'rule', label: 'Rule / CWE' },
-    { key: 'loop', label: 'Remediation Loop', sortable: true },
+    { key: 'loop', label: 'Loop', sortable: true },
   ],
+  // No Remediation Loop column here — an SCA finding's fix is a dependency version bump, not
+  // a code edit the Remediation/Verify agents reason about, so Package/Fixed-in above already
+  // say what to do and this just shows plain triage status instead of implying a loop that
+  // doesn't apply.
   sca: [
     { key: 'severity', label: 'Severity', sortable: true },
     { key: 'title', label: 'Title', sortable: true },
     { key: 'package', label: 'Package' },
     { key: 'fix', label: 'Fixed in' },
-    { key: 'loop', label: 'Remediation Loop', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
   ],
 };
 
@@ -3328,62 +3460,174 @@ function renderFindingsTypeTabs(scanScoped) {
 }
 
 // ---------- remediation loop cell (Agent Triage's "Remediation Loop" column) ----------
-// Reduces the finding's status/latestRun down to where it stands in the Found -> Fixed ->
-// Verified loop, rather than a status-taxonomy badge the user has to already know how to
-// read. Only Remediation/Verify runs move this forward — Triage/Threat Model are separate,
-// optional analyses (see CLAUDE.md's Pipeline shape) and deliberately don't touch it, so a
-// finding that's only been triaged still correctly reads as "nothing done yet" here.
-function findingLoopState(f) {
-  const latest = f.latestRun;
-  let fixed = 'pending';
-  let verified = 'pending';
-  if (latest) {
-    if (latest.agent === 'remediation') {
-      if (latest.status === 'running') fixed = 'running';
-      else if (f.status === 'remediation_generated') fixed = 'done';
-      else if (latest.status === 'error' || latest.status === 'cancelled') fixed = 'attention';
-    } else if (latest.agent === 'verify') {
-      // Verify only ever runs after a successful, corrected_code-producing Remediation run in
-      // this app's one path to it (Fix & Verify) — safe to treat "Fixed" as already reached.
-      fixed = 'done';
-      if (latest.status === 'running') verified = 'running';
-      else if (f.status === 'verified_fixed') verified = 'done';
-      else verified = 'attention'; // still_vulnerable / partially_fixed / inconclusive / error
+// Reduces the finding down to where it stands in the Found -> Triaged -> Fixed -> Verified
+// pipeline (the same shape documented in CLAUDE.md's "Pipeline shape": Scan -> Agent Triage ->
+// Remediation -> Verify), rather than a status-taxonomy badge the user has to already know how
+// to read. Threat Model is a separate, optional deep-dive and deliberately doesn't touch this
+// (see the Agent Triage context-menu bullet). SCA findings don't get this loop at all (see
+// findingLoopCellHtml()) — their fix is "bump the dependency," not a code edit this app's
+// agents reason about.
+// findingStageRuns() needs each stage's own latest run independently, not just the single
+// overall latest — a list-item finding (from GET /api/findings) carries that precomputed as
+// `.stageRuns` (see toListItem() in server.js), while a full cached finding (from GET
+// /api/findings/:id, e.g. what Finding Detail's context menu passes) only has the raw `.runs`
+// array. Normalize so both shapes work.
+function findingStageRuns(f) {
+  if (f.stageRuns) return f.stageRuns;
+  const runs = Array.isArray(f.runs) ? f.runs : [];
+  const latestByAgent = (agentName) => {
+    for (let i = runs.length - 1; i >= 0; i--) {
+      if (runs[i].agent === agentName) return { status: runs[i].status, verdict: runs[i].verdict };
     }
-  }
-  return { fixed, verified };
+    return null;
+  };
+  return { triage: latestByAgent('triage'), remediation: latestByAgent('remediation'), verify: latestByAgent('verify') };
 }
 
-function loopStepperHtml(fixed, verified) {
+function findingLoopState(f) {
+  const stageRuns = findingStageRuns(f);
+  let triaged = 'pending';
+  let fixed = 'pending';
+  let verified = 'pending';
+
+  if (stageRuns.triage) {
+    if (stageRuns.triage.status === 'running') triaged = 'running';
+    else if (stageRuns.triage.status === 'error' || stageRuns.triage.status === 'cancelled') triaged = 'attention';
+    else triaged = 'done';
+  }
+
+  if (stageRuns.remediation) {
+    if (stageRuns.remediation.status === 'running') fixed = 'running';
+    // 'done' requires a real applied_diff, not just f.status === 'remediation_generated' —
+    // that status flips true for ANY completed remediation with corrected_code, including a
+    // write-capable run that chose not to edit anything (see agents/remediation.md's apply-mode
+    // guidance: "don't guess with an edit"). Showing "Fixed" — and offering "Verify the fix" —
+    // when nothing was actually written would be actively misleading, not just imprecise.
+    else if (stageRuns.remediation.verdict && stageRuns.remediation.verdict.applied_diff) fixed = 'done';
+    else if (stageRuns.remediation.status === 'error' || stageRuns.remediation.status === 'cancelled') fixed = 'attention';
+  }
+
+  if (stageRuns.verify) {
+    if (stageRuns.verify.status === 'running') verified = 'running';
+    else if (f.status === 'verified_fixed') verified = 'done';
+    else verified = 'attention'; // still_vulnerable / partially_fixed / inconclusive / error
+  }
+
+  return { triaged, fixed, verified };
+}
+
+// The one thing clicking the loop cell's advance button would do next — 'triage' | 'remediate'
+// | 'verify' | null (busy, or nothing left to do). Triage issues (never run, or errored) come
+// first — nothing else should happen before a finding's been triaged. verified === 'attention'
+// maps back to 'remediate', not another 'verify': Verify already said the fix didn't hold, so
+// the actionable next step is another fix attempt, not re-checking the same unfixed state.
+function findingLoopNextAction(f) {
+  const { triaged, fixed, verified } = findingLoopState(f);
+  if (triaged === 'running' || fixed === 'running' || verified === 'running') return null;
+  if (triaged === 'pending' || triaged === 'attention') return 'triage';
+  if (verified === 'attention') return 'remediate';
+  if (fixed === 'pending' || fixed === 'attention') return 'remediate';
+  if (verified === 'pending') return 'verify';
+  return null; // verified === 'done' — nothing left
+}
+
+function loopTrackHtml(triaged, fixed, verified) {
   return `
-    <div class="loop-stepper" title="Found → Fixed → Verified">
-      <span class="loop-seg done"></span>
+    <div class="loop-track" title="Triaged → Fixed → Verified">
+      <span class="loop-seg ${triaged}"></span>
       <span class="loop-seg ${fixed}"></span>
       <span class="loop-seg ${verified}"></span>
     </div>
   `;
 }
 
+// Pure status readout — track + label, no buttons. The advance/run-all controls live in the
+// row's actions column instead (see findingLoopActionsHtml()), "on the side" of the row rather
+// than crammed into this narrow column.
 function findingLoopCellHtml(f) {
+  // SCA findings need a dependency bump, not a code edit — Package/Fixed-in already say what
+  // to do, so this column just shows plain status here instead of a loop that implies an edit
+  // this app can't meaningfully make. Only reachable from the "All" type tab, which shares the
+  // 'loop' column across both finding types — the dedicated SCA tab uses the plain 'status' key.
+  if (f.scanType === 'sca') return findingsCellHtml(f, 'status');
   if (f.status === 'closed') {
     return `<div class="loop-cell"><span class="hint">Closed — not applicable</span></div>`;
   }
-  const { fixed, verified } = findingLoopState(f);
-  const hasPath = !!findingSourcePath(f);
 
-  let actionHtml;
-  if (verified === 'done') {
-    actionHtml = `<button class="ft-loop-btn done" type="button" data-view-diff-btn="${escapeHtml(f.id)}">✓ Verified fixed — view diff</button>`;
-  } else if (fixed === 'running' || verified === 'running') {
-    actionHtml = `<span class="hint">Running…</span>`;
+  const { triaged, fixed, verified } = findingLoopState(f);
+  const track = loopTrackHtml(triaged, fixed, verified);
+
+  let statusHtml;
+  if (triaged === 'running') {
+    statusHtml = `<span class="loop-status-text">Triaging…</span>`;
+  } else if (fixed === 'running') {
+    statusHtml = `<span class="loop-status-text">Fixing…</span>`;
+  } else if (verified === 'running') {
+    statusHtml = `<span class="loop-status-text">Verifying…</span>`;
+  } else if (triaged === 'attention') {
+    statusHtml = `<span class="loop-status-text attention">Triage failed</span>`;
   } else if (verified === 'attention') {
-    actionHtml = `<button class="ft-loop-btn attention" type="button" data-fix-verify-btn="${escapeHtml(f.id)}"${hasPath ? '' : ' disabled'}>Not fixed yet — try again →</button>`;
+    statusHtml = `<span class="loop-status-text attention">Not fixed yet</span>`;
   } else if (fixed === 'attention') {
-    actionHtml = `<button class="ft-loop-btn attention" type="button" data-fix-verify-btn="${escapeHtml(f.id)}"${hasPath ? '' : ' disabled'}>Fix failed — retry →</button>`;
+    statusHtml = `<span class="loop-status-text attention">Fix failed</span>`;
+  } else if (verified === 'done') {
+    statusHtml = `<span class="loop-status-text ok">Verified fixed</span>`
+      + `<button class="loop-view-diff" type="button" data-view-diff-btn="${escapeHtml(f.id)}" title="View the applied diff">${icon('checkCircle')}View diff</button>`;
+  } else if (fixed === 'done') {
+    statusHtml = `<span class="loop-status-text accent">Fixed</span>`;
+  } else if (triaged === 'done') {
+    statusHtml = `<span class="loop-status-text accent">Triaged</span>`;
   } else {
-    actionHtml = `<button class="ft-loop-btn primary" type="button" data-fix-verify-btn="${escapeHtml(f.id)}"${hasPath ? '' : ' disabled'} title="${hasPath ? 'Apply and confirm a real fix for this finding' : 'No known source directory — this finding wasn\'t produced by a scan'}">Fix &amp; Verify →</button>`;
+    statusHtml = `<span class="loop-status-text">Not started</span>`;
   }
-  return `<div class="loop-cell">${loopStepperHtml(fixed, verified)}${actionHtml}</div>`;
+
+  return `<div class="loop-cell">${track}<div class="loop-status-row">${statusHtml}</div></div>`;
+}
+
+// The Remediation Loop's advance ("→") and run-all ("»") buttons, rendered in the row's actions
+// column instead of inside the loop cell — keeps the loop column a compact status readout and
+// puts every row-level action (these two plus the "…" agent menu) in one place on the side.
+// Returns '' for SCA/closed findings, while a stage is running, or once fully verified (nothing
+// left to advance to) — same gating findingLoopCellHtml used to do inline.
+function findingLoopActionsHtml(f) {
+  if (f.scanType === 'sca' || f.status === 'closed') return '';
+  const { triaged, fixed, verified } = findingLoopState(f);
+  if (triaged === 'running' || fixed === 'running' || verified === 'running') return '';
+  if (verified === 'done') return '';
+
+  const hasPath = !!findingSourcePath(f);
+  // requiresPath: Triage can run without a known source directory (reasons over the embedded
+  // snippet, same as it always has) — only Remediation/Verify genuinely need live repo access.
+  const advanceBtnHtml = (variant, tooltip, requiresPath) => {
+    const disabled = requiresPath && !hasPath;
+    return `<button class="loop-advance-btn${variant ? ' ' + variant : ''}" type="button" data-loop-advance-btn="${escapeHtml(f.id)}"${disabled ? ' disabled' : ''} title="${disabled ? 'No known source directory — this finding wasn\'t produced by a scan' : tooltip}">${icon('chevronRight')}</button>`;
+  };
+  const runAllBtnHtml = () => `<button class="loop-run-all-btn" type="button" data-loop-run-all-btn="${escapeHtml(f.id)}"${hasPath ? '' : ' disabled'} title="${hasPath ? 'Run all stages: Triage → Fix → Verify' : 'No known source directory — this finding wasn\'t produced by a scan'}">${icon('skipForward')}</button>`;
+
+  if (triaged === 'attention') return advanceBtnHtml('attention', 'Retry triage', false) + runAllBtnHtml();
+  if (verified === 'attention') return advanceBtnHtml('attention', 'Retry the fix', true) + runAllBtnHtml();
+  if (fixed === 'attention') return advanceBtnHtml('attention', 'Retry the fix', true) + runAllBtnHtml();
+  if (fixed === 'done') return advanceBtnHtml('', 'Verify the fix', true) + runAllBtnHtml();
+  if (triaged === 'done') return advanceBtnHtml('', 'Apply a fix (writes to your code)', true) + runAllBtnHtml();
+  return advanceBtnHtml('', 'Run Triage', false) + runAllBtnHtml();
+}
+
+// Small tag next to a reasoning finding's title showing which of Reasoning Scan's two engines
+// found it — deterministic (sast-engine's pattern agents) or reasoning (agents/scan.md's LLM
+// pass), read straight off the synthetic triage verdict's `source` field (see
+// findingFromSastEngine()/findingFromLLMScan() in server.js). Colors match the two progress
+// bars on the scan card (accent = pattern match, warn = reasoning) so the two surfaces read as
+// the same distinction. Absent for manually-added findings (source: 'manual-placeholder') and
+// SCA findings (no such distinction applies).
+function findingSourceTagHtml(f) {
+  const source = f.stageRuns && f.stageRuns.triage && f.stageRuns.triage.verdict && f.stageRuns.triage.verdict.source;
+  if (source === 'sast-engine-verifier') {
+    return `<span class="finding-source-tag" style="color:var(--accent); background:var(--accent-soft);" title="Found by the deterministic pattern-matching engine">Pattern match</span>`;
+  }
+  if (source === 'reasoning-scan') {
+    return `<span class="finding-source-tag" style="color:var(--warn); background:var(--warn-soft);" title="Found by the LLM reasoning pass">Reasoning</span>`;
+  }
+  return '';
 }
 
 function findingsCellHtml(f, key) {
@@ -3395,7 +3639,7 @@ function findingsCellHtml(f, key) {
       return `<span class="scan-type-chip" style="color:${m.color}; background:${hexToRgba(m.color, .16)};">${escapeHtml(m.label)}</span>`;
     }
     case 'title':
-      return `<div class="ft-title">${escapeHtml(f.title)}</div>`;
+      return `<div class="ft-title">${escapeHtml(f.title)}${findingSourceTagHtml(f)}</div>`;
     case 'file':
       return f.file ? `<span class="ft-mono">${escapeHtml(f.file)}</span>` : '<span class="hint">—</span>';
     case 'location':
@@ -3412,17 +3656,13 @@ function findingsCellHtml(f, key) {
       return f.endpoint ? `<span class="ft-mono">${escapeHtml(f.endpoint)}</span>` : '<span class="hint">—</span>';
     case 'method':
       return f.method ? escapeHtml(f.method.toUpperCase()) : '<span class="hint">—</span>';
+    case 'status':
+      return `<span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span>`;
     case 'loop':
       return findingLoopCellHtml(f);
     default:
       return '';
   }
-}
-
-function updateAutoRemediateBtn() {
-  const n = selectedFindingIds.size;
-  autoRemediateBtn.textContent = `Auto-remediate selected (${n})`;
-  autoRemediateBtn.disabled = n === 0;
 }
 
 function renderFindingsTable() {
@@ -3436,29 +3676,13 @@ function renderFindingsTable() {
     const cmp = va < vb ? -1 : va > vb ? 1 : 0;
     return findingsSort.dir === 'asc' ? cmp : -cmp;
   });
-  // Dropping a row that's no longer visible (filtered out, deleted) from the selection keeps
-  // the "select all" checkbox and the Auto-remediate count honest to what's on screen.
-  const visibleIds = new Set(rows.map((f) => f.id));
-  for (const id of [...selectedFindingIds]) if (!visibleIds.has(id)) selectedFindingIds.delete(id);
 
   findingsTableHeadEl.innerHTML = '';
   const headRow = document.createElement('tr');
-  const selectAllTh = document.createElement('th');
-  selectAllTh.className = 'ft-select-col';
-  const selectAllCb = document.createElement('input');
-  selectAllCb.type = 'checkbox';
-  selectAllCb.checked = rows.length > 0 && rows.every((f) => selectedFindingIds.has(f.id));
-  selectAllCb.addEventListener('change', () => {
-    if (selectAllCb.checked) rows.forEach((f) => selectedFindingIds.add(f.id));
-    else rows.forEach((f) => selectedFindingIds.delete(f.id));
-    renderFindingsTable();
-    updateAutoRemediateBtn();
-  });
-  selectAllTh.appendChild(selectAllCb);
-  headRow.appendChild(selectAllTh);
   for (const col of columns) {
     const th = document.createElement('th');
     th.textContent = col.label;
+    th.dataset.col = col.key;
     if (col.sortable) {
       th.classList.add('sortable');
       if (findingsSort.key === col.key) {
@@ -3480,12 +3704,11 @@ function renderFindingsTable() {
   headRow.appendChild(document.createElement('th')); // actions column — no label, see ft-actions-col below
   findingsTableHeadEl.appendChild(headRow);
 
-  updateAutoRemediateBtn();
   findingsTableBodyEl.innerHTML = '';
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = columns.length + 2;
+    td.colSpan = columns.length + 1;
     td.className = 'ft-empty';
     td.textContent = scanScoped.length
       ? 'No findings match this type.'
@@ -3500,30 +3723,33 @@ function renderFindingsTable() {
   for (const f of rows) {
     const tr = document.createElement('tr');
     tr.dataset.findingId = f.id;
-    const checkedAttr = selectedFindingIds.has(f.id) ? 'checked' : '';
-    tr.innerHTML = `<td class="ft-select-col"><input type="checkbox" ${checkedAttr}></td>`
-      + columns.map((col) => `<td>${findingsCellHtml(f, col.key)}</td>`).join('')
-      + `<td class="ft-actions-col">`
+    // Row actions column: the Remediation Loop's advance/run-all buttons (see
+    // findingLoopActionsHtml()) sit "on the side" of the row here, next to the "…" agent menu,
+    // instead of inside the narrow loop cell itself.
+    tr.innerHTML = columns.map((col) => `<td data-col="${col.key}">${findingsCellHtml(f, col.key)}</td>`).join('')
+      + `<td class="ft-actions-col"><div class="ft-actions-cell">`
+      + findingLoopActionsHtml(f)
       + `<button class="console-toggle-btn" type="button" data-run-agent-btn title="Run agent…">${icon('more')}</button>`
-      + `</td>`;
-    const cb = tr.querySelector('.ft-select-col input');
-    cb.addEventListener('click', (e) => e.stopPropagation());
-    cb.addEventListener('change', () => {
-      if (cb.checked) selectedFindingIds.add(f.id);
-      else selectedFindingIds.delete(f.id);
-      updateAutoRemediateBtn();
-      selectAllCb.checked = rows.every((r) => selectedFindingIds.has(r.id));
-    });
+      + `</div></td>`;
     tr.querySelector('[data-run-agent-btn]').addEventListener('click', (e) => {
       e.stopPropagation();
       const rect = e.currentTarget.getBoundingClientRect();
-      openFindingContextMenu(rect.right, rect.bottom + 4, f.id);
+      openFindingContextMenu(rect.right, rect.bottom + 4, f.id, f);
     });
-    const fixVerifyBtn = tr.querySelector('[data-fix-verify-btn]');
-    if (fixVerifyBtn) {
-      fixVerifyBtn.addEventListener('click', (e) => {
+    const loopAdvanceBtn = tr.querySelector('[data-loop-advance-btn]');
+    if (loopAdvanceBtn) {
+      loopAdvanceBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        onFixVerifyClick(f.id);
+        e.currentTarget.disabled = true; // guard against a double-click firing two real runs; the next table render (on done/error) replaces this node anyway
+        onLoopAdvanceClick(f.id);
+      });
+    }
+    const loopRunAllBtn = tr.querySelector('[data-loop-run-all-btn]');
+    if (loopRunAllBtn) {
+      loopRunAllBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.currentTarget.disabled = true; // guard against a double-click firing two real pipelines; the next table render (on done/error) replaces this node anyway
+        onLoopRunAllClick(f.id);
       });
     }
     const viewDiffBtn = tr.querySelector('[data-view-diff-btn]');
@@ -3536,7 +3762,7 @@ function renderFindingsTable() {
     tr.addEventListener('click', () => openFindingDetail(f.id));
     tr.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      openFindingContextMenu(e.clientX, e.clientY, f.id);
+      openFindingContextMenu(e.clientX, e.clientY, f.id, f);
     });
     findingsTableBodyEl.appendChild(tr);
   }
@@ -3561,26 +3787,6 @@ async function ensureFindingCached(findingId) {
   return finding;
 }
 
-// ---------- auto-remediate: run Remediation on every checked Agent Triage row in place ----------
-// No separate results page — progress and outcome show up right in the table each row is
-// already in (the Runs column, and the "Remediation generated" status badge once a run
-// lands), the same way any other agent run does. Opening a row's Finding Detail page shows
-// the full verdict, including corrected_code, if you need to read it.
-
-async function autoRemediateSelected() {
-  const ids = [...selectedFindingIds];
-  if (!ids.length) return;
-  selectedFindingIds.clear();
-  renderFindingsTable();
-  for (const id of ids) {
-    const finding = await ensureFindingCached(id);
-    if (!finding) continue;
-    startStage(id, 'remediation', buildBaseContext(finding), '');
-  }
-}
-
-autoRemediateBtn.addEventListener('click', autoRemediateSelected);
-
 // The directory a finding's Verify run should re-check against — the target path of the scan
 // that originally produced it, if known. null for manually-added findings (verify.md is
 // written to handle that gracefully rather than reasoning over the wrong codebase).
@@ -3590,58 +3796,116 @@ function findingSourcePath(finding) {
   return scan ? scan.path : null;
 }
 
-// ---------- Fix & Verify: the one flow where an agent writes to the user's real files ----------
-// Chains a real, Edit/Write-capable Remediation run against the finding's actual source
-// directory with a Verify run re-checking it, under one button click. Both runs are ordinary
-// per-finding runs as far as the client is concerned (same 'started'/'event'/'done' messages,
-// same finding.runs/Runs-column/status-badge machinery) — the only client-specific bit is
-// tracking which remediation runIds belong to this flow, so their 'done' message's
-// verdict.applied_diff can pop the diff modal instead of just sitting in the verdict JSON.
-const fixVerifyRemediationRunIds = new Set();
+// ---------- writing real fixes: the only place an agent touches the user's real files ----------
+// Triage is no longer a live stage at all (see CLAUDE.md) — every finding already carries a
+// triage verdict from when it was created, so the loop's first stage is always already "done".
+// Two entry points on the loop cell for what's left:
+//   - The single arrow (onLoopAdvanceClick) runs exactly the *next* stage — a write-capable
+//     Remediation apply, or Verify — and stops. One deliberate click per stage. (The 'triage'
+//     branch below is a defensive fallback for a finding that somehow has no triage run yet;
+//     it shouldn't be reachable in practice.)
+//   - The fast-forward button (onLoopRunAllClick) chains Remediation (apply) -> Verify under
+//     one confirm(), for when stepping through individually isn't needed.
+// Both are gated by a native confirm() naming the exact target directory and the git-clean
+// requirement — that's the friction point, not a hidden mode toggle (an earlier version had a
+// page-level "Read-only" checkbox that silently changed what a shared button did, removed as
+// confusing) — except Verify alone, which never needs that confirmation since it's read-only.
+// The applied diff itself is never shown in a popup — it renders directly on the finding's own
+// detail page (runCardHtml() draws any remediation run's applied_diff as a colored diff block
+// there), so seeing what changed is "click into the finding," the same way you'd read any other
+// run's verdict.
+const applyWriteRunIds = new Set(); // runIds whose flow includes a git-clean-tree precheck that can fail before any run is pushed server-side — see the 'error' handler below, which alerts those failures directly since the generic error-badge treatment has no run to attach to
 
-// Fix & Verify always does the real write+verify flow — the confirm() below, naming the exact
-// directory and the git-clean requirement, is the friction point instead of a separate hidden
-// mode toggle (an earlier version had a page-level "Read-only" checkbox that silently changed
-// what this same button did; removed as confusing — what you click is what happens). If you
-// just want advisory guidance with no file writes, the three-dot menu's "Run Remediation…" is
-// still there, unchanged, and always has been read-only.
-async function onFixVerifyClick(findingId) {
+function confirmApplyWrite(targetPath) {
+  return confirm(
+    `This lets the Remediation agent directly edit files in:\n${targetPath}\n\n` +
+    `The target must be a clean git working tree (no uncommitted changes) — the run will refuse ` +
+    `otherwise. You'll see the resulting diff once it's done. Continue?`
+  );
+}
+
+async function onLoopAdvanceClick(findingId) {
+  const finding = await ensureFindingCached(findingId);
+  if (!finding) return;
+  const next = findingLoopNextAction(finding);
+  if (!next) return;
+  if (next === 'triage' || next === 'verify') {
+    startStage(findingId, next, buildBaseContext(finding), '');
+    return;
+  }
+  const targetPath = findingSourcePath(finding);
+  if (!targetPath) {
+    alert('This finding has no known source directory (it wasn\'t produced by a scan), so there\'s nothing to apply a fix to.');
+    return;
+  }
+  if (!confirmApplyWrite(targetPath)) return;
+  startRemediateApply(findingId, finding, targetPath);
+}
+
+function confirmRunAll(targetPath) {
+  return confirm(
+    `This runs Remediation and Verify in sequence against:\n${targetPath}\n\n` +
+    `Remediation directly edits files there, so the target must be a clean git working tree ` +
+    `(no uncommitted changes) — the run will refuse otherwise. Continue?`
+  );
+}
+
+// The loop cell's "run all stages" button — Remediation (write) -> Verify chained under one
+// confirm(), for when stepping through each stage individually isn't needed. There's no live
+// Triage sub-call here: every finding already carries a triage verdict from when it was
+// created (see CLAUDE.md), and buildBaseContext() already folds that verdict into the context
+// string Remediation receives below.
+async function onLoopRunAllClick(findingId) {
   const finding = await ensureFindingCached(findingId);
   if (!finding) return;
   const targetPath = findingSourcePath(finding);
   if (!targetPath) {
-    alert('This finding has no known source directory (it wasn\'t produced by a scan), so there\'s nothing for Fix & Verify to write to.');
+    alert('This finding has no known source directory (it wasn\'t produced by a scan), so there\'s nothing to run the full pipeline against.');
     return;
   }
-  const proceed = confirm(
-    `Fix & Verify will let the Remediation agent directly edit files in:\n${targetPath}\n\n` +
-    `The target must be a clean git working tree (no uncommitted changes) — the run will refuse ` +
-    `otherwise. You'll see the resulting diff once it's done. Continue?`
-  );
-  if (!proceed) return;
-  startFixAndVerify(findingId, finding, targetPath);
+  if (!confirmRunAll(targetPath)) return;
+  startRemediateAll(findingId, finding, targetPath);
 }
 
-async function onViewDiffClick(findingId) {
-  const finding = await ensureFindingCached(findingId);
-  if (!finding) return;
-  const remRun = [...finding.runs].reverse().find((r) => r.agent === 'remediation' && r.verdict && r.verdict.applied_diff);
-  if (!remRun) {
-    alert('No diff on record for this finding.');
-    return;
-  }
-  openDiffModal(finding, remRun.verdict.applied_diff);
+// The diff itself lives in the finding's own Agent runs section (runCardHtml() renders any
+// remediation run's applied_diff as a colored diff block there) — no separate popup, just jump
+// to the page that already shows it.
+function onViewDiffClick(findingId) {
+  openFindingDetail(findingId);
 }
 
-function startFixAndVerify(findingId, finding, targetPath) {
+// Mirrors startStage()'s optimistic-placeholder pattern so the run shows as in-progress
+// immediately rather than only once it finishes.
+function startRemediateApply(findingId, finding, targetPath) {
+  const runId = uid();
+  stages.set(runId, findingId);
+  stageConsoles.set(runId, { runId, consoleText: '', consoleOpen: false, consoleEl: null });
+  applyWriteRunIds.add(runId);
+
+  const startedAt = Date.now();
+  const context = buildBaseContext(finding);
+  upsertTimelineEntry({
+    kind: 'remediation', runId, findingId, findingTitle: finding.title, agent: 'remediation',
+    status: 'running', instruction: '', verdict: null, startedAt, finishedAt: null,
+  });
+  finding.runs.push({ runId, agent: 'remediation', status: 'running', verdict: null, startedAt, finishedAt: null });
+  if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
+
+  ws.send(JSON.stringify({ type: 'remediate_apply', runId, findingId, context, instruction: '', path: targetPath }));
+}
+
+// Only the first stage (Remediation) gets an optimistic client-side placeholder — Verify's
+// placeholder arrives via the server's own 'started' message once that stage actually begins
+// (same dedup pattern startStage()'s comment describes), since we don't yet know whether it'll
+// even run (Remediation failing stops the chain early).
+function startRemediateAll(findingId, finding, targetPath) {
   const remediationRunId = uid();
   const verifyRunId = uid();
-
   stages.set(remediationRunId, findingId);
   stages.set(verifyRunId, findingId);
   stageConsoles.set(remediationRunId, { runId: remediationRunId, consoleText: '', consoleOpen: false, consoleEl: null });
   stageConsoles.set(verifyRunId, { runId: verifyRunId, consoleText: '', consoleOpen: false, consoleEl: null });
-  fixVerifyRemediationRunIds.add(remediationRunId);
+  applyWriteRunIds.add(remediationRunId); // a precheck failure (dirty tree) is tagged with the first stage's runId, since that's the only one with a client-side placeholder before the server responds
 
   const startedAt = Date.now();
   const context = buildBaseContext(finding);
@@ -3653,20 +3917,13 @@ function startFixAndVerify(findingId, finding, targetPath) {
   if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
 
   ws.send(JSON.stringify({
-    type: 'fix_and_verify', findingId, remediationRunId, verifyRunId, context, instruction: '', path: targetPath,
+    type: 'remediate_all', findingId, remediationRunId, verifyRunId, context, instruction: '', path: targetPath,
   }));
 }
 
-function closeDiffModal() {
-  document.getElementById('diff-modal-overlay').hidden = true;
-}
-document.getElementById('diff-modal-close').addEventListener('click', closeDiffModal);
-document.getElementById('diff-modal-overlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('diff-modal-overlay')) closeDiffModal();
-});
-
 // Minimal unified-diff line coloring — no external diff library, consistent with this app's
-// no-external-deps aesthetic. Only cares about the leading +/-/@@ marker per line.
+// no-external-deps aesthetic. Only cares about the leading +/-/@@ marker per line. Used by
+// runCardHtml() to render a write-capable remediation run's applied_diff on Finding Detail.
 function diffLineHtml(line) {
   let cls = '';
   if (line.startsWith('+++') || line.startsWith('---')) cls = 'meta';
@@ -3675,15 +3932,6 @@ function diffLineHtml(line) {
   else if (line.startsWith('@@')) cls = 'hunk';
   else if (line.startsWith('diff --git') || line.startsWith('index ')) cls = 'meta';
   return `<div class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line) || '&nbsp;'}</div>`;
-}
-
-function openDiffModal(finding, diffText) {
-  document.getElementById('diff-modal-subtitle').textContent = `${finding.title} — applied by Remediation, confirmed by Verify`;
-  const bodyEl = document.getElementById('diff-modal-body');
-  bodyEl.innerHTML = diffText && diffText.trim()
-    ? diffText.split('\n').map(diffLineHtml).join('')
-    : '<div class="diff-line meta">(no changes were written)</div>';
-  document.getElementById('diff-modal-overlay').hidden = false;
 }
 
 function buildBaseContext(finding) {
@@ -3739,6 +3987,7 @@ function renderFindingDetail(findingId) {
       <span class="badge ${finding.severity}">${escapeHtml(severityLabel(finding.severity))}</span>
       <span class="badge ${finding.status}">${escapeHtml(statusLabel(finding.status))}</span>
       <span class="scan-type-chip" style="color:${typeMeta.color}; background:${hexToRgba(typeMeta.color, .16)};">${escapeHtml(typeMeta.label)}</span>
+      ${findingSourceTagHtml({ stageRuns: findingStageRuns(finding) })}
     </div>
   `;
 
@@ -3843,9 +4092,9 @@ function runCardHtml(run) {
     const v = run.verdict;
     const badgeFields = VERDICT_BADGE_FIELDS.filter((k) => v[k]);
     const otherFields = Object.keys(v).filter((k) => !VERDICT_SKIP_FIELDS.has(k) && v[k] != null && v[k] !== '' && !(Array.isArray(v[k]) && !v[k].length));
-    // applied_diff only exists on a Fix & Verify remediation run — the one place this app
-    // shows real evidence of a file it wrote, so it gets its own colored diff block rather
-    // than folding into the generic key/value grid above.
+    // applied_diff only exists on a write-capable remediation run (the loop cell's advance
+    // button) — the one place this app shows real evidence of a file it wrote, so it gets its
+    // own colored diff block rather than folding into the generic key/value grid above.
     const appliedDiffHtml = v.applied_diff
       ? `<div class="fd-section-title" style="margin-top:10px;">Applied diff</div><pre class="diff-block">${v.applied_diff.split('\n').map(diffLineHtml).join('')}</pre>`
       : '';
@@ -3894,11 +4143,12 @@ function renderFindingDetailActions(finding) {
   const btn = document.createElement('button');
   btn.className = 'secondary';
   btn.textContent = 'Agent Runs ▾';
-  btn.disabled = !agentsList.length;
+  const excluded = finding.scanType === 'sca' ? SCA_EXCLUDED_AGENTS : FIX_FLOW_AGENTS;
+  btn.disabled = !agentsList.some((a) => !excluded.includes(a));
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     const rect = btn.getBoundingClientRect();
-    openFindingContextMenu(rect.left, rect.bottom + 4, finding.id);
+    openFindingContextMenu(rect.left, rect.bottom + 4, finding.id, finding);
   });
   actionsEl.appendChild(btn);
 }
@@ -3969,7 +4219,11 @@ function startStage(findingId, agent, context, instruction) {
   }
 
   const runMsg = { type: 'run', runId, findingId, agent, context, instruction };
-  if (agent === 'verify') {
+  // Verify always needs live-directory access to confirm a fix landed. 'triage' is included
+  // here only as a leftover from when the loop's step arrow could still trigger a live Triage
+  // call — it no longer can (see CLAUDE.md), so this branch is effectively unreachable now, but
+  // harmless to leave since the server has no triage.md to spawn regardless.
+  if (agent === 'verify' || agent === 'triage') {
     const path = findingSourcePath(finding);
     if (path) runMsg.path = path;
   }
@@ -4002,10 +4256,11 @@ function handleServerMessage(msg) {
   if (!findingId) return;
 
   if (msg.type === 'started') {
-    // Fix & Verify's second stage (Verify) only starts once Remediation finishes, so it has no
-    // optimistic "running" placeholder from click-time the way every other run gets — push one
-    // now if it's missing. A plain no-op duplicate-check for every other run, which already
-    // pushed its own placeholder before sending.
+    // startStage()/startRemediateApply() push their own optimistic "running" placeholder before
+    // sending, so this is a no-op duplicate-check for those. startRemediateAll()'s Remediation
+    // and Verify stages are the exception — they can't get a placeholder at click-time since the
+    // chain doesn't yet know whether they'll even run (Triage might close the finding or error
+    // out first) — push one now if it's missing.
     const finding = findingCache.get(findingId);
     if (finding && !finding.runs.some((r) => r.runId === msg.runId)) {
       finding.runs.push({ runId: msg.runId, agent: msg.agent, status: 'running', verdict: null, startedAt: Date.now(), finishedAt: null });
@@ -4024,11 +4279,11 @@ function handleServerMessage(msg) {
     return; // CLI-internal chatter, not actionable
   }
   if (msg.type === 'error') {
-    // A Fix & Verify precheck failure (not a git repo, dirty tree, etc.) never gets a run
-    // pushed server-side, so there's nothing for the normal error badge to attach to — surface
-    // it directly instead of leaving the user staring at a run that silently vanishes.
-    if (fixVerifyRemediationRunIds.has(msg.runId)) {
-      fixVerifyRemediationRunIds.delete(msg.runId);
+    // A write-flow precheck failure (not a git repo, dirty tree, etc.) never gets a run pushed
+    // server-side, so there's nothing for the normal error badge to attach to — surface it
+    // directly instead of leaving the user staring at a run that silently vanishes.
+    if (applyWriteRunIds.has(msg.runId)) {
+      applyWriteRunIds.delete(msg.runId);
       alert(msg.message);
     }
     upsertTimelineEntry({ runId: msg.runId, status: 'error', finishedAt: Date.now() });
@@ -4037,11 +4292,7 @@ function handleServerMessage(msg) {
   }
   if (msg.type === 'done') {
     upsertTimelineEntry({ runId: msg.runId, status: msg.code === 0 ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
-    if (fixVerifyRemediationRunIds.has(msg.runId)) {
-      fixVerifyRemediationRunIds.delete(msg.runId);
-      const finding = findingCache.get(findingId);
-      if (finding && msg.verdict && msg.verdict.applied_diff !== undefined) openDiffModal(finding, msg.verdict.applied_diff);
-    }
+    applyWriteRunIds.delete(msg.runId);
     refreshFindingAfterRun(findingId);
     return;
   }
@@ -4059,6 +4310,7 @@ async function refreshFindingAfterRun(findingId) {
     status: finding.status,
     runCount: finding.runs.length,
     latestRun: finding.runs.length ? (({ agent, status, verdict }) => ({ agent, status, verdict }))(finding.runs[finding.runs.length - 1]) : null,
+    stageRuns: findingStageRuns(finding),
   });
 }
 
@@ -4078,7 +4330,20 @@ function setStageStatus(stage, status, text) {
 
 // ---------- context menus ----------
 
-function openFindingContextMenu(x, y, findingId) {
+// Triage/Remediation/Verify each have their own dedicated control now — the Remediation Loop
+// column's step arrow and "run all stages" button (see findingLoopCellHtml()) — so this menu no
+// longer lists them; it's just Threat Model (a separate, optional deep-dive that deliberately
+// doesn't sit on that path — see CLAUDE.md's Pipeline shape) plus whatever custom agents exist.
+const FIX_FLOW_AGENTS = ['triage', 'remediation', 'verify'];
+// SCA findings additionally lose Threat Model too — none of the four per-finding code-analysis
+// agents apply to a dependency version bump (already named in the Package/Fixed-in columns), so
+// nothing in FIX_FLOW_AGENTS or Threat Model is offered, leaving only custom agents (if any).
+const SCA_EXCLUDED_AGENTS = [...FIX_FLOW_AGENTS, 'threat_model'];
+
+// `finding` is optional — pass it when the caller already has one (a table row's own object, or
+// Finding Detail's cached object) so SCA findings can have Threat Model filtered out of the menu
+// without an extra fetch. Omit it and the menu falls back to showing every eligible agent.
+function openFindingContextMenu(x, y, findingId, finding) {
   contextMenuEl.innerHTML = '';
   const addItem = (label, disabled, onClick) => {
     const btn = document.createElement('button');
@@ -4087,21 +4352,27 @@ function openFindingContextMenu(x, y, findingId) {
     btn.addEventListener('click', () => { closeContextMenu(); onClick(); });
     contextMenuEl.appendChild(btn);
   };
-
-  // One menu item per agent declared on the Agents screen (agentsList — built-in
-  // plus any custom agents; 'scan' is already filtered out server-side). Every
-  // path here opens the stage modal rather than running an agent immediately —
-  // the AppSec tester reviews context/instructions and explicitly clicks
-  // "Start stage" before anything executes, so there's always a deliberate
-  // action behind a run, not an implicit auto-fix.
-  if (!agentsList.length) {
-    addItem('No agents available', true, () => {});
-  }
-  for (const agentName of agentsList) {
+  const runAgentItem = (agentName) => {
     addItem(`Run ${agentMeta(agentName).label}…`, false, async () => {
-      const finding = await ensureFindingCached(findingId);
-      if (finding) openFreshStageModal(findingId, agentName, buildBaseContext(finding));
+      const f = await ensureFindingCached(findingId);
+      if (f) openFreshStageModal(findingId, agentName, buildBaseContext(f));
     });
+  };
+
+  // One menu item per agent declared on the Agents screen (agentsList — built-in plus any
+  // custom agents; 'scan' is already filtered out server-side), minus the fix-flow agents
+  // (always) and Threat Model (SCA findings only). Every path here opens the stage modal rather
+  // than running an agent immediately — the AppSec tester reviews context/instructions and
+  // explicitly clicks "Start stage" before anything executes, so there's always a deliberate
+  // action behind a run, not an implicit auto-fix.
+  const isSca = finding && finding.scanType === 'sca';
+  const excluded = isSca ? SCA_EXCLUDED_AGENTS : FIX_FLOW_AGENTS;
+  const eligibleAgents = agentsList.filter((a) => !excluded.includes(a));
+
+  if (!eligibleAgents.length) {
+    addItem(isSca ? 'No agent actions apply — update the package instead' : 'No agents available', true, () => {});
+  } else {
+    for (const agentName of eligibleAgents) runAgentItem(agentName);
   }
 
   positionAndShowMenu(x, y);

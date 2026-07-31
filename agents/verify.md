@@ -55,6 +55,7 @@ in your response:
 }
 ```
 
-Use the same `confidence` scale Triage uses (see `agents/triage.md`) — `high` only when you
-directly traced the current code and are confident it does or doesn't close the gap; `low` when
-you're relying on partial evidence or couldn't fully confirm either way.
+Use the same `confidence` scale Triage uses (see `agents/remediation.md` for the full
+definitions) — `high` only when you directly traced the current code and are confident it does
+or doesn't close the gap; `low` when you're relying on partial evidence or couldn't fully
+confirm either way.
