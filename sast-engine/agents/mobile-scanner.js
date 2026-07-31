@@ -7,7 +7,6 @@
  * Based on OWASP Mobile Top 10 2024.
  */
 
-import fs from 'fs';
 import path from 'path';
 import { BaseAgent, createFinding } from './base-agent.js';
 

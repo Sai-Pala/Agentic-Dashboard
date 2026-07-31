@@ -21,7 +21,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import { createHash } from 'crypto';
 import { BaseAgent, createFinding } from './base-agent.js';
 
 // =============================================================================

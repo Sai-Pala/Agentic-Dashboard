@@ -7,7 +7,6 @@
  * unprotected storage operations, and anon-key data mutations.
  */
 
-import fs from 'fs';
 import path from 'path';
 import { BaseAgent, createFinding } from './base-agent.js';
 

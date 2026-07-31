@@ -79,7 +79,7 @@ function loadSastEngine() {
       import('./sast-engine/utils/patterns.js'),
     ]).then(([agentsIndex, deps, remediationApply, patterns]) => ({
       buildOrchestratorAsync: agentsIndex.buildOrchestratorAsync,
-      BUILT_IN_AGENT_COUNT: agentsIndex.BUILT_IN_AGENT_COUNT,
+      listBuiltInAgents: agentsIndex.listBuiltInAgents,
       runDepsAudit: deps.runDepsAudit,
       validatePlan: remediationApply.validatePlan,
       applyPlan: remediationApply.applyPlan,
@@ -851,6 +851,12 @@ wss.on('connection', (ws) => {
         scanIndexed.status = 'cancelled';
         scanIndexed.finishedAt = Date.now();
       }
+      // runHybridReasoningScan()/runDeterministicScaScan() both return early once
+      // scan.status === 'cancelled', before ever reaching finish()/fail() — the two places that
+      // normally clean this Map entry up. Delete it here instead, since this cancel message is
+      // the only signal a cancelled scan's entry will ever get. (The scans Map/REST history is
+      // untouched — this only clears the transient runId->scan lookup used for WS routing.)
+      if (scanIndexed) scanRunIndex.delete(runId);
       // A module-scoped reasoning scan's actual claude processes are never registered under
       // the scan's own runId (see runLLMReasoningScan()) — each module has its own synthetic
       // `${runId}::modN` key instead, tracked on scanIndexed.moduleRunIds. Without this, the
@@ -1064,11 +1070,14 @@ wss.on('connection', (ws) => {
     // gets killed regardless via child.kill() at the end of this loop, but mark every
     // still-running scan cancelled directly here too, so a modular scan's bookkeeping doesn't
     // depend on its module keys happening to match a real runId.
-    for (const scanIndexed of scanRunIndex.values()) {
+    for (const [runId, scanIndexed] of scanRunIndex.entries()) {
       if (scanIndexed.status === 'running') {
         scanIndexed.status = 'cancelled';
         scanIndexed.finishedAt = Date.now();
       }
+      // Same leak, same fix as the 'cancel' handler above: finish()/fail() never run for a
+      // cancelled scan, so nothing else ever clears this entry.
+      scanRunIndex.delete(runId);
     }
     for (const [runId, child] of children.entries()) {
       const indexed = runIndex.get(runId);
@@ -1138,7 +1147,16 @@ async function applyRemediationPlan(targetPath, verdict) {
   }
 
   const engine = await loadSastEngine();
-  const validation = engine.validatePlan(targetPath, plan);
+  let validation;
+  try {
+    validation = engine.validatePlan(targetPath, plan);
+  } catch (err) {
+    // e.g. a proposed path resolving to a directory (fs.readFileSync throws EISDIR) — an
+    // unlikely but real LLM slip. Report it the same way an invalid plan is reported, rather
+    // than letting it propagate as an unhandled rejection (this function's only callers are
+    // fire-and-forget IIFEs with no .catch()).
+    return { applied: false, diff: null, error: `Proposed edit could not be validated: ${err.message}` };
+  }
   if (!validation.ok) {
     return { applied: false, diff: null, error: `Proposed edit could not be applied: ${validation.reason}` };
   }
@@ -1604,11 +1622,21 @@ async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, 
   }
 
   let done = 0;
-  const total = orchestrator.agents.length;
+  // Placeholder only — orchestrator.agents.length counts every registered agent, but many are
+  // gated behind shouldRun(recon) (framework-relevance checks, e.g. mobile-scanner only applies
+  // to a mobile codebase) and never actually run on a given repo. onScopeReady below corrects
+  // this to the real post-filter count before any onAgentDone call fires, so the "Pattern match"
+  // bar doesn't permanently stall below 100% once the skipped agents' slots are unfillable.
+  let total = orchestrator.agents.length;
   try {
     const result = await orchestrator.runAll(targetPath, {
       quiet: true,
       onlyFiles: diffFiles || undefined,
+      onScopeReady: (realTotal) => {
+        total = realTotal;
+        if (scan.status === 'cancelled') return;
+        send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'deterministic', done, total });
+      },
       onAgentDone: (agentResult, agentFindings) => {
         done++;
         if (scan.status === 'cancelled') return;
@@ -1753,6 +1781,24 @@ function partitionReasoningModules(targetPath, engine) {
   }));
 }
 
+// Tells the reasoning pass what the deterministic half already covers, so it can lean into
+// business logic/authz/attack-surface reasoning instead of re-deriving known pattern categories
+// — built from each agent's own name/description/category (declared right in its constructor,
+// e.g. `super('SSRFProber', 'Detect Server-Side Request Forgery vulnerabilities', 'ssrf')`), not
+// a second hand-maintained file, so it can never drift from what sast-engine actually checks: add
+// or remove a built-in agent and this list updates itself next scan with no extra step. Kept to
+// one line per agent (name + its existing one-sentence description) rather than each pattern's
+// full regex/description/fix — the per-rule detail would run to hundreds of entries across 29
+// agents, real prompt bloat for a static block repeated on every module + cross-cutting call in
+// a scan, where this ~29-line version costs a few hundred tokens.
+function buildCoverageSummary(engine) {
+  const lines = engine.listBuiltInAgents().map((a) => `- ${a.name} (${a.category}): ${a.description}`);
+  return 'Categories already covered by a deterministic pattern-matching engine running in ' +
+    'parallel over this same codebase — do not spend effort re-deriving these from scratch; ' +
+    'focus on business logic, authorization/access-control reasoning, and attack-surface ' +
+    'analysis a fixed rule set structurally cannot do:\n' + lines.join('\n');
+}
+
 // Runs the LLM reasoning pass (agents/scan.md), relaying its real narration live exactly like
 // the pipeline's other claude -p stages, and returns { findings, error } — a raw array of
 // finding objects merged across every module call (not yet turned into Finding records; see
@@ -1778,16 +1824,18 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, { children, send
     return { findings: [], error: `Failed to read scan agent prompt: ${err.message}` };
   }
 
+  let engine;
+  try {
+    engine = await loadSastEngine();
+  } catch (err) {
+    return { findings: [], error: `Failed to load scan engine: ${err.message}` };
+  }
+  systemPrompt += '\n\n' + buildCoverageSummary(engine);
+
   let modules;
   if (diffFiles) {
     modules = [{ label: 'diff', paths: diffFiles }];
   } else {
-    let engine;
-    try {
-      engine = await loadSastEngine();
-    } catch (err) {
-      return { findings: [], error: `Failed to load scan engine: ${err.message}` };
-    }
     modules = partitionReasoningModules(targetPath, engine);
     if (!modules.length) return { findings: [], error: null }; // nothing to scan — a valid empty outcome
     // A cross-cutting pass sees the whole tree, unscoped — every module call above is told to

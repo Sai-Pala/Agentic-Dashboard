@@ -20,11 +20,10 @@ gets a triage verdict synthesized at creation time — from the deterministic en
 verification pass, from the reasoning pass's own assessment (it triages what it finds in the
 same call), or a neutral placeholder for a manually added finding. The UI is a "mission control" style app with a
 global left nav ordered to mirror the actual finding pipeline — Dashboard / Reasoning Scan /
-SCA Scan / Control Scan / Agent Triage / Threat Model / Reports — with Agent Configuration and
-Settings both tucked into the nav footer instead of the main list. Agent Configuration used to
-be a top-level item, but it's a config/admin screen (editing `agents/*.md` files), not a
-workflow step in the Scan → Agent Triage → Threat Model flow the rest of the main nav walks
-through in order, so it was moved down next to Settings — the other admin-y nav-footer entry. Reasoning
+SCA Scan / Control Scan / Agent Triage / Threat Model / Reports — with a theme toggle and
+Settings in the nav footer instead of the main list. There used to be a dedicated Agent
+Configuration admin screen here too (editing `agents/*.md` files from the browser); it's been
+removed — see the Agent Configuration bullet below for what replaced it. Reasoning
 Scan, SCA Scan, and Control Scan additionally sit grouped under a small non-clickable `SCANS`
 section label (`.nav-section-label`) and are visually indented (`.nav-item-indent`, both
 collapsing back to a plain centered icon when the sidebar is collapsed) — the flat list
@@ -56,21 +55,21 @@ dots do.
   `#dash-timeline-link` — the latter opens the timeline drawer, see the Timeline bullet below,
   not a dedicated view) linking into those destinations, stat tiles (in progress, not started,
   in review, remediation ready, total findings, total agent runs), and an Agents panel (every
-  per-finding agent from `agentsList` — built-in or custom — so it grows automatically as
-  agents are added in Agent Configuration; the whole-app agents, Scan/App Threat Model/Control
-  Scan, are deliberately excluded since `agentsList` itself is already filtered to per-finding
-  agents server-side, see below). The panel itself (`#dash-agents-panel`, `.panel-clickable`) is a single
-  click target that navigates straight to Agent Configuration — a small "→" fades in on hover
-  (`.panel-title-arrow`) as the only visual hint it's clickable, since a whole panel acting as
-  one link has no other natural affordance. It holds no form of its own — `renderDashboard()`
-  only refreshes the briefing/stats/agents panel, nothing else. The quick-actions row replaced
+  per-finding agent from `agentsList` — built-in or custom — so it grows automatically as new
+  agents are added; the whole-app agents, Scan/App Threat Model/Control Scan, are deliberately
+  excluded since `agentsList` itself is already filtered to per-finding agents server-side, see
+  below). The panel (`#dash-agents-panel`) is a plain display list now, not a link — it used to
+  navigate to a dedicated Agent Configuration admin screen, which has been removed (see the
+  Agent Configuration bullet below). It holds no form of its own — `renderDashboard()` only
+  refreshes the briefing/stats/agents panel, nothing else. The quick-actions row replaced
   an earlier `.dash-footer` bar that crammed the same two links into a thin text strip
   alongside a "`{n} findings · {m} total runs`" summary — that summary was pure duplication of
   numbers the stat tiles already show directly above it, and the two links read as an
   afterthought; removed the redundant text and gave the links real button-card treatment
-  instead. The connection/findings-count/agents-ready/scans-count status lives in the sidebar
-  (`#nav-status`, rendered by `renderNavStatus()`) so it's visible from every view, not just
-  Dashboard.
+  instead. An earlier design also kept a persistent connection/findings-count/agents-ready/
+  scans-count status block in the sidebar (`#nav-status`) — removed as redundant with the
+  per-page nav badges, which already surface running/attention state contextually; the sidebar
+  now only carries the theme toggle, Settings, and a small connection indicator.
 - **Reasoning Scan** — the scan kickoff form and its live cards, on their own top-level page: a
   target-directory input, branch/app fields, and a Start button — followed by
   `#scan-live-container` (2-column grid of live scan cards). Starting a scan optimistically
@@ -220,6 +219,21 @@ dots do.
       the elapsed timer, since the scan is still running or already succeeded. Used for: one
       engine erroring while the other still produced results, and the "N/M reasoning calls had
       issues" partial-failure summary (which now includes budget-exhaustion messages).
+    - **Every module and cross-cutting call's system prompt also carries a coverage summary** —
+      `buildCoverageSummary()` in `server.js`, appended after `agents/scan.md`'s own content —
+      telling the model what the deterministic half already checks, so it leans into business
+      logic/authz/attack-surface reasoning instead of re-deriving known pattern categories. Built
+      from `sast-engine/agents/index.js`'s new `listBuiltInAgents()` export, which just maps each
+      registered agent to the `name`/`description`/`category` already passed to its own `super()`
+      call (e.g. `super('SSRFProber', 'Detect Server-Side Request Forgery vulnerabilities',
+      'ssrf')`) — deliberately **not** a second hand-maintained file and **not** each pattern's
+      full regex/description/fix text: the former would drift out of sync with sast-engine the
+      first time an agent is added/changed without a matching doc update, and the latter would
+      run to hundreds of entries across 29 agents, real prompt bloat for a block repeated on
+      every module + cross-cutting call in a scan. One line per agent keeps the whole summary to
+      ~29 lines (~800 tokens, verified), a small fixed cost per scan that doesn't grow with repo
+      size and can never go stale, since it's read from the same constructor call that defines
+      the agent's actual detection logic.
     - This design (bounded-context scoping instead of full-repo roam, a hard per-call dollar cap,
       concurrency-limited execution, a cross-cutting pass for wiring gaps, and honest
       budget/cost/failure reporting) is phase 1 of a larger reasoning-engine hardening effort
@@ -233,6 +247,22 @@ dots do.
     anything without a resolvable line (most business-logic/attack-surface findings) always
     survives, since there's nothing to compare it against. If one half errors out, the scan
     still succeeds on the other half's results alone (a `scan-stderr` note flags the failure).
+
+  **The "Pattern match" bar used to permanently stall below 100%, found via a live repro
+  scan.** `runDeterministicPatternScan()` originally seeded its `total` from
+  `orchestrator.agents.length` (29, every registered pattern agent) before calling
+  `orchestrator.runAll()`, but many agents are gated behind a `shouldRun(recon)`
+  framework-relevance check (`mobile-scanner`, `supabase-rls-agent`, and 11 others —
+  `sast-engine/agents/orchestrator.js`'s `relevantAgents` filter) that most repos don't satisfy;
+  a skipped agent's slot in `total` can never be filled by `onAgentDone`, since that callback
+  only fires for agents the orchestrator actually ran. On an ordinary small repo this
+  reliably left the bar stuck at, e.g., `27/29` for the rest of the scan's duration — looking
+  identical to a hung pattern-match half even though it had already finished. Fix: `runAll()`
+  now accepts an `options.onScopeReady(realTotal)` callback, invoked with `relevantAgents.length`
+  right after `shouldRun` filtering and before the per-agent loop starts;
+  `runDeterministicPatternScan()` uses it to correct `total` (and re-send a `scan-progress` with
+  the corrected total) before any `onAgentDone` call can fire, so the bar's denominator always
+  matches what will actually complete.
 
   Both halves stream live: the deterministic half's `onAgentDone` callback (a hook added on top
   of ship-safe's own orchestrator, which only reported progress via terminal spinners) relays
@@ -268,8 +298,8 @@ dots do.
   'confirmed'` when verified, `'needs_review'` otherwise — only critical/high findings actually
   get checked by `VerifierAgent`, so anything below that floor lands as `needs_review` too, not
   because it's suspect but because it was never independently re-checked); `cwe`/`owasp` come
-  straight from the pattern that matched, `asvs`/`nist_800_53` are always `null` (sast-engine has
-  no mapping for either). Reasoning-pass findings: `findingFromLLMScan()` instead takes the
+  straight from the pattern that matched, `asvs` is always `null` and `nist_800_53` is always `[]`
+  (sast-engine has no mapping for either). Reasoning-pass findings: `findingFromLLMScan()` instead takes the
   *real* triage verdict `scan.md` assigned itself in the same pass (`verdict`,
   `severity_confirmed`, `confidence`, `priority`, and — unlike the deterministic half — genuine
   `owasp`/`asvs`/`cwe`/`nist_800_53` mapping, since the model doing the reasoning is also the one
@@ -343,13 +373,15 @@ dots do.
   `'loop'`; see below for why). Severity/Title/Remediation Loop/Status columns are click-to-sort
   (`findingsSort`, toggling asc/desc on the same header, both `'status'` and `'loop'` keys
   sorting by the same `STATUS_ORDER_MAP`). Every row carries a trailing **`.ft-actions-col`**
-  (`.ft-actions-cell`, a small flex row) holding, for a reasoning finding, the Remediation
-  Loop's own advance/run-all buttons (`findingLoopActionsHtml()` — see below) rendered here
-  rather than inside the narrow loop cell itself, followed by a small three-dot button (reusing
-  the `.console-toggle-btn` icon-button style) that opens the exact same per-agent dropdown as
+  (`.ft-actions-cell`, a small flex row) holding a single small three-dot button (reusing the
+  `.console-toggle-btn` icon-button style) that opens the exact same per-agent dropdown as
   right-clicking the row — added because right-click alone isn't discoverable, especially
   without a mouse; the button just calls `openFindingContextMenu()` positioned under itself via
-  `getBoundingClientRect()`, same pattern as the Finding Detail page's "Agent Runs ▾" button.
+  `getBoundingClientRect()`, same pattern as the Finding Detail page's own three-dot menu button
+  (see below). The Remediation Loop's advance/run-all controls used to live here too
+  (`findingLoopActionsHtml()`) — removed; advancing the loop now happens entirely from the
+  finding's own detail page (the Triage/Fix/Verify boxes + "run all" button, see below), so this
+  column's only action is the agent menu, and the loop cell (below) is purely read-only.
   There's no row-selection checkbox column, and no per-row "quick remediate" wrench either — an
   earlier design had a wrench icon here running the advisory, read-only Remediation agent with
   one click; removed because a completed quick-remediate run never actually moved the
@@ -359,8 +391,9 @@ dots do.
   earlier design had these same checkboxes plus a page-header "Auto-remediate selected (N)" bulk
   button running the same read-only call across every checked row — also removed, for being a
   redundant second path once the wrench existed. Both of those advisory-preview entry points are
-  gone now; the only way to run Remediation from this table is the loop's own advance/run-all
-  buttons, and both of those always write (see "Progressing the loop" below).
+  gone now; running Remediation happens from the finding's own detail page (the Triage/Fix/Verify
+  boxes + "run all stages" button, see the Finding Detail bullet above), not from this table at
+  all — both of those always write (see "Progressing the loop" below).
 
   **The Remediation Loop column** (`findingLoopCellHtml()`, reasoning findings only — see
   below for SCA) is the main way this table communicates progress through the full pipeline —
@@ -385,25 +418,18 @@ dots do.
   even though three tiny dots and a short label never need it. "Found" isn't a fourth dot here —
   a finding is always already "found" the moment it exists, so a node for it never carried real
   information; an earlier 4-dot-track design included it anyway (see the redesign history below)
-  before being condensed to just the three stages that can actually change state. The
-  advance/run-all controls instead render in the row's own actions column
-  (`findingLoopActionsHtml()`, see the actions-column paragraph above) — "on the side" of the
-  row, next to the "…" menu button, rather than crammed into this narrow column: a circular
-  **advance button** (24px, sized up from an earlier 20px pass that read as too small to
-  comfortably click — a single chevron `›` icon, `.loop-advance-btn`, using the new `chevronRight`
-  glyph rather than the older `arrowRight` icon, which included a horizontal shaft that made it
-  harder to tell apart from the run-all button at a glance) that runs exactly the *next* stage
-  and stops — not a wide label-changing button — plus a second, accent-bordered **"run all
-  stages" button** (same 24px sizing, a skip-forward `⏭` icon via the new `skipForward` glyph —
-  a triangle-plus-bar shape, deliberately *not* the old double-chevron `fastForward` icon, which
-  read as just a slightly-longer version of the advance button's arrow rather than a visually
-  distinct action — `.loop-run-all-btn`) that chains the two remaining real stages (Remediation
-  apply → Verify) under one confirmation, for
-  when stepping through individually isn't needed (see "Progressing the loop" below for both).
-  `findingLoopActionsHtml()` shares the exact same state-derivation (`findingLoopState()`) as the
-  status column, so the two always agree — it just returns `''` while any stage is `running` or
-  once `verified === 'done'` (nothing left to advance to). State is derived by
-  `findingLoopState()` from `findingStageRuns()`, which needs each stage's own latest run
+  before being condensed to just the three stages that can actually change state.
+
+  This table used to also render advance ("→") and "run all stages" ("»") buttons in the row's
+  own actions column (`findingLoopActionsHtml()`, `.loop-advance-btn`/`.loop-run-all-btn`) — that
+  function and both button styles are gone. Advancing the loop now happens exclusively from the
+  finding's own detail page: three boxes (Triage/Fix/Verify) plus a "run all stages" button, in
+  the exact same visual language (state colors, running/done/attention) this table's status
+  track still uses (see the Finding Detail bullet above, and "Progressing the loop" below for how
+  clicking a box or the run-all button actually dispatches). This table's Loop column is now a
+  pure, unclickable status readout — its only row-level action is the "…" agent menu.
+
+  State is derived by `findingLoopState()` from `findingStageRuns()`, which needs each stage's own latest run
   independently (not just the single overall latest) — a list-item finding (from `GET
   /api/findings`) carries that precomputed server-side as `.stageRuns` (`toListItem()` in
   `server.js`, via `latestRunByAgent()` scanning `finding.runs` for the last run of each agent
@@ -426,23 +452,22 @@ dots do.
   (see above); it's kept only as a defensive fallback. A `verified === 'attention'` state maps
   back to `'remediate'`, not another `'verify'`, since Verify already said the fix didn't hold
   and the actionable next step is another fix attempt, not re-checking the same unfixed state.
-  The status label + advance button read: triaged, not yet fixed → accent "Triaged" + advance
-  (tooltip "Apply a fix (writes to your code)", disabled without a path); any stage `running` →
-  a plain "Fixing…"/"Verifying…" hint, no button; Remediation failed → red "Fix failed" + advance (tooltip "Retry
-  the fix"); Verify came back `still_vulnerable`/`partially_fixed`/`inconclusive` → red "Not
-  fixed yet" + advance (tooltip "Retry the fix"); Verify came back `verified_fixed` → green
-  "Verified fixed" + a small `.loop-view-diff` link (`onViewDiffClick()`, just calls
-  `openFindingDetail()` — see below for why there's no popup to open) instead of a button —
-  nothing left to advance to. Only Remediation/Verify-bound advance-button states are disabled
-  (`opacity:.3`) when `findingSourcePath()` can't resolve a directory for the finding (no
-  `sourceScanId` — manually-added findings have nowhere to write to); the "run all stages"
-  button is *always* gated on a known path, since Remediation is unconditionally part of that
-  chain. Both buttons disable themselves client-side the instant they're clicked
-  (`e.currentTarget.disabled = true` in the row-wiring handlers) so a fast double-click can't
-  fire two real runs/pipelines against the same directory at once — the next table render (on
-  that run's `done`/`error`) replaces the row's DOM anyway, so nothing needs to re-enable it. A
-  `status === 'closed'` finding (false positive/duplicate) shows neither track nor buttons — the
-  loop doesn't apply to something dismissed as not real. This column has gone through several
+  The table's status label reads: triaged, not yet fixed → accent "Triaged"; any stage
+  `running` → a plain "Fixing…"/"Verifying…" hint; Remediation failed → red "Fix failed"; Verify
+  came back `still_vulnerable`/`partially_fixed`/`inconclusive` → red "Not fixed yet"; Verify
+  came back `verified_fixed` → green "Verified fixed" + a small `.loop-view-diff` link
+  (`onViewDiffClick()`, just calls `openFindingDetail()` — see below for why there's no popup to
+  open). None of these carry a button anymore — purely a status readout, click the row (or the
+  matching box on Finding Detail) to act on it. The equivalent logic on Finding Detail
+  (`fdLoopBoxesHtml()`) disables whichever box is otherwise actionable when
+  `findingSourcePath()` can't resolve a directory for the finding (no `sourceScanId` —
+  manually-added findings have nowhere to write to); the "run all stages" button is *always*
+  gated on a known path there, since Remediation is unconditionally part of that chain, and both
+  disable themselves client-side the instant they're clicked (`e.currentTarget.disabled = true`)
+  so a fast double-click can't fire two real runs/pipelines against the same directory at once —
+  the next render (on that run's `done`/`error`) replaces the node anyway, so nothing needs to
+  re-enable it. A `status === 'closed'` finding (false positive/duplicate) shows neither track
+  nor boxes — the loop doesn't apply to something dismissed as not real. This column has gone through several
   redesigns: a plain status *badge* plus a pencil icon requiring horizontal scroll to see, gated
   by a page-level **Read-only** checkbox that silently changed what the same pencil did; a
   one-click-does-everything "Fix & Verify" button with a 3-segment flat-bar stepper; a
@@ -451,17 +476,20 @@ dots do.
   and reintroduced a "run everything" shortcut as its own dedicated button rather than a
   row-menu item — a "Push loop ahead" menu item briefly existed for the same purpose and was
   removed for reading as a near-duplicate of the bulk "Auto-remediate selected" button that
-  existed at the time (single-finding + real writes vs. bulk + advisory-only); and now this one,
-  which condenses that 4-dot track into three tiny dots (dropping the redundant "Found" node,
-  which never carried information since a finding is always already found) and relocates the
-  advance/run-all buttons out of the loop cell entirely, into the row's actions column — an
+  existed at the time (single-finding + real writes vs. bulk + advisory-only); a version that
+  condensed the 4-dot track into three tiny dots (dropping the redundant "Found" node, which
+  never carried information since a finding is always already found) and relocated the
+  advance/run-all buttons out of the loop cell entirely into the row's own actions column — an
   intermediate pass first replaced the 4 dots with 3 wide flex-stretched rectangle bars before a
   follow-up shrank them back down to tiny dots (the bars read as too heavy for a status readout,
   and stretched to fill whatever width the column's auto-layout happened to grant it — see
   above for why that width is now explicitly capped) — done at the same time the
   wrench/quick-remediate button and the checkbox-driven bulk
-  button before it were both removed outright (see the actions-column paragraph above), leaving
-  the loop cell a pure status readout and every row-level action in one place on the side.
+  button before it were both removed outright; and now this one, which removes the advance/
+  run-all buttons from this table entirely — they now live on the finding's own detail page as
+  three boxes (Triage/Fix/Verify) plus a "run all stages" button (see the Finding Detail bullet
+  above) — leaving this table's Loop cell a pure status readout and its only row-level action
+  the "…" agent menu.
 
   **SCA findings don't get a Remediation Loop at all** — `findingLoopCellHtml()` special-cases
   `f.scanType === 'sca'` to just render the plain `'status'` cell (a taxonomy badge) instead,
@@ -471,23 +499,26 @@ dots do.
   shares the `'loop'` column key across both finding types — the dedicated **SCA** tab instead
   uses `{ key: 'status', label: 'Status' }` directly in its own `FINDINGS_COLUMNS` entry, so its
   header never says "Remediation Loop" in the first place. The exclusion goes further than just
-  the column: the actions-column's Remediation Loop advance/run-all buttons
-  (`findingLoopActionsHtml()`) aren't rendered for SCA rows either (an SCA finding has no loop
-  state to have buttons for), and `openFindingContextMenu()` filters `SCA_EXCLUDED_AGENTS = [...
-  FIX_FLOW_AGENTS, 'threat_model']` out of an SCA finding's menu entirely — none of the four
-  per-finding code-analysis agents have anything meaningful to say about a dependency version
-  bump, so rather than leave them in as options that would just produce confused or irrelevant
-  output, an SCA row's "…" menu (or Finding Detail's "Agent Runs ▾") shows only whatever custom
-  agents exist beyond the four built-ins, or — in the common case where there are none — a
-  single disabled "No agent actions apply — update the package instead" item.
-  `renderFindingDetailActions()` mirrors this when deciding whether to disable its own "Agent
-  Runs ▾" button.
+  the column: `openFindingContextMenu()` filters `SCA_EXCLUDED_AGENTS = [...FIX_FLOW_AGENTS,
+  'threat_model']` out of an SCA finding's menu entirely — none of the four per-finding
+  code-analysis agents have anything meaningful to say about a dependency version bump, so
+  rather than leave them in as options that would just produce confused or irrelevant output,
+  an SCA row's "…" menu (or Finding Detail's own three-dot menu button) shows only whatever
+  custom agents exist beyond the four built-ins, or — in the common case where there are none —
+  a single disabled "No agent actions apply — update the package instead" item.
+  `renderFindingDetailActions()` mirrors this when deciding whether to disable its own menu
+  button, and skips rendering the Triage/Fix/Verify boxes entirely for an SCA finding (see
+  Finding Detail below) — there's no loop to show.
 
-  **Progressing the loop** — two entry points, run exactly what you asked for and nothing more,
-  always confirm before writing. Neither one ever runs Triage live anymore — a finding's triage
-  run already exists from the moment it was created (see the Reasoning Scan bullet above), so
-  the loop's real work starts at Remediation:
-  - **`onLoopAdvanceClick()`** (the loop cell's advance button) — looks up
+  **Progressing the loop** — one entry point now, on the finding's own detail page (see Finding
+  Detail below for the Triage/Fix/Verify boxes and "run all stages" button that replaced the
+  table's old advance/run-all buttons) — run exactly what you asked for and nothing more, always
+  confirm before writing. Neither path ever runs Triage live anymore — a finding's triage run
+  already exists from the moment it was created (see the Reasoning Scan bullet above), so the
+  loop's real work starts at Remediation:
+  - **`onLoopAdvanceClick()`** (any of Finding Detail's three boxes — only one is ever clickable
+    at a time, since this is a strictly linear pipeline and `findingLoopNextAction()` always
+    resolves to a single next stage regardless of which box is clicked) — looks up
     `findingLoopNextAction()`; if it's `'verify'`, fires an ordinary read-only
     `startStage(id, 'verify', ...)` (no confirmation needed — nothing is written); if it's
     `'remediate'`, confirms once via `confirmApplyWrite()` (a native `confirm()` naming the
@@ -497,10 +528,10 @@ dots do.
     that does *not* auto-chain into Verify. (The `'triage'` case is still handled defensively —
     see the Remediation Loop column bullet above — but shouldn't be reachable in practice.)
     Advancing the loop this way is always a deliberate click per stage.
-  - **`onLoopRunAllClick()`** (the loop cell's fast-forward "run all stages" button) — always
-    restarts the remaining pipeline fresh (Remediation apply → Verify) rather than trying to
-    resume from wherever the finding currently stands; simpler to reason about, and matches "run
-    all stages" literally (there's no live Triage stage left to include). Confirms once via
+  - **`onLoopRunAllClick()`** (Finding Detail's "Run all stages" button) — always restarts the
+    remaining pipeline fresh (Remediation apply → Verify) rather than trying to resume from
+    wherever the finding currently stands; simpler to reason about, and matches "run all stages"
+    literally (there's no live Triage stage left to include). Confirms once via
     `confirmRunAll()` (same git-clean-tree framing) and then calls `startRemediateAll()`, which
     sends `{type: 'remediate_all', remediationRunId, verifyRunId, findingId, context,
     instruction, path}` — two client-generated runIds for what the server turns into two real,
@@ -585,25 +616,38 @@ dots do.
   library, consistent with this app's no-external-deps/hand-drawn-icon aesthetic), and an
   **Agent runs** section (`runCardHtml()`) listing every run against this finding with its
   verdict badges/fields rendered generically (same key-badging convention described in "The
-  verdict contract" below). A single **"Agent Runs ▾"** button in the page header
-  (`renderFindingDetailActions()`) opens the same dropdown menu as right-clicking a table row
-  (`openFindingContextMenu()`, positioned under the button via its `getBoundingClientRect()`
-  instead of the cursor) — deliberately *not* three separate hardcoded Triage/Threat
-  Model/Remediation buttons, since that menu is built by iterating `agentsList` (whatever's
-  declared on the Agent Configuration screen, built-in or custom), so a new custom agent shows
-  up there with no code change. It's no longer a flat list of everything, though — Triage,
-  Remediation, and Verify (`FIX_FLOW_AGENTS`) are filtered out entirely, since the Remediation
-  Loop column's advance/run-all buttons (see the Agent Triage bullet's "Progressing the loop"
-  paragraph above) are now their dedicated controls; running any of the three with custom
-  instructions via the stage modal is no longer possible from this menu (a deliberate
-  trade-off — the dedicated buttons are faster for the common case, at the cost of that
-  flexibility). What's left is just Threat Model — a separate, optional deep-dive that
-  deliberately doesn't sit on the fix-flow path — plus whatever custom agents exist beyond the
-  four built-ins; SCA findings lose Threat Model from this list too (`SCA_EXCLUDED_AGENTS`, see
-  below). Both paths converge on `openFreshStageModal()`. Note:
-  `openFindingContextMenu()`'s button click handler calls `e.stopPropagation()` — without it,
-  the click bubbles to the document-level "click outside closes the menu" listener and closes
-  the menu in the same tick it opened. An "Export" button (`GET /api/findings/export.csv`)
+  verdict contract" below).
+
+  The page header's actions (`renderFindingDetailActions()`, `fdLoopBoxesHtml()`) used to be a
+  single "Agent Runs ▾" dropdown covering everything, including Triage/Remediation/Verify with
+  custom instructions via the stage modal. That's gone — replaced by **three boxes, one per
+  fix-flow stage** (Triage / Fix / Verify, mirroring the Agent Triage table's loop-seg states:
+  pending/running/done/attention), plus a **"Run all stages"** button, plus a small **three-dot
+  menu button** for everything else. Only one box is ever clickable at a time — `findingLoopState()`
+  models a strictly linear pipeline, so `findingLoopNextAction()` always resolves to exactly one
+  next stage, and whichever single box comes back enabled dispatches the same
+  `onLoopAdvanceClick()` the Agent Triage table's old advance button used to call (see
+  "Progressing the loop" above) — there's no independent per-stage click logic to keep in sync
+  with it. The run-all button calls `onLoopRunAllClick()`, same as before. Both are skipped
+  entirely for an SCA finding (`fdLoopBoxesHtml()` returns `''` — no loop applies, see the Agent
+  Triage bullet above) and show a plain "Closed — remediation loop not applicable" note for a
+  closed finding.
+
+  The three-dot menu button (`#fd-agent-menu-btn`) opens the exact same dropdown menu right-
+  clicking an Agent Triage table row does (`openFindingContextMenu()`, positioned under the
+  button via its `getBoundingClientRect()`) — built by iterating `agentsList` (whatever agent
+  `.md` files exist, built-in or custom), so a new custom agent shows up there with no code
+  change. Triage, Remediation, and Verify (`FIX_FLOW_AGENTS`) are filtered out of this menu
+  entirely, since the boxes above are now their dedicated controls; running any of the three
+  with custom instructions via the stage modal is no longer possible at all (a deliberate
+  trade-off — the boxes are faster for the common case, at the cost of that flexibility). What's
+  left is just Threat Model — a separate, optional deep-dive that deliberately doesn't sit on
+  the fix-flow path — plus whatever custom agents exist beyond the four built-ins; SCA findings
+  lose Threat Model from this menu too (`SCA_EXCLUDED_AGENTS`, see below), leaving only custom
+  agents or a single disabled placeholder item. Both paths converge on `openFreshStageModal()`.
+  Note: `openFindingContextMenu()`'s button click handler calls `e.stopPropagation()` — without
+  it, the click bubbles to the document-level "click outside closes the menu" listener and
+  closes the menu in the same tick it opened. An "Export" button (`GET /api/findings/export.csv`)
   downloads all findings + latest verdicts.
 - **`remediation_generated` status** — `deriveStatus()` in `server.js` derives an accent-colored
   "Remediation generated" badge (`statusLabel()`/`.badge.remediation_generated`) once a finding's
@@ -786,23 +830,19 @@ dots do.
   stuck on-screen. Like App Threat Model, these runs create no findings and aren't part of
   `GET /api/timeline` (no foreign key to a finding or scan), so there's no clock-icon drawer
   button on this page.
-- **Agent Configuration** — a nav-footer entry (moved out of the main nav list, see the intro
-  above — it's a config/admin screen, not a workflow step) for managing every file under
-  `agents/` from the browser instead of by hand: create/edit/delete via
-  `GET/POST/PUT/DELETE /api/agents(/:name)` in `server.js`. Built-in agents
-  (`triage`/`threat_model`/`remediation`/`verify`/`scan`/`app_threat_model`/`controls_assist`,
-  `BUILTIN_AGENTS` server-side) can be edited but not deleted (403). This screen fetches
-  `GET /api/agents?all=1` into its own `agentConfigList` — deliberately a *different* list
-  from `agentsList` (the plain `GET /api/agents`, still filtered by `NON_FINDING_AGENTS =
-  ['scan', 'app_threat_model', 'controls_assist']` server-side): `agentsList` feeds the
-  per-finding stage modal's agent dropdown and the SCA page's "Run after scan" pill row, where
-  a whole-directory agent has no business appearing, while `agentConfigList` is this screen's
-  own unfiltered view so all three whole-directory agents are still visible/editable here —
-  each gets a second "Whole-app" badge (client-side `NON_FINDING_AGENTS` mirror, next to the
-  existing "Core" badge) so it reads clearly as a different kind of agent from the per-finding
-  three. New per-finding agents are immediately usable everywhere `agentsList` is consumed, no
-  extra wiring needed. The Dashboard's Agents panel (`#dash-agents-panel`) is a shortcut into
-  this screen — see the Dashboard bullet above.
+- **Agent Configuration (removed)** — this app used to have a dedicated nav-footer admin screen
+  for creating/editing/deleting `agents/*.md` files from the browser (`agentConfigList`,
+  `agentDetailsCache`, `openAgentModal()`/`renderAgentCards()`, all now deleted from
+  `index.html`). It's gone — editing an agent's prompt is now a plain file-system edit to
+  `agents/<name>.md`, same as any other file in this repo. The **server-side** REST surface it
+  used (`GET/POST/PUT/DELETE /api/agents(/:name)` in `server.js`, `BUILTIN_AGENTS`,
+  built-in-agents-can't-be-deleted 403 handling) was left in place — `GET /api/agents` is still
+  how `agentsList` is populated for the stage modal dropdown and per-finding menus, only the
+  admin UI on top of the write endpoints was removed. The Dashboard's Agents panel
+  (`#dash-agents-panel`) used to be a shortcut into this screen; it's a plain, non-clickable
+  display list now (see the Dashboard bullet above). Client-side `NON_FINDING_AGENTS` (the
+  "Whole-app" badge mirror this screen used) was removed too, along with the screen it only
+  existed for.
 - **Reports** — a placeholder top-level screen (`#view-reports`), added ahead of any actual
   reporting feature so the nav slot and page shell exist for whatever gets built there next
   (an exportable compliance/findings report was the motivating idea, per the intro's
@@ -811,18 +851,26 @@ dots do.
   formatted version of that same data). Currently just a "Coming soon" message
   (`.placeholder-panel`); no server-side support, no data, no wiring beyond the nav
   item/`showView()` toggle.
-- **Settings** — a nav-footer entry (not a top-level nav item, deliberately tucked away),
-  with a Dark/Light theme toggle (`applyTheme()`, persisted to `localStorage` under
-  `appsecops-theme`, applied flash-free by an inline `<script>` at the very top of `<head>`
-  that reads `localStorage` before any CSS renders), an Environment panel that states
-  plainly, in-product, that scans run with this machine's own filesystem permissions and
-  are not sandboxed to any directory allowlist, and a red-bordered **Danger zone** panel with
-  a single "Clear session" button (`clearSession()`) that, after a `confirm()` prompt, calls
-  `POST /api/session/clear` to permanently wipe every finding, scan, and app-level threat
-  model on the server — a full reset back to empty, no reseed. The server refuses (`409`)
-  if anything across `findings`/`scans`/`appThreatModels` has `status: 'running'`, since it
-  can't kill in-progress child processes from a plain REST route (`children` is scoped inside
-  `wss.on('connection')`, not reachable from there) — `clearSession()` surfaces that error via
+- **Theme toggle** — lives in the nav footer itself, not inside the Settings screen (`#nav-theme-btn`,
+  a `role="switch"` slider — `.theme-switch`/`.theme-switch-knob`, replacing an earlier plain
+  icon+label button) — a label ("Dark theme"/"Light theme") next to a small pill track whose
+  knob slides and swaps the sun/moon icon inside it (same `#nav-theme-icon-moon`/
+  `#nav-theme-icon-sun` elements as before, just re-styled) based on `aria-checked`.
+  `applyTheme()`/`renderThemeToggle()` are unchanged in behavior — persisted to `localStorage`
+  under `appsecops-theme`, applied flash-free by an inline `<script>` at the very top of `<head>`
+  that reads `localStorage` before any CSS renders; `renderThemeToggle()` now also sets
+  `aria-checked` (`true` = dark) on the switch button so its knob position/color stay in sync
+  with the current theme.
+- **Settings** — a nav-footer entry (not a top-level nav item, deliberately tucked away), with
+  an Environment panel that states plainly, in-product, that scans run with this machine's own
+  filesystem permissions and are not sandboxed to any directory allowlist, and a red-bordered
+  **Danger zone** panel with a single "Clear session" button (`clearSession()`) that, after a
+  `confirm()` prompt, calls `POST /api/session/clear` to permanently wipe every finding, scan,
+  app-level threat model, and control assessment on the server — a full reset back to empty, no
+  reseed. The server refuses (`409`) if anything across `findings`/`scans`/`appThreatModels`/
+  `controlAssessments` has `status: 'running'`, since it can't kill in-progress child processes
+  from a plain REST route (`children` is scoped inside `wss.on('connection')`, not reachable
+  from there) — `clearSession()` surfaces that error via
   `alert()`. On success, the client resets every corresponding in-memory cache
   (`findings`/`scansList`/`appThreatModelsList`/`timelineEntries`/`findingCache`/
   `scanDetailCache`), stops and clears any live `scanRuns`/`appThreatModelRuns` tracking
@@ -832,15 +880,15 @@ dots do.
 **no agent ever runs automatically** — every run requires an explicit, reviewable action so
 there's always an audit trail before anything executes against a finding (an earlier version
 defaulted straight to Remediation on click, which read as auto-fixing without review — this
-was a deliberate correction). The Remediation Loop column's advance/run-all buttons (rendered in
-the row's actions column, see the Agent Triage bullet above) are the exception to "always opens
-a stage modal first" — each still requires an explicit click per finding/step, just skips the
-modal, because reviewing context ahead of a routine next-step click would slow down the exact
-workflow they exist to speed up (a native `confirm()` naming the target directory is still the
-gate before either one writes). The Finding Detail page's "Agent Runs ▾" button and the
+was a deliberate correction). The Triage/Fix/Verify boxes and "run all stages" button on the
+finding's own detail page (see the Finding Detail bullet above) are the exception to "always
+opens a stage modal first" — each still requires an explicit click per finding/step, just skips
+the modal, because reviewing context ahead of a routine next-step click would slow down the
+exact workflow they exist to speed up (a native `confirm()` naming the target directory is
+still the gate before either one writes). Finding Detail's own three-dot menu button and the
 right-click context menu (or its visible three-dot equivalent) on an Agent Triage table row open
 the same dynamic per-agent menu (one "Run <Agent>…" item per entry in `agentsList`, minus the
-fix-flow agents now that the Loop column covers them — see the Finding Detail bullet above) as
+fix-flow agents now that the boxes cover them — see the Finding Detail bullet above) as
 shortcuts into the same small stage modal (agent dropdown + editable context + optional
 instructions, `openFreshStageModal()`) — none of them run instantly. Triage itself is no longer
 in that menu at all (or any menu) — it's not a live agent stage anymore (see the Reasoning Scan
@@ -901,16 +949,16 @@ To exercise the pipeline manually: open `http://localhost:4500` (lands on Dashbo
 Reasoning Scan, enter a directory path on this machine under "New scan" and click "Start
 scan" — watch its live card right there, then check Agent Triage once it completes (or open
 the timeline drawer via the clock icon and expand the row there). Click a finding's row in the
-Agent Triage table (or a timeline agent-run row) to open its full-page detail view, then click
-"Agent Runs ▾" in the page header (or right-click the table row for the same menu) to pick an
-agent, review the context/instructions in the small stage modal, and explicitly start it;
-nothing runs without that step. Alternatively, click a reasoning finding's small `→` advance
-button (in its actions column, next to the "…" menu) to run just the next real step — a
+Agent Triage table (or a timeline agent-run row) to open its full-page detail view. From there,
+click one of the Triage/Fix/Verify boxes in the page header to run just the next real step — a
 write-capable fix, then a Verify check once that's done, one click each — needs a finding that
-came from a scan, the button is disabled otherwise. Watch the row itself update —
-no separate screen. The detail page's
-Agent runs section updates live once a run
-finishes (or shows a "running" placeholder immediately, via an optimistic push in
+came from a scan, the boxes are disabled otherwise; or click "Run all stages" to chain the
+remaining steps under one confirmation. For anything else (Threat Model, custom agents), click
+the small three-dot menu button next to those (or right-click a table row for the same menu) to
+pick an agent, review the context/instructions in the small stage modal, and explicitly start
+it; nothing runs without that step. Watch the page itself update — no separate screen. The
+detail page's Agent runs section updates live once a run finishes (or shows a "running"
+placeholder immediately, via an optimistic push in
 `startStage()`). There is no automated test for the WebSocket flow — verification is manual,
 through the browser.
 
@@ -940,27 +988,26 @@ sast-engine/        Deterministic security-scanning engine, adapted (MIT license
                     output can reach disk in this app). Its own `package.json` sets `"type":
                     "module"` so it can stay real ESM without converting server.js's
                     CommonJS; server.js loads it via dynamic `import()` (`loadSastEngine()`).
-public/index.html   The whole app: global nav (status summary + Settings entry in the nav
-                    footer) with Dashboard (briefing + stats + a clickable agents panel),
+public/index.html   The whole app: global nav (theme toggle slider + Settings entry in the nav
+                    footer — no Agent Configuration screen anymore, see that bullet above) with
+                    Dashboard (briefing + stats + a plain, non-clickable agents panel),
                     Reasoning Scan (the scan kickoff form — target/branch/app, scope in the
                     header — plus its live scan cards and a timeline-drawer clock button), SCA
                     Scan (target/branch/app, no scope toggle, its own live cards, its own clock
                     button), an Agent Triage table split into Reasoning/SCA type tabs with
-                    click-to-sort columns, a per-scan filter popover, a per-row action menu, a
-                    Remediation Loop column (reasoning findings only, always starting at
-                    "Triaged" since Triage is no longer a live stage, rendered as a 3-segment
-                    status track with its one-step-at-a-time advance button plus a "run all
-                    remaining stages" fast-forward button living in the row's own actions
-                    column instead), a full-page Finding
-                    Detail view per finding (meta grid, syntax-highlighted code block, and an
-                    Agent runs history with a single "Agent Runs ▾" dropdown), a Threat Model
+                    click-to-sort columns, a per-scan filter popover, a per-row "…" agent-menu
+                    button, a Remediation Loop column (reasoning findings only, a pure read-only
+                    3-segment status track — no buttons in this table anymore; advancing the
+                    loop happens on the finding's own detail page instead), a full-page Finding
+                    Detail view per finding (meta grid, syntax-highlighted code block, Triage/
+                    Fix/Verify boxes + a "run all stages" button + a three-dot agent menu, and
+                    an Agent runs history), a Threat Model
                     page (per-finding OWASP
                     x severity heat map plus a "New app threat model" form and its own
                     accordion-style App-level Threat Models list, also heat-mapped, plus a
                     clock button), a Control Scan page (its own "New control scan"
                     form plus an accordion list of runs grouping identified NIST 800-53
-                    controls by family, for SSP drafting), a nav-footer Agent Configuration
-                    screen for managing every `agents/*.md` file from the browser, a Reports
+                    controls by family, for SSP drafting), a Reports
                     placeholder, a slide-in timeline drawer shared by three clock buttons, a
                     right-click context menu on table rows for the same agent actions, and
                     modals for adding a finding / running a stage with custom instructions.
@@ -1143,7 +1190,16 @@ for the first ` ```json...``` ` block and parses it. The client's `runCardHtml()
 iterating key/value pairs (badging a fixed set of known fields: `verdict`,
 `severity_confirmed`, `confidence`, `priority`), so schema changes in an agent's `.md` need
 no frontend change unless new behavior should key off a new field specifically (e.g.
-`deriveStatus()` in `server.js` keys off `verdict`/`next_agent`).
+`deriveStatus()` in `server.js` keys off `verdict`/`next_agent`). The generic key/value fields
+(everything not in `VERDICT_BADGE_FIELDS`/`VERDICT_SKIP_FIELDS` — `root_cause`, `owasp`,
+`preconditions`, `attack_narrative`, `nist_800_53`, etc.) render as `.fd-verdict-grid`, one
+full-width row per field (`verdictFieldLabel()` title-cases the raw snake_case key into a small
+label line, with the value on its own line below) — this used to be a multi-column CSS grid
+(`grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))`), which was fine for short
+scalar fields like `confidence`/`cwe` but put paragraph-length fields (`fix_guidance`,
+`preconditions`, `attack_narrative`, `blast_radius`) into a cramped 200px column right next to
+unrelated short fields — switched to a single-column row stack since this contract has to render
+arbitrary future agent fields generically and can't assume they're all short.
 
 **No live per-finding stats/activity feed, but an opt-in raw console**: per-finding runs
 (Threat Model/Remediation) don't render a live tool/token/file counter or a parsed
@@ -1232,8 +1288,8 @@ loop" above; see the `remediation_generated` status bullet above for `corrected_
 
 **A known gap, partially closed by the reasoning-pass half**: sast-engine's *deterministic*
 findings (`findingFromSastEngine()` in `server.js`) carry `owasp`/`cwe` directly from whichever
-pattern matched, but **`asvs` and `nist_800_53` are always `null`** for these — sast-engine has
-no ASVS or NIST 800-53 mapping data at all, and that used to be Triage's job specifically.
+pattern matched, but **`asvs` is always `null` and `nist_800_53` is always `[]`** for these —
+sast-engine has no ASVS or NIST 800-53 mapping data at all, and that used to be Triage's job specifically.
 Reasoning Scan's *other* half doesn't have this gap: `agents/scan.md`'s findings
 (`findingFromLLMScan()`) come with real `asvs`/`nist_800_53` mapping already, since the same LLM
 pass that found the issue also assigns its full taxonomy in one call (see the Reasoning Scan

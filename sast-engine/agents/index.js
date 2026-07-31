@@ -12,11 +12,6 @@
  * replacement (see CLAUDE.md's Reasoning Scan / SCA Scan bullets).
  */
 
-export { BaseAgent, createFinding } from './base-agent.js';
-export { Orchestrator } from './orchestrator.js';
-export { ReconAgent } from './recon-agent.js';
-export { VerifierAgent } from './verifier-agent.js';
-
 import { Orchestrator as OrchestratorClass } from './orchestrator.js';
 import { InjectionTester } from './injection-tester.js';
 import { AuthBypassAgent } from './auth-bypass-agent.js';
@@ -82,6 +77,17 @@ const BUILT_IN_AGENTS = () => [
 ];
 
 export const BUILT_IN_AGENT_COUNT = BUILT_IN_AGENTS().length;
+
+/**
+ * Lists each built-in agent's own declared name/description/category — the exact strings
+ * passed to super() in each agent file's constructor, not a separately maintained summary.
+ * Used to tell the LLM reasoning pass (agents/scan.md) what the deterministic half already
+ * covers, without duplicating per-rule regex/description/fix detail into its prompt: a plugin
+ * or a new built-in agent shows up here automatically, with no second file to keep in sync.
+ */
+export function listBuiltInAgents() {
+  return BUILT_IN_AGENTS().map((a) => ({ name: a.name, description: a.description, category: a.category }));
+}
 
 /**
  * Async build — loads built-in agents + any plugins from .sast-engine/agents/.
