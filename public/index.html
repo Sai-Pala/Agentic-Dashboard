@@ -135,14 +135,21 @@
     width: 8px; height: 8px; min-width: 8px; padding: 0; font-size: 0; overflow: hidden;
   }
   .nav-item.active .icon { color: var(--accent); }
-  .nav-status { margin-top: auto; padding: 10px 8px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 6px; }
-  .nav-status-line { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); overflow: hidden; }
-  .nav-status-line .s-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
-  .nav-status-line.warn .s-dot { background: var(--warn); }
-  .nav-status-line .ns-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #global-nav.collapsed .nav-status-line .ns-text { display: none; }
-  #global-nav.collapsed .nav-status-line { justify-content: center; }
-  .nav-footer { padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 8px; }
+  .nav-theme-row { justify-content: space-between; cursor: default; }
+  .theme-switch {
+    position: relative; width: 34px; height: 19px; min-width: 34px; padding: 0; margin: 0;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--panel-3); cursor: pointer;
+    flex-shrink: 0; transition: background .15s, border-color .15s;
+  }
+  .theme-switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+  .theme-switch-knob {
+    position: absolute; top: 1px; left: 1px; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--bg); display: flex; align-items: center; justify-content: center;
+    transition: transform .15s ease; box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+  .theme-switch[aria-checked="true"] .theme-switch-knob { transform: translateX(15px); }
+  .theme-switch-knob .icon { width: 10px; height: 10px; color: var(--text-dim); }
+  .nav-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 8px; }
   #nav-collapse-icon { transition: transform .15s ease; }
   #global-nav.collapsed #nav-collapse-icon { transform: rotate(180deg); }
   #global-nav.collapsed #status { width: 9px; height: 9px; padding: 0; border-radius: 50%; font-size: 0; margin: 0 auto; }
@@ -256,10 +263,6 @@
 
   .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
-  .panel-clickable { cursor: pointer; }
-  .panel-clickable:hover { border-color: var(--accent); }
-  .panel-title-arrow { opacity: 0; transition: opacity .1s; }
-  .panel-clickable:hover .panel-title-arrow { opacity: 1; }
 
   .placeholder-panel {
     display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
@@ -348,19 +351,6 @@
   #scan-note-toggle-btn { margin-left: auto; font-size: 11px; }
 
   .scan-scope-row { gap: 10px; }
-
-  .agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
-  .agent-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
-  .agent-card-top { display: flex; align-items: center; gap: 8px; }
-  .agent-card-name { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
-  .agent-card-preview { font-size: 11.5px; color: var(--muted); line-height: 1.5; max-height: 3.2em; overflow: hidden; }
-  .agent-card-actions { display: flex; gap: 6px; justify-content: flex-end; }
-  .agent-card-actions button { font-size: 11px; padding: 5px 10px; }
-  .badge.core { background: rgba(109,108,104,.18); color: var(--muted); }
-  .dropzone { border: 1.5px dashed var(--border); border-radius: 8px; padding: 10px 12px; font-size: 11px; color: var(--muted); text-align: center; transition: border-color .15s, color .15s; }
-  .dropzone.dragover { border-color: var(--accent); color: var(--accent); }
-  #agent-modal-content { min-height: 220px; font-family: var(--mono); font-size: 12px; }
-  #agent-modal-overlay .modal { width: 620px; }
 
   /* Single column, full width — a Reasoning Scan card now shows two engine progress bars
      (deterministic + reasoning) side by side, which needs more horizontal room than the old
@@ -489,10 +479,9 @@
      Triaged / Fixed / Verified status track (3 tiny dots, same small-dot convention as the
      sidebar's .nav-badge — not a wide bar; "Found" is dropped from the visual since a finding
      is always already "found" the moment it exists, so showing it as a 4th stage never carried
-     real information) plus a status label. The actual advance/run-all controls are NOT rendered
-     here — they live in the row's own actions column (see findingLoopActionsHtml(), wired in
-     next to the "…" menu button) so this column stays a pure status readout and the row's
-     action controls live in one place. ---- */
+     real information) plus a status label. This column is a pure, read-only status readout —
+     advancing the loop itself (the Triage/Fix/Verify boxes + "run all" button) lives on the
+     finding's own detail page instead; this table row's only action is the "…" agent menu. ---- */
   /* Caps the column's rendered width via [data-col] on the th/td themselves — table.findings-table
      uses the browser's default auto layout (no table-layout:fixed), which otherwise hands this
      column any left-over horizontal space in the row even though the 3-dot track + short label
@@ -509,18 +498,6 @@
   .loop-status-text.accent { color: var(--remediation); }
   .loop-status-text.ok { color: var(--ok); font-weight: 600; }
   .loop-status-text.attention { color: var(--err); }
-  /* advance/run-all buttons: rendered in the actions column, "on the side" of the row rather
-     than inside the loop cell — same visual treatment regardless of where they're placed. */
-  .loop-advance-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; padding: 0; flex-shrink: 0; }
-  .loop-advance-btn .icon { width: 13px; height: 13px; }
-  .loop-advance-btn:hover:not(:disabled) { border-color: var(--remediation); color: var(--remediation); background: var(--remediation-soft); }
-  .loop-advance-btn.attention { border-color: var(--err); color: var(--err); }
-  .loop-advance-btn.attention:hover:not(:disabled) { background: var(--err-soft); }
-  .loop-advance-btn:disabled { opacity: .3; cursor: not-allowed; }
-  .loop-run-all-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--remediation); background: transparent; color: var(--remediation); cursor: pointer; padding: 0; flex-shrink: 0; }
-  .loop-run-all-btn .icon { width: 13px; height: 13px; }
-  .loop-run-all-btn:hover:not(:disabled) { background: var(--remediation-soft); }
-  .loop-run-all-btn:disabled { opacity: .3; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
   .loop-view-diff { display: inline-flex; align-items: center; gap: 3px; background: none; border: none; padding: 0; color: var(--ok); font-size: 11px; font-weight: 600; cursor: pointer; }
   .loop-view-diff .icon { width: 12px; height: 12px; }
   .loop-view-diff:hover { text-decoration: underline; }
@@ -536,6 +513,36 @@
 
   /* ---------- finding detail (full page) ---------- */
   #fd-back-btn { font-size: 11px; margin-bottom: 6px; padding: 0; }
+  /* Triage/Fix/Verify boxes + "run all" button, replacing the old "Agent Runs ▾" dropdown's
+     fix-flow entries — each box is independently clickable when its stage is actionable, states
+     mirror the Agent Triage table's loop-seg colors (pending/running/done/attention). */
+  .fd-loop-boxes { display: flex; gap: 8px; flex-wrap: wrap; }
+  .fd-loop-box {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--panel); min-width: 118px; text-align: left;
+    cursor: default; color: inherit; font-family: inherit;
+  }
+  .fd-loop-box .icon { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
+  .fd-loop-box-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .fd-loop-box-label { font-size: 11px; font-weight: 700; color: var(--text); }
+  .fd-loop-box-status { font-size: 10.5px; color: var(--muted); }
+  .fd-loop-box.clickable { cursor: pointer; }
+  .fd-loop-box.clickable:hover { border-color: var(--remediation); background: var(--remediation-soft); }
+  .fd-loop-box:disabled { opacity: .55; }
+  .fd-loop-box.state-running .icon { color: var(--warn); }
+  .fd-loop-box.state-running .fd-loop-box-status { color: var(--warn); }
+  .fd-loop-box.state-done .icon { color: var(--ok); }
+  .fd-loop-box.state-done .fd-loop-box-status { color: var(--ok); font-weight: 600; }
+  .fd-loop-box.state-attention .icon { color: var(--err); }
+  .fd-loop-box.state-attention .fd-loop-box-status { color: var(--err); font-weight: 600; }
+  .fd-loop-runall-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 10px;
+    border: 1px solid var(--remediation); background: transparent; color: var(--remediation);
+    font-size: 11.5px; font-weight: 600; cursor: pointer;
+  }
+  .fd-loop-runall-btn .icon { width: 13px; height: 13px; }
+  .fd-loop-runall-btn:hover:not(:disabled) { background: var(--remediation-soft); }
+  .fd-loop-runall-btn:disabled { opacity: .35; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
   .fd-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
   .fd-scan-source { font-size: 11.5px; color: var(--muted); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .fd-scan-source .link-btn { font-size: 11.5px; }
@@ -561,8 +568,10 @@
   .fd-run-agent { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
   .fd-run-time { font-size: 10.5px; color: var(--muted); margin-left: auto; }
   .fd-view-tm-btn { margin-top: 8px; }
-  .fd-verdict-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; font-size: 12px; }
-  .fd-verdict-item b { color: var(--muted); font-weight: 600; margin-right: 4px; }
+  .fd-verdict-grid { display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
+  .fd-verdict-item { display: flex; flex-direction: column; gap: 2px; }
+  .fd-verdict-item b { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; }
+  .fd-verdict-item span { color: var(--text-dim); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
   .fd-verdict-reasoning { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
 
   /* ---------- live console (per-run raw reasoning stream, opt-in via a small toggle button;
@@ -754,17 +763,16 @@
   <button id="nav-collapse-btn" title="Collapse sidebar">
     <svg class="icon" id="nav-collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>
   </button>
-  <div class="nav-status" id="nav-status"></div>
   <div class="nav-footer">
-    <button class="nav-item" id="nav-theme-btn" title="Toggle theme">
-      <svg class="icon" id="nav-theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
-      <svg class="icon" id="nav-theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>
+    <div class="nav-item nav-theme-row">
       <span id="nav-theme-label">Dark theme</span>
-    </button>
-    <button class="nav-item" data-view="agents">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h7.5L19 8v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4.5"/><path d="M9 12.5h6M9 15.5h6M9 18h3.5"/></svg>
-      <span>Agent Configuration</span>
-    </button>
+      <button class="theme-switch" id="nav-theme-btn" type="button" role="switch" aria-checked="true" title="Toggle theme">
+        <span class="theme-switch-knob">
+          <svg class="icon" id="nav-theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
+          <svg class="icon" id="nav-theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>
+        </span>
+      </button>
+    </div>
     <button class="nav-item" data-view="settings">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1l2.1-2.1M17 7l2.1-2.1"/></svg>
       <span>Settings</span>
@@ -803,8 +811,8 @@
     </div>
 
     <div class="stat-grid" id="dash-stats"></div>
-    <div class="panel panel-clickable" id="dash-agents-panel" title="View Agent Configuration">
-      <div class="panel-title">Agents <span class="panel-title-arrow">→</span></div>
+    <div class="panel" id="dash-agents-panel">
+      <div class="panel-title">Agents</div>
       <div id="dash-agents"></div>
     </div>
   </div>
@@ -944,7 +952,7 @@
       <div class="danger-zone-body">
         <div>
           <div class="danger-zone-title">Clear session</div>
-          <div class="hint">Permanently wipes every finding, scan, and app-level threat model on the server — a full reset back to empty, no reseed. Refused while anything is still running.</div>
+          <div class="hint">Permanently wipes every finding, scan, app-level threat model, and control assessment on the server — a full reset back to empty, no reseed. Refused while anything is still running.</div>
         </div>
         <button class="danger-btn" id="clear-session-btn" type="button">Clear session</button>
       </div>
@@ -1080,20 +1088,6 @@
   </div>
 </div>
 
-<div id="view-agents" class="view" hidden>
-  <div class="view-header">
-    <div>
-      <h1>Agent Configuration</h1>
-      <div class="view-subtitle">Every agent this app can run, defined as markdown system prompts</div>
-    </div>
-    <button id="new-agent-btn">+ New agent</button>
-  </div>
-  <div class="view-body">
-    <div class="hint" style="margin-bottom:14px;">Per-finding agents are selectable from a finding's "Select flow…" menu and as a "Run after scan" pill on the SCA page. "Whole-app" agents (Scan, App Threat Model, Control Scan) run from their own dedicated pages instead. Built-in agents can be edited but not deleted.</div>
-    <div class="agents-grid" id="agents-list"></div>
-  </div>
-</div>
-
 <div id="view-reports" class="view" hidden>
   <div class="view-header">
     <div>
@@ -1210,26 +1204,6 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="agent-modal-overlay" hidden>
-  <div class="modal">
-    <h3 id="agent-modal-title">New agent</h3>
-    <div>
-      <label for="agent-modal-name">Name (used as filename, becomes the option label if not a known agent)</label>
-      <input id="agent-modal-name" placeholder="e.g. dependency_audit" />
-    </div>
-    <div id="agent-modal-dropzone" class="dropzone">Drop a .md file here, or paste/type the system prompt below</div>
-    <div>
-      <label for="agent-modal-content">Markdown system prompt</label>
-      <textarea id="agent-modal-content" placeholder="# Role&#10;...&#10;&#10;End your response with exactly one fenced json block, e.g.:&#10;&#10;```json&#10;{ &quot;verdict&quot;: ... }&#10;```"></textarea>
-    </div>
-    <div class="hint">To match the taxonomy other agents use, keep severity/confidence/priority definitions and OWASP/CWE/NIST 800-53 mapping consistent with <span style="font-family:var(--mono)">agents/remediation.md</span>, and close the response with one fenced ```json block.</div>
-    <div class="modal-actions">
-      <button class="secondary" id="agent-modal-cancel">Cancel</button>
-      <button id="agent-modal-save">Save agent</button>
-    </div>
-  </div>
-</div>
-
 <script>
 // ---------- icon system (hand-drawn monoline SVGs, no emoji anywhere in the UI) ----------
 
@@ -1266,7 +1240,10 @@ function icon(name, cls) {
 
 // ---------- agent metadata (shared across dashboard / timeline / findings) ----------
 
-const KNOWN_AGENTS = ['triage', 'threat_model', 'remediation', 'verify'];
+// 'triage' deliberately excluded — agents/triage.md no longer exists (Triage is a synthetic
+// verdict now, not a live agent stage, see CLAUDE.md), so GET /api/agents can never return it;
+// including it here permanently capped knownAgentsAvailableCount() at 3/4 on a healthy install.
+const KNOWN_AGENTS = ['threat_model', 'remediation', 'verify'];
 const AGENT_META = {
   scan: { label: 'Scan', icon: 'radar', color: '#38bdf8', role: 'Reads a directory and creates findings' },
   triage: { label: 'Triage', icon: 'search', color: '#a78bfa', role: 'First pass: real finding or noise, how urgent' },
@@ -1276,11 +1253,6 @@ const AGENT_META = {
   app_threat_model: { label: 'App Threat Model', icon: 'shield', color: '#f472b6', role: 'Whole-app architecture-level threat model' },
   controls_assist: { label: 'Control Scan', icon: 'clipboard', color: '#60a5fa', role: 'Whole-app NIST 800-53 control identification for SSP drafting' },
 };
-// Agent .md files that operate on a whole directory (via their own dedicated page/flow)
-// rather than a single finding — mirrors NON_FINDING_AGENTS in server.js. Used only to badge
-// these agents distinctly in Agent Configuration; agentsList (the per-finding dropdown/pill
-// source) already excludes them server-side.
-const NON_FINDING_AGENTS = ['scan', 'app_threat_model', 'controls_assist'];
 function agentMeta(name) {
   return AGENT_META[name] || { label: name, icon: 'gear', color: '#8f8a7b', role: '' };
 }
@@ -1373,17 +1345,8 @@ const findingModalDescription = document.getElementById('finding-modal-descripti
 const fmFieldsReasoning = document.getElementById('fm-fields-reasoning');
 const fmFieldsSca = document.getElementById('fm-fields-sca');
 
-const newAgentBtn = document.getElementById('new-agent-btn');
-const agentsListEl = document.getElementById('agents-list');
-const agentModalOverlay = document.getElementById('agent-modal-overlay');
-const agentModalTitle = document.getElementById('agent-modal-title');
-const agentModalName = document.getElementById('agent-modal-name');
-const agentModalContent = document.getElementById('agent-modal-content');
-const agentModalDropzone = document.getElementById('agent-modal-dropzone');
-
 let ws = null;
 let agentsList = [];
-let agentConfigList = [];  // GET /api/agents?all=1 — every agent .md file, for Agent Configuration only
 let findings = [];               // list-item shape from GET /api/findings
 let findingsTypeFilter = 'all';  // 'all' | 'reasoning' | 'sca'
 let findingsScanFilter = 'all';  // 'all' or a scan id — restricts the table to one scan's findings
@@ -1567,7 +1530,6 @@ document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
 });
 document.getElementById('dash-timeline-link').addEventListener('click', () => openTimelineDrawer('all'));
 document.getElementById('dash-scans-link').addEventListener('click', () => showView('scans'));
-document.getElementById('dash-agents-panel').addEventListener('click', () => showView('agents'));
 
 const NAV_COLLAPSE_KEY = 'appsecops-nav-collapsed';
 const navEl = document.getElementById('global-nav');
@@ -1597,7 +1559,6 @@ function showView(view, opts = {}) {
   document.getElementById('view-finding-detail').hidden = view !== 'finding-detail';
   document.getElementById('view-threatmodel').hidden = view !== 'threatmodel';
   document.getElementById('view-controls-assist').hidden = view !== 'controls-assist';
-  document.getElementById('view-agents').hidden = view !== 'agents';
   document.getElementById('view-reports').hidden = view !== 'reports';
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === view));
 
@@ -1608,7 +1569,6 @@ function showView(view, opts = {}) {
   if (view === 'threatmodel') openThreatModelView();
   if (view === 'controls-assist') renderControlsAssistView();
   if (view === 'settings') renderSettings();
-  if (view === 'agents') loadAgentsView();
 }
 
 // ---------- dashboard ----------
@@ -1689,20 +1649,12 @@ function renderDashboard() {
   }
 }
 
-// ---------- sidebar status (compact, always visible regardless of view) ----------
-
+// ---------- sidebar status ----------
+// The sidebar used to also show a 4-line connected/findings/agents/scans summary block
+// (#nav-status) — removed as redundant with the per-page nav badges below, which already
+// surface running/attention state contextually. renderNavStatus() is kept as the name every
+// call site already uses; it now only refreshes those badges.
 function renderNavStatus() {
-  const navStatusEl = document.getElementById('nav-status');
-  const connected = statusEl.classList.contains('connected');
-  const runningScanCount = scansList.filter((s) => s.status === 'running').length;
-  const missingCoreAgent = knownAgentsAvailableCount() < KNOWN_AGENTS.length;
-  const line = (warn, text) => `<div class="nav-status-line${warn ? ' warn' : ''}" title="${escapeHtml(text)}"><span class="s-dot"></span><span class="ns-text">${escapeHtml(text)}</span></div>`;
-  navStatusEl.innerHTML = [
-    line(!connected, connected ? 'Connected' : 'Disconnected'),
-    line(false, `${findings.length} finding${findings.length === 1 ? '' : 's'}`),
-    line(missingCoreAgent, missingCoreAgent ? `${knownAgentsAvailableCount()}/${KNOWN_AGENTS.length} core agents ready` : `${agentsList.length} agent${agentsList.length === 1 ? '' : 's'} ready`),
-    line(runningScanCount > 0, `${scansList.length} scan${scansList.length === 1 ? '' : 's'}${runningScanCount ? ` · ${runningScanCount} running` : ''}`),
-  ].join('');
   renderNavBadges();
 }
 
@@ -2061,7 +2013,7 @@ function renderThreatModelView() {
 
   const diagramHtml = entries.length
     ? `<div class="tm-diagram-wrap tm-main-diagram">${buildThreatHeatmap(categories, (e) => e.verdict.severity_confirmed || 'informational')}</div>`
-    : '<div class="hint" style="padding:30px 4px;">No findings have a confirmed Threat Model run yet — open a finding and use its "Agent Runs" menu to run Threat Model.</div>';
+    : '<div class="hint" style="padding:30px 4px;">No findings have a confirmed Threat Model run yet — open a finding and use its "…" agent menu to run Threat Model.</div>';
 
   contentEl.innerHTML = `
     ${renderAppThreatModelSection()}
@@ -3509,8 +3461,13 @@ function findingLoopState(f) {
 
   if (stageRuns.verify) {
     if (stageRuns.verify.status === 'running') verified = 'running';
-    else if (f.status === 'verified_fixed') verified = 'done';
-    else verified = 'attention'; // still_vulnerable / partially_fixed / inconclusive / error
+    else if (stageRuns.verify.status === 'error' || stageRuns.verify.status === 'cancelled') verified = 'attention';
+    // Read the latest verify run's OWN verdict, not the finding's overall f.status — a later,
+    // unrelated Threat Model run also changes f.status (via deriveStatus() in server.js), which
+    // used to silently regress "Verified fixed" back to "Not fixed yet" the moment Threat Model
+    // was run on an already-verified finding, even though nothing about the fix itself changed.
+    else if (stageRuns.verify.verdict && stageRuns.verify.verdict.verdict === 'verified_fixed') verified = 'done';
+    else verified = 'attention'; // still_vulnerable / partially_fixed / inconclusive
   }
 
   return { triaged, fixed, verified };
@@ -3541,9 +3498,9 @@ function loopTrackHtml(triaged, fixed, verified) {
   `;
 }
 
-// Pure status readout — track + label, no buttons. The advance/run-all controls live in the
-// row's actions column instead (see findingLoopActionsHtml()), "on the side" of the row rather
-// than crammed into this narrow column.
+// Pure status readout — track + label, no buttons. Advancing the loop itself (the Triage/Fix/
+// Verify boxes + "run all" button, see fdLoopBoxesHtml()) lives on the finding's own detail
+// page now, not in this table at all.
 function findingLoopCellHtml(f) {
   // SCA findings need a dependency bump, not a code edit — Package/Fixed-in already say what
   // to do, so this column just shows plain status here instead of a loop that implies an edit
@@ -3582,34 +3539,6 @@ function findingLoopCellHtml(f) {
   }
 
   return `<div class="loop-cell">${track}<div class="loop-status-row">${statusHtml}</div></div>`;
-}
-
-// The Remediation Loop's advance ("→") and run-all ("»") buttons, rendered in the row's actions
-// column instead of inside the loop cell — keeps the loop column a compact status readout and
-// puts every row-level action (these two plus the "…" agent menu) in one place on the side.
-// Returns '' for SCA/closed findings, while a stage is running, or once fully verified (nothing
-// left to advance to) — same gating findingLoopCellHtml used to do inline.
-function findingLoopActionsHtml(f) {
-  if (f.scanType === 'sca' || f.status === 'closed') return '';
-  const { triaged, fixed, verified } = findingLoopState(f);
-  if (triaged === 'running' || fixed === 'running' || verified === 'running') return '';
-  if (verified === 'done') return '';
-
-  const hasPath = !!findingSourcePath(f);
-  // requiresPath: Triage can run without a known source directory (reasons over the embedded
-  // snippet, same as it always has) — only Remediation/Verify genuinely need live repo access.
-  const advanceBtnHtml = (variant, tooltip, requiresPath) => {
-    const disabled = requiresPath && !hasPath;
-    return `<button class="loop-advance-btn${variant ? ' ' + variant : ''}" type="button" data-loop-advance-btn="${escapeHtml(f.id)}"${disabled ? ' disabled' : ''} title="${disabled ? 'No known source directory — this finding wasn\'t produced by a scan' : tooltip}">${icon('chevronRight')}</button>`;
-  };
-  const runAllBtnHtml = () => `<button class="loop-run-all-btn" type="button" data-loop-run-all-btn="${escapeHtml(f.id)}"${hasPath ? '' : ' disabled'} title="${hasPath ? 'Run all stages: Triage → Fix → Verify' : 'No known source directory — this finding wasn\'t produced by a scan'}">${icon('skipForward')}</button>`;
-
-  if (triaged === 'attention') return advanceBtnHtml('attention', 'Retry triage', false) + runAllBtnHtml();
-  if (verified === 'attention') return advanceBtnHtml('attention', 'Retry the fix', true) + runAllBtnHtml();
-  if (fixed === 'attention') return advanceBtnHtml('attention', 'Retry the fix', true) + runAllBtnHtml();
-  if (fixed === 'done') return advanceBtnHtml('', 'Verify the fix', true) + runAllBtnHtml();
-  if (triaged === 'done') return advanceBtnHtml('', 'Apply a fix (writes to your code)', true) + runAllBtnHtml();
-  return advanceBtnHtml('', 'Run Triage', false) + runAllBtnHtml();
 }
 
 // Small tag next to a reasoning finding's title showing which of Reasoning Scan's two engines
@@ -3723,12 +3652,11 @@ function renderFindingsTable() {
   for (const f of rows) {
     const tr = document.createElement('tr');
     tr.dataset.findingId = f.id;
-    // Row actions column: the Remediation Loop's advance/run-all buttons (see
-    // findingLoopActionsHtml()) sit "on the side" of the row here, next to the "…" agent menu,
-    // instead of inside the narrow loop cell itself.
+    // Row actions column: just the "…" agent menu now — advancing the loop itself (Triage/Fix/
+    // Verify boxes + "run all") lives on the finding's own detail page, matching the same 3-dot
+    // menu that page uses. The loop cell (findingLoopCellHtml) still shows read-only progress.
     tr.innerHTML = columns.map((col) => `<td data-col="${col.key}">${findingsCellHtml(f, col.key)}</td>`).join('')
       + `<td class="ft-actions-col"><div class="ft-actions-cell">`
-      + findingLoopActionsHtml(f)
       + `<button class="console-toggle-btn" type="button" data-run-agent-btn title="Run agent…">${icon('more')}</button>`
       + `</div></td>`;
     tr.querySelector('[data-run-agent-btn]').addEventListener('click', (e) => {
@@ -3736,22 +3664,6 @@ function renderFindingsTable() {
       const rect = e.currentTarget.getBoundingClientRect();
       openFindingContextMenu(rect.right, rect.bottom + 4, f.id, f);
     });
-    const loopAdvanceBtn = tr.querySelector('[data-loop-advance-btn]');
-    if (loopAdvanceBtn) {
-      loopAdvanceBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.currentTarget.disabled = true; // guard against a double-click firing two real runs; the next table render (on done/error) replaces this node anyway
-        onLoopAdvanceClick(f.id);
-      });
-    }
-    const loopRunAllBtn = tr.querySelector('[data-loop-run-all-btn]');
-    if (loopRunAllBtn) {
-      loopRunAllBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.currentTarget.disabled = true; // guard against a double-click firing two real pipelines; the next table render (on done/error) replaces this node anyway
-        onLoopRunAllClick(f.id);
-      });
-    }
     const viewDiffBtn = tr.querySelector('[data-view-diff-btn]');
     if (viewDiffBtn) {
       viewDiffBtn.addEventListener('click', (e) => {
@@ -4081,6 +3993,12 @@ function openFindingsFilteredByScan(scanId) {
   showView('findings');
 }
 
+// Verdict fields are raw snake_case JSON keys (root_cause, nist_800_53, ...) — title-case them
+// for display so the row label reads like the fd-meta-grid labels above it, not raw JSON.
+function verdictFieldLabel(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function runCardHtml(run) {
   const meta = agentMeta(run.agent);
   const timeStr = run.startedAt ? formatRelativeTime(run.startedAt) : '';
@@ -4103,7 +4021,7 @@ function runCardHtml(run) {
       ${v.reasoning ? `<div class="fd-verdict-reasoning">${escapeHtml(v.reasoning)}</div>` : ''}
       ${otherFields.length ? `
         <div class="fd-verdict-grid" style="margin-top:8px;">
-          ${otherFields.map((k) => `<div class="fd-verdict-item"><b>${escapeHtml(k)}:</b>${escapeHtml(Array.isArray(v[k]) ? v[k].join(', ') : String(v[k]))}</div>`).join('')}
+          ${otherFields.map((k) => `<div class="fd-verdict-item"><b>${escapeHtml(verdictFieldLabel(k))}</b><span>${escapeHtml(Array.isArray(v[k]) ? v[k].join(', ') : String(v[k]))}</span></div>`).join('')}
         </div>
       ` : ''}
       ${appliedDiffHtml}
@@ -4137,20 +4055,81 @@ function runCardHtml(run) {
   `;
 }
 
+// Triage/Fix/Verify boxes for Finding Detail — a box-per-stage view of the exact same linear
+// pipeline the Agent Triage table's loop-seg track shows compactly (see findingLoopState()).
+// Only one stage is ever actionable at a time (findingLoopNextAction() — a strictly linear
+// pipeline), so whichever single box comes back clickable dispatches the same onLoopAdvanceClick()
+// the table's old advance button used to call; there's no independent per-stage logic to keep in
+// sync with it. Returns '' for SCA findings (no code-edit loop applies — Package/Fixed-in already
+// say what to do) and a short note for closed findings, matching findingLoopCellHtml().
+function fdLoopBoxesHtml(f) {
+  if (f.scanType === 'sca') return '';
+  if (f.status === 'closed') return `<div class="hint">Closed — remediation loop not applicable.</div>`;
+
+  const { triaged, fixed, verified } = findingLoopState(f);
+  const next = findingLoopNextAction(f);
+  const hasPath = !!findingSourcePath(f);
+  const anyRunning = triaged === 'running' || fixed === 'running' || verified === 'running';
+
+  const box = (stage, agentKey, label, runningLabel, state, actionable, actionTitle) => {
+    const meta = agentMeta(agentKey);
+    const statusText = state === 'running' ? runningLabel
+      : state === 'attention' ? (stage === 'verify' ? 'Not fixed' : 'Failed')
+      : state === 'done' ? 'Done' : 'Not started';
+    const clickable = actionable && !anyRunning;
+    const title = clickable ? actionTitle
+      : state === 'done' ? `${label} complete`
+      : !hasPath && stage !== 'triage' ? 'No known source directory — this finding wasn\'t produced by a scan'
+      : '';
+    return `
+      <button class="fd-loop-box${clickable ? ' clickable' : ''} state-${state}" type="button"
+        data-fd-loop-box${clickable ? '' : ' disabled'} title="${escapeHtml(title)}">
+        ${icon(meta.icon)}<span class="fd-loop-box-text"><span class="fd-loop-box-label">${escapeHtml(label)}</span><span class="fd-loop-box-status">${escapeHtml(statusText)}</span></span>
+      </button>`;
+  };
+
+  const boxesHtml = '<div class="fd-loop-boxes">'
+    + box('triage', 'triage', 'Triage', 'Triaging…', triaged, next === 'triage', 'Run Triage')
+    + box('remediate', 'remediation', 'Fix', 'Fixing…', fixed, next === 'remediate', 'Apply a fix (writes to your code)')
+    + box('verify', 'verify', 'Verify', 'Verifying…', verified, next === 'verify', 'Verify the fix')
+    + '</div>';
+
+  const runAllDisabled = anyRunning || !next || !hasPath;
+  const runAllTitle = !hasPath ? 'No known source directory — this finding wasn\'t produced by a scan'
+    : !next ? 'Nothing left to run'
+    : 'Run all remaining stages';
+  const runAllHtml = `<button class="fd-loop-runall-btn" type="button" data-fd-runall="${escapeHtml(f.id)}"${runAllDisabled ? ' disabled' : ''} title="${escapeHtml(runAllTitle)}">${icon('skipForward')}Run all stages</button>`;
+
+  return boxesHtml + runAllHtml;
+}
+
 function renderFindingDetailActions(finding) {
   const actionsEl = document.getElementById('fd-header-actions');
-  actionsEl.innerHTML = '';
-  const btn = document.createElement('button');
-  btn.className = 'secondary';
-  btn.textContent = 'Agent Runs ▾';
   const excluded = finding.scanType === 'sca' ? SCA_EXCLUDED_AGENTS : FIX_FLOW_AGENTS;
-  btn.disabled = !agentsList.some((a) => !excluded.includes(a));
-  btn.addEventListener('click', (e) => {
+  const hasMenuAgents = agentsList.some((a) => !excluded.includes(a));
+  const menuBtnHtml = `<button class="console-toggle-btn" type="button" id="fd-agent-menu-btn"${hasMenuAgents ? '' : ' disabled'} title="${hasMenuAgents ? 'Run agent…' : 'No agent actions apply to this finding'}">${icon('more')}</button>`;
+  actionsEl.innerHTML = fdLoopBoxesHtml(finding) + menuBtnHtml;
+
+  document.getElementById('fd-agent-menu-btn').addEventListener('click', (e) => {
     e.stopPropagation();
-    const rect = btn.getBoundingClientRect();
-    openFindingContextMenu(rect.left, rect.bottom + 4, finding.id, finding);
+    const rect = e.currentTarget.getBoundingClientRect();
+    openFindingContextMenu(rect.right, rect.bottom + 4, finding.id, finding);
   });
-  actionsEl.appendChild(btn);
+  actionsEl.querySelectorAll('[data-fd-loop-box]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.currentTarget.disabled = true; // guard against a double-click firing two real runs; the next render (on done/error) replaces this node anyway
+      onLoopAdvanceClick(finding.id);
+    });
+  });
+  const runAllBtn = actionsEl.querySelector('[data-fd-runall]');
+  if (runAllBtn) {
+    runAllBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.currentTarget.disabled = true;
+      onLoopRunAllClick(finding.id);
+    });
+  }
 }
 
 document.getElementById('fd-back-btn').addEventListener('click', () => showView('findings'));
@@ -4523,137 +4502,6 @@ document.getElementById('finding-modal-save').addEventListener('click', async ()
   await openFindingDetail(finding.id);
 });
 
-// ---------- agents screen ----------
-
-// name -> {name, content, isBuiltIn}. Populated by loadAgentsView(), patched in place by
-// save/delete so mutations don't need to re-fetch every other agent's content.
-const agentDetailsCache = new Map();
-let agentModalEditingName = null; // null = create mode, else the agent being edited
-
-function openAgentModal(name, content) {
-  agentModalEditingName = name || null;
-  agentModalTitle.textContent = name ? `Edit ${name}` : 'New agent';
-  agentModalName.value = name || '';
-  agentModalName.disabled = !!name;
-  agentModalContent.value = content || '';
-  agentModalOverlay.hidden = false;
-  (name ? agentModalContent : agentModalName).focus();
-}
-function closeAgentModal() { agentModalOverlay.hidden = true; }
-
-newAgentBtn.addEventListener('click', () => openAgentModal());
-document.getElementById('agent-modal-cancel').addEventListener('click', closeAgentModal);
-agentModalOverlay.addEventListener('click', (e) => { if (e.target === agentModalOverlay) closeAgentModal(); });
-
-agentModalDropzone.addEventListener('dragover', (e) => { e.preventDefault(); agentModalDropzone.classList.add('dragover'); });
-agentModalDropzone.addEventListener('dragleave', () => agentModalDropzone.classList.remove('dragover'));
-agentModalDropzone.addEventListener('dragend', () => agentModalDropzone.classList.remove('dragover'));
-agentModalDropzone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  agentModalDropzone.classList.remove('dragover');
-  const file = e.dataTransfer.files && e.dataTransfer.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    agentModalContent.value = reader.result;
-    if (!agentModalEditingName && !agentModalName.value.trim()) {
-      agentModalName.value = file.name.replace(/\.md$/i, '');
-    }
-  };
-  reader.readAsText(file);
-});
-
-document.getElementById('agent-modal-save').addEventListener('click', async () => {
-  const content = agentModalContent.value;
-  if (!content.trim()) { alert('Agent content must not be empty.'); return; }
-  let res, name;
-  if (agentModalEditingName) {
-    name = agentModalEditingName;
-    res = await fetch(`/api/agents/${encodeURIComponent(name)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
-    });
-  } else {
-    name = agentModalName.value.trim();
-    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-      alert('Agent name must only contain letters, numbers, "_" and "-".');
-      return;
-    }
-    res = await fetch('/api/agents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content }),
-    });
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    alert(body.error || 'Failed to save agent.');
-    return;
-  }
-  closeAgentModal();
-  agentDetailsCache.set(name, { name, content, isBuiltIn: agentDetailsCache.get(name)?.isBuiltIn || false });
-  await loadAgents();
-  if (currentView === 'agents') renderAgentCards();
-});
-
-async function deleteAgent(name) {
-  if (!confirm(`Delete agent "${name}"? This removes agents/${name}.md.`)) return;
-  const res = await fetch(`/api/agents/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    alert(body.error || 'Failed to delete agent.');
-    return;
-  }
-  agentDetailsCache.delete(name);
-  await loadAgents();
-  renderAgentCards();
-}
-
-async function loadAgentsView() {
-  agentsListEl.innerHTML = '<div class="hint">Loading…</div>';
-  const res = await fetch('/api/agents?all=1');
-  agentConfigList = res.ok ? await res.json() : [];
-  const results = await Promise.all(agentConfigList.map(async (name) => {
-    const r = await fetch(`/api/agents/${encodeURIComponent(name)}`);
-    return r.ok ? r.json() : null; // dropped rather than guessed — isBuiltIn is server-authoritative
-  }));
-  agentDetailsCache.clear();
-  for (const a of results.filter(Boolean)) agentDetailsCache.set(a.name, a);
-  renderAgentCards();
-}
-
-function renderAgentCards() {
-  agentsListEl.innerHTML = '';
-  for (const name of agentConfigList) {
-    const a = agentDetailsCache.get(name);
-    if (!a) continue;
-    const meta = agentMeta(a.name);
-    const firstLine = a.content.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('#')) || '';
-    const card = document.createElement('div');
-    card.className = 'agent-card';
-    card.innerHTML = `
-      <div class="agent-card-top">
-        ${icon(meta.icon)}
-        <span class="agent-card-name">${escapeHtml(a.name)}</span>
-        ${a.isBuiltIn ? '<span class="badge core">Core</span>' : ''}
-        ${NON_FINDING_AGENTS.includes(a.name) ? '<span class="badge whole-app">Whole-app</span>' : ''}
-      </div>
-      <div class="agent-card-preview">${escapeHtml(truncate(firstLine, 140))}</div>
-      <div class="agent-card-actions">
-        <button class="secondary" data-action="edit">Edit</button>
-        <button class="secondary" data-action="delete"${a.isBuiltIn ? ' disabled title="Built-in pipeline agents can\'t be deleted"' : ''}>Delete</button>
-      </div>
-    `;
-    card.querySelector('[data-action="edit"]').addEventListener('click', () => openAgentModal(a.name, a.content));
-    if (!a.isBuiltIn) {
-      card.querySelector('[data-action="delete"]').addEventListener('click', () => deleteAgent(a.name));
-    }
-    agentsListEl.appendChild(card);
-  }
-  if (!agentDetailsCache.size) agentsListEl.innerHTML = '<div class="hint">No agents found.</div>';
-}
-
 // ---------- csv export ----------
 
 exportCsvBtn.addEventListener('click', () => {
@@ -4681,6 +4529,7 @@ function renderThemeToggle() {
   navThemeIconSun.hidden = current === 'dark';
   navThemeLabel.textContent = current === 'light' ? 'Light theme' : 'Dark theme';
   navThemeBtn.title = current === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+  navThemeBtn.setAttribute('aria-checked', current === 'dark' ? 'true' : 'false');
 }
 
 navThemeBtn.addEventListener('click', () => {
@@ -4700,7 +4549,7 @@ function renderSettings() {
 }
 
 async function clearSession() {
-  if (!confirm('Clear this session? This permanently deletes every finding, scan, and app-level threat model on the server. This cannot be undone.')) return;
+  if (!confirm('Clear this session? This permanently deletes every finding, scan, app-level threat model, and control assessment on the server. This cannot be undone.')) return;
   const res = await fetch('/api/session/clear', { method: 'POST' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -4713,6 +4562,7 @@ async function clearSession() {
   findingCache.clear();
   scansList = [];
   appThreatModelsList = [];
+  controlAssessmentsList = [];
   timelineEntries = [];
   timelineLoaded = false;
   scanDetailCache.clear();
@@ -4720,15 +4570,19 @@ async function clearSession() {
   scanRuns.clear();
   for (const run of appThreatModelRuns.values()) stopAppThreatModelElapsedTimer(run);
   appThreatModelRuns.clear();
+  for (const run of controlAssistRuns.values()) stopControlsAssistElapsedTimer(run);
+  controlAssistRuns.clear();
   scanLiveContainer.innerHTML = '';
   scaLiveContainer.innerHTML = '';
   expandedAtmRunId = null;
+  expandedCaRunId = null;
   timelineUnseenDone = 0;
   renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
   if (currentView === 'findings') renderFindingsView();
   if (timelineDrawerOpen) renderTimeline();
   if (currentView === 'threatmodel') renderThreatModelView();
+  if (currentView === 'controls-assist') renderControlsAssistView();
 }
 
 document.getElementById('clear-session-btn').addEventListener('click', clearSession);

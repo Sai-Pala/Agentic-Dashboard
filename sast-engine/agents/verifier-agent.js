@@ -16,7 +16,6 @@
  */
 
 import fs from 'fs';
-import path from 'path';
 
 // =============================================================================
 // HEURISTIC PATTERNS
@@ -93,24 +92,6 @@ const ERROR_HANDLING_PATTERNS = [
   /if\s*\(\s*err/,
   /on\s*\(\s*['"]error['"]/,
   /\.on\s*\(\s*['"]error['"]/,
-];
-
-/** Static/hardcoded value indicators — finding uses a constant, not user input */
-const STATIC_VALUE_PATTERNS = [
-  /['"][^'"]{0,200}['"]/,
-  /const\s+\w+\s*=\s*['"][^'"]*['"]/,
-  /^\s*\/\//,
-  /^\s*\*/,
-  /^\s*#/,
-  /TODO|FIXME|HACK|NOTE/,
-];
-
-/** Dead code indicators */
-const DEAD_CODE_PATTERNS = [
-  /return\s+/,
-  /throw\s+/,
-  /process\.exit/,
-  /^\s*\/\//,
 ];
 
 // =============================================================================

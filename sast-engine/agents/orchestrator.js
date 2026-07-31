@@ -142,6 +142,16 @@ export class Orchestrator {
     });
     const skippedAgents = agentsToRun.length - relevantAgents.length;
 
+    // Framework-relevance filtering above means the agent count a caller guessed before
+    // calling runAll() (e.g. this.agents.length) is very often wrong — most repos skip several
+    // shouldRun-gated agents (mobile-scanner, supabase-rls-agent, etc.), so a caller driving a
+    // live progress bar off its own upfront guess will under-report a total that never reaches
+    // 100%. Report the real, post-filter count as soon as it's known so the caller can correct
+    // its total before the per-agent loop (and its onAgentDone calls) even starts.
+    if (typeof options.onScopeReady === 'function') {
+      options.onScopeReady(relevantAgents.length);
+    }
+
     for (let i = 0; i < relevantAgents.length; i += concurrency) {
       const chunk = relevantAgents.slice(i, i + concurrency);
       const settled = await Promise.allSettled(
@@ -208,13 +218,6 @@ export class Orchestrator {
     };
 
     return { recon, findings: allFindings, agentResults, suppression, skippedAgents, totalAgents: relevantAgents.length };
-  }
-
-  /**
-   * Run only agents matching a specific category.
-   */
-  async runCategory(category, rootPath, options = {}) {
-    return this.runAll(rootPath, { ...options, categories: [category] });
   }
 
   /**

@@ -29,7 +29,6 @@
  *          ASI05 (Memory/Context Poisoning)
  */
 
-import path from 'path';
 import fg from 'fast-glob';
 import { BaseAgent, createFinding } from './base-agent.js';
 

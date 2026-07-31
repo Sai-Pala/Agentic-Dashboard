@@ -222,17 +222,6 @@ export class BaseAgent {
   }
 
   /**
-   * Get surrounding code context for a finding.
-   */
-  getContext(filePath, lineNum, radius = 3) {
-    const lines = this.readLines(filePath);
-    if (lines.length === 0) return '';
-    const start = Math.max(0, lineNum - 1 - radius);
-    const end = Math.min(lines.length, lineNum + radius);
-    return lines.slice(start, end).join('\n');
-  }
-
-  /**
    * Check if a line has the sast-engine-ignore suppression comment.
    *
    * Pass the severity of the finding being considered so the floor can apply:
@@ -319,18 +308,6 @@ export class BaseAgent {
     }
 
     return findings;
-  }
-
-  /**
-   * Check if content imports or requires a specific module.
-   */
-  hasImport(content, moduleName) {
-    const importRe = new RegExp(
-      `(?:import\\s+.*from\\s+['"]${moduleName}['"])|` +
-      `(?:require\\s*\\(\\s*['"]${moduleName}['"]\\s*\\))`,
-      'g'
-    );
-    return importRe.test(content);
   }
 }
 

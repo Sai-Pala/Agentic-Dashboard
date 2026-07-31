@@ -1,16 +1,14 @@
-# How the Reasoning Engine Works
+# How the Scan Engine Works
 
-This document explains the backend mechanics of **Reasoning Scan** — specifically the LLM
-("reasoning") half of it. For the deterministic half (`sast-engine/`'s 29 pattern agents), see
-`CLAUDE.md`. Everything here lives in `server.js` unless noted, and the agent's own instructions
-live in `agents/scan.md`.
+This document explains the backend mechanics of **Reasoning Scan** end-to-end — both halves:
+the deterministic pattern-matching engine (`sast-engine/`, vendored from the open-source
+`ship-safe` project) and the LLM reasoning engine (real `claude -p` calls against
+`agents/scan.md`). They run concurrently against the same directory and their results are
+merged. Everything here lives in `server.js` unless noted.
 
 ---
 
 ## 1. The big picture: two engines, one scan
-
-Every Reasoning Scan actually runs **two independent engines concurrently** against the same
-directory, then merges their output. This file is only about the right-hand side.
 
 ```
                         ┌─────────────────────────────┐
@@ -29,23 +27,19 @@ directory, then merges their output. This file is only about the right-hand side
    ┌───────────────────────────┐              ┌───────────────────────────────┐
    │   DETERMINISTIC HALF       │              │      REASONING HALF           │
    │   runDeterministicPattern  │              │      runLLMReasoningScan()    │
-   │   Scan()                   │              │      (this document)          │
+   │   Scan()   (section 2)     │              │      (sections 3-6)           │
    │                            │              │                                │
    │  sast-engine/: 29 regex/   │              │  Real claude -p calls against  │
    │  heuristic pattern agents  │              │  agents/scan.md — module-      │
    │  + VerifierAgent           │              │  scoped, budget-capped,        │
    │                            │              │  concurrency-limited           │
-   │  No LLM. Fast, consistent. │              │  (see sections 2-5 below)      │
+   │  No LLM. Fast, consistent. │              │                                │
    └─────────────┬──────────────┘              └────────────────┬───────────────┘
                  │                                               │
                  └─────────────────────┬─────────────────────────┘
                                        ▼
                      Promise.all() waits for BOTH to finish
-                                       │
-                                       ▼
-                    Dedup: drop a reasoning finding whose
-                    file+line sits within 2 lines of a
-                    deterministic finding (parseFileLine())
+                     (section 7 covers exactly how they merge)
                                        │
                                        ▼
                    Findings created, triaged, sent to the
@@ -55,7 +49,120 @@ directory, then merges their output. This file is only about the right-hand side
 
 ---
 
-## 2. Turning a directory into scoped "modules"
+## 2. The deterministic half (`sast-engine/`)
+
+`runDeterministicPatternScan()` builds an `Orchestrator` and calls its `runAll()`. This is pure
+JS pattern-matching plus a second-pass code-context check — no LLM anywhere in this half.
+
+### 2a. Recon first — mapping the attack surface
+
+Before any pattern agent runs, `ReconAgent` walks the directory once and builds a `recon` object:
+languages, frameworks (Next.js, Roblox/Luau, Supabase, ...), API routes, auth patterns, databases,
+cloud providers, CI/CD config, Docker/Terraform/Kubernetes presence, env/config files. This isn't
+a security finding itself — it's context every other agent (and the framework-relevance filter
+below) reads.
+
+### 2b. Discovering files once, shared by every agent
+
+`discoverFiles()` runs a single `fast-glob` pass respecting `SKIP_DIRS` / `SKIP_EXTENSIONS` /
+`SKIP_FILENAMES` / `.gitignore` / `.sast-engineignore` / `MAX_FILE_SIZE` — the same file list every
+one of the 29 agents then scans, so file discovery isn't repeated 29 times. A **"diff" scope**
+scan additionally restricts this list up front to `options.onlyFiles` (the changed-file list),
+before any agent sees it.
+
+### 2c. Framework-relevance filtering (`shouldRun(recon)`)
+
+Not every agent applies to every repo — `mobile-scanner` only makes sense on a mobile codebase,
+`supabase-rls-agent` only if Supabase is actually in use, and 11 other agents have their own
+`shouldRun(recon)` guard. `orchestrator.runAll()` filters the full 29-agent list down to
+`relevantAgents` using this check **before** running anything:
+
+```
+  All 29 registered agents
+  ┌─────────────────────────────────────┐
+  │ InjectionTester, AuthBypassAgent,     │
+  │ SSRFProber, MobileScanner,            │      shouldRun(recon) per agent
+  │ SupabaseRLSAgent, ...                 │  ────────────────────────────▶
+  └─────────────────────────────────────┘
+
+  relevantAgents = 27       (e.g. this repo has no mobile code,
+  (2 skipped)                no Supabase usage — those 2 agents
+                              are filtered out, not run and marked
+                              "0 findings")
+```
+
+> **A real bug this uncovered:** `runDeterministicPatternScan()` used to seed the "Pattern match"
+> progress bar's `total` from `orchestrator.agents.length` — always 29, the full registered count
+> — **before** this filtering happened. Any agent `shouldRun` skipped could never be counted by
+> `onAgentDone`, so the bar permanently stalled below 100% (reproduced live: stuck at `27/29` for
+> the rest of the scan) even though the deterministic half had already finished. Fixed by adding
+> an `options.onScopeReady(relevantAgents.length)` callback, fired right after filtering and
+> before the per-agent loop starts — `runDeterministicPatternScan()` uses it to correct `total`
+> (and re-sends `scan-progress` with the corrected value) so the bar's denominator always matches
+> what will actually run.
+
+### 2d. Running the pattern agents (chunked concurrency)
+
+`relevantAgents` run in chunks of `DEFAULT_CONCURRENCY` (6) via `Promise.allSettled`, each with a
+`DEFAULT_TIMEOUT` (30s) per-agent ceiling:
+
+```
+  relevantAgents = [A1, A2, A3, A4, A5, A6, A7, A8, ...]
+                     └──────── chunk of 6 ────────┘  └─ next chunk ─▶
+
+  Promise.allSettled([A1.analyze(), ..., A6.analyze()])
+       │
+       ▼
+  each settled result → onAgentDone(agentResult, findings)
+       │                        │
+       │                        ├─▶ send scan-progress {engine:'deterministic', done, total}
+       │                        └─▶ send scan-event with one "[severity] file:line — title"
+       │                            line per finding this agent found (narration-shaped, so
+       │                            the client's existing severity-tag parser needs no changes)
+       ▼
+  a rejected/timed-out agent still counts toward `done` and still calls onAgentDone
+  (with 0 findings + an error note) — one slow/broken agent can't stall the bar forever
+```
+
+Each pattern agent (`InjectionTester`, `AuthBypassAgent`, `SSRFProber`, ...) is just an array of
+`{ rule, title, regex, severity, cwe, owasp, description, fix }` objects matched line-by-line
+against every file (`scanFileWithPatterns()` in `base-agent.js`) — this is the "coverage" that
+`buildCoverageSummary()` (section 4a) later tells the reasoning half about, by reading each
+agent's own `name`/`description`/`category` rather than the pattern arrays themselves.
+
+### 2e. The Verifier pass — confirm or downgrade
+
+After every agent finishes and results are deduplicated, `VerifierAgent.verify()` re-checks
+**critical/high severity findings only** (medium/low/informational are left as `verified: null`
+— "not checked," not "unverified") by reading a 30-line window of real code around each finding:
+
+```
+  For each critical/high finding:
+    ┌─ Is it in dead code (after a return/throw)?  ──▶ verified: false
+    ├─ Is the value static/hardcoded, no user input? ──▶ verified: false
+    ├─ Is there sanitization/validation upstream?    ──▶ verified: false
+    ├─ Does user input reach it with no sanitization? ──▶ verified: true
+    ├─ Is it inside a try/catch error handler?        ──▶ verified: false
+    └─ None of the above match clearly                ──▶ verified: null (undetermined)
+
+  Unverified (false) findings get downgraded one confidence level
+  (high → medium → low) — the finding still survives, just less confident.
+```
+
+This is what feeds each deterministic finding's synthetic Triage verdict (section 7): `verified
+=== true` → `confirmed`, anything else → `needs_review`.
+
+### 2f. Confidence tuning and sort
+
+One more deterministic pass adjusts confidence for context that's often noise: findings in test
+files, doc files (`.md`/`.txt`/...), example/sample/demo paths, or on comment lines all get
+downgraded (rarely upgraded). Findings are then sorted critical → high → medium → low →
+informational and returned to `server.js`, which — per finding — synthesizes a Finding record
+(`findingFromSastEngine()`) with a `triage` run already attached.
+
+---
+
+## 3. The reasoning half: turning a directory into scoped "modules"
 
 The reasoning half used to make **one unscoped `claude -p` call over the entire target
 directory**. That scales both token spend and hallucination surface directly with repo size —
@@ -80,7 +187,7 @@ directory gets partitioned into small, bounded chunks first.
   └─────────────────────┘                        ▼
 ```
 
-### 2a. Recursive size-based splitting (`splitFileGroup()`)
+### 3a. Recursive size-based splitting (`splitFileGroup()`)
 
 Files are grouped by path segment. Any group over `REASONING_MODULE_MAX_FILES` (30) gets split
 one level deeper — not by directory *count*, by actual *file count*. This matters: a repo whose
@@ -106,7 +213,7 @@ depth 2:  routes/ has no further subdirectories —
           Capped at REASONING_MODULE_SPLIT_MAX_DEPTH (3) levels of recursion.
 ```
 
-### 2b. Bin-packing merge (small groups bundled together)
+### 3b. Bin-packing merge (small groups bundled together)
 
 The reverse problem also matters: a repo with a dozen tiny directories (2-3 files each)
 shouldn't spawn a dozen processes. Groups are sorted **smallest-first** and greedily packed into
@@ -137,7 +244,7 @@ to discover what's in scope, the same explicit-file-list style the diff-scope fl
 
 ---
 
-## 3. One scoped call per module, plus one unscoped "cross-cutting" pass
+## 4. One scoped call per module, plus one unscoped "cross-cutting" pass
 
 ```
    modules = [ BucketA, BucketB, ... ]
@@ -202,9 +309,61 @@ to discover what's in scope, the same explicit-file-list style the diff-scope fl
 > calls turned out to be more resilient than originally feared, but the cross-cutting pass still
 > closes a real gap.
 
+### 4a. Telling the model what's already covered (`buildCoverageSummary()`)
+
+Every module call **and** the cross-cutting pass gets one more thing appended to its system
+prompt, right after `agents/scan.md`'s own content: a short summary of what the deterministic
+half (section 2) already checks, so the reasoning half spends its budget on business logic/
+authz/attack-surface reasoning instead of re-deriving known pattern categories a regex already
+covers for free.
+
+```
+  sast-engine/agents/index.js              Nothing is written by hand for this —
+  ┌───────────────────────────────┐        it's the exact string already passed
+  │  listBuiltInAgents()           │        to each agent's OWN constructor call:
+  │   → [{name, description,       │  ◀───
+  │       category}, ...]          │           super('SSRFProber',
+  └───────────────┬─────────────────┘               'Detect Server-Side Request
+                  │                                    Forgery vulnerabilities',
+                  ▼                                  'ssrf')
+  buildCoverageSummary(engine)  in server.js
+  formats all 29 into one line each:
+
+    "- SSRFProber (ssrf): Detect Server-Side Request Forgery vulnerabilities
+     - AuthBypassAgent (auth): Detect authentication and authorization
+       vulnerabilities
+     - InjectionTester (injection): Detect injection vulnerabilities across
+       all classes
+     ...(26 more)"
+                  │
+                  ▼
+       appended to systemPrompt — the SAME block goes into every
+       module call and the cross-cutting pass for this scan
+```
+
+Two things this deliberately is **not**:
+
+```
+  NOT a second hand-maintained file          NOT the full per-rule detail
+  ──────────────────────────────             ──────────────────────────────
+  A separate doc listing "what             Each pattern's full regex +
+  sast-engine covers" would drift          description + fix text (what
+  the moment someone adds/edits an         findingFromSastEngine() actually
+  agent in sast-engine/agents/ and         uses) would run to hundreds of
+  forgets to update it. Reading            entries across 29 agents — real
+  name/description/category straight       prompt bloat for a block repeated
+  off the live agent objects means         on every module + crosscut call.
+  it literally cannot go stale.            One line per agent keeps the
+                                            whole thing to ~29 lines.
+```
+
+Cost: ~800 tokens total (verified), a small **fixed** cost per scan that doesn't scale with repo
+size — unlike the module-partitioning cost above, which does. Cheap enough that it's added
+unconditionally, on both "full" and "diff" scope scans, regardless of the Budget cap toggle.
+
 ---
 
-## 4. What comes back from each call
+## 5. What comes back from each reasoning call
 
 Every `claude -p` process streams `stream-json` events. The server watches for two things:
 
@@ -256,7 +415,7 @@ indistinguishable from "scanned this and found nothing." Now it's a visible, spe
 
 ---
 
-## 5. Cost tracking and the budget toggle
+## 6. Cost tracking, the budget toggle, and cancellation
 
 Every `result` event carries a real `total_cost_usd` field — actual dollar spend for that one
 call, not a token-count estimate. The server sums this across every module + the cross-cutting
@@ -293,12 +452,8 @@ The **Budget cap** toggle (top-right of the New Reasoning Scan form) controls wh
                                   cap" chip on the scan card.
 ```
 
-With the cap off, the budget-exhaustion detection path (section 4) simply never triggers —
+With the cap off, the budget-exhaustion detection path (section 5) simply never triggers —
 there's no cap to exhaust — everything else about cost tracking still works exactly the same.
-
----
-
-## 6. Cancellation
 
 Because a "Full" scope scan can have several `claude` processes in flight at once, each one is
 tracked under its own synthetic key instead of the scan's own `runId`:
@@ -319,17 +474,85 @@ tracked under its own synthetic key instead of the scan's own `runId`:
        whole reason moduleRunIds exists)
 ```
 
+The deterministic half never spawns a child process (it's synchronous JS, no subprocess to
+kill), so cancelling mid-scan is really only about stopping in-flight `claude -p` calls and
+suppressing further `scan-event`/`scan-progress` relaying from the deterministic loop.
+
+---
+
+## 7. Merging the two halves into findings
+
+`runHybridReasoningScan()` `Promise.all()`s both engines, then:
+
+```
+  detResult.findings ──▶ findingFromSastEngine() ──▶ Finding + synthetic triage run
+                                                        (verdict from VerifierAgent's
+                                                         `verified` field — see 2e)
+
+  llmResult.findings ──▶ dedup check first:
+    for each reasoning finding, does its file+line sit within 2 lines of
+    a deterministic finding in the SAME file?
+      │
+      ├─ yes → drop it (same underlying issue, no need to show twice)
+      │
+      └─ no  → findingFromLLMScan() ──▶ Finding + synthetic triage run
+               (verdict, severity_confirmed, confidence, priority, owasp,
+                asvs, cwe, nist_800_53 — ALL assigned by scan.md itself,
+                since the same call that found the issue also triaged it)
+
+  Findings with no resolvable file+line (most business-logic/attack-surface
+  findings) always survive dedup — there's nothing to compare them against.
+```
+
+The two synthetic triage verdicts are **not** built the same way, and this is a known,
+documented asymmetry rather than an oversight:
+
+```
+  Deterministic finding's triage             Reasoning finding's triage
+  ─────────────────────────────              ─────────────────────────────
+  verdict: VerifierAgent's `verified`        verdict: scan.md's own real
+    (true → confirmed, else →                  triage assessment (confirmed /
+    needs_review — see section 2e)             needs_review / false_positive /
+                                                duplicate)
+  owasp/cwe: from the matched pattern        owasp/asvs/cwe/nist_800_53: all
+    (real, deterministic)                      real — the model doing the
+  asvs: always null                            reasoning also fills in the
+  nist_800_53: always []                       full framework mapping
+    (sast-engine has no mapping                 in the same pass
+    for either — a known gap)
+```
+
+If one engine errors out entirely, the scan still succeeds on the other's results alone (a
+`scan-warning` — not `scan-stderr`, see below — flags which one failed). If only *some* reasoning
+modules fail while others succeed, the scan still succeeds on the surviving modules' findings.
+
+A dedicated `scan-warning` WS message type exists for exactly this class of note (module/engine
+partial failures, budget-exhaustion summaries) — distinct from `scan-stderr` (raw CLI stderr
+chatter, silently discarded client-side). This was added after a real gap: before it existed,
+these informational notes were themselves sent as `scan-stderr` and therefore silently dropped
+by the client too, so a genuine partial failure produced no visible signal anywhere in the UI.
+
 ---
 
 ## Summary: the constants that shape all of this
 
-| Constant                             | Value  | Meaning                                                        |
-|---------------------------------------|--------|------------------------------------------------------------------|
-| `REASONING_MODULE_MAX_FILES`          | 30     | Target files per module before split/merge kicks in              |
-| `REASONING_MODULE_SPLIT_MAX_DEPTH`    | 3      | How many directory levels an oversized group can be split       |
-| `REASONING_MODULE_MAX`                | 24     | Hard cap on total modules after bin-packing merge                |
-| `REASONING_MODULE_BUDGET_USD`         | $0.50  | Per-module dollar cap (when the toggle is on)                    |
-| `REASONING_CROSSCUT_BUDGET_USD`       | $0.75  | Cross-cutting pass's dollar cap (higher — samples the whole tree)|
-| `REASONING_MODULE_CONCURRENCY`        | 3      | Max claude processes running at once for one scan                |
+| Constant                             | Value  | Half           | Meaning                                                        |
+|---------------------------------------|--------|----------------|------------------------------------------------------------------|
+| `DEFAULT_CONCURRENCY`                 | 6      | Deterministic  | Pattern agents run in chunks of this many at once                |
+| `DEFAULT_TIMEOUT`                     | 30s    | Deterministic  | Per-agent ceiling before it's treated as failed                  |
+| `BUILT_IN_AGENT_COUNT`                | 29     | Deterministic  | Total registered pattern agents (before shouldRun filtering)     |
+| `REASONING_MODULE_MAX_FILES`          | 30     | Reasoning      | Target files per module before split/merge kicks in               |
+| `REASONING_MODULE_SPLIT_MAX_DEPTH`    | 3      | Reasoning      | How many directory levels an oversized group can be split        |
+| `REASONING_MODULE_MAX`                | 24     | Reasoning      | Hard cap on total modules after bin-packing merge                 |
+| `REASONING_MODULE_BUDGET_USD`         | $0.50  | Reasoning      | Per-module dollar cap (when the toggle is on)                     |
+| `REASONING_CROSSCUT_BUDGET_USD`       | $0.75  | Reasoning      | Cross-cutting pass's dollar cap (higher — samples the whole tree) |
+| `REASONING_MODULE_CONCURRENCY`        | 3      | Reasoning      | Max claude processes running at once for one scan                 |
 
-All defined at the top of `server.js`, alongside the code that uses them.
+`DEFAULT_CONCURRENCY`/`DEFAULT_TIMEOUT`/`BUILT_IN_AGENT_COUNT` are defined in
+`sast-engine/agents/orchestrator.js`/`index.js`; the `REASONING_*` constants are defined at the
+top of `server.js`, alongside the code that uses them.
+
+One more piece has no tunable constant because it isn't meant to be tuned — `buildCoverageSummary()`
+derives its content live from `sast-engine/agents/index.js`'s `listBuiltInAgents()` every scan, so
+it always matches whatever agents are actually registered (built-in or plugin) with no separate
+value to keep in sync.
