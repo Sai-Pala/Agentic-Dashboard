@@ -20,7 +20,15 @@ const AGENTS_DIR = path.join(__dirname, 'agents');
 const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 const RUN_ID_RE = /^[a-zA-Z0-9_-]+$/;
 const BRANCH_NAME_RE = /^[\w./-]+$/;
-const SEVERITIES = ['critical', 'high', 'medium', 'low', 'informational'];
+// ---------- extracted modules ----------
+// server.js stays the single entry point and re-exports these at the bottom, so the test
+// suite keeps importing from one place and a behaviour change is never disguised as a move.
+const { SEVERITIES, SEVERITY_RANK, severityRank, priorityFromSeverityConfidence, normalizeSeverity, placeholderTriageRun } = require('./lib/taxonomy');
+const { extractVerdict } = require('./lib/verdict');
+const { ADJACENT_RULE_LINES, parseFileLine, isDuplicateOfReasoning, dedupeAdjacentSameRule } = require('./lib/merge');
+const { isAllowedWsOrigin: isAllowedWsOriginRaw } = require('./lib/ws-origin');
+// Bind the served port once so call sites read the same as before the extraction.
+const isAllowedWsOrigin = (origin, port = PORT) => isAllowedWsOriginRaw(origin, port);
 const PRIORITIES = ['p0', 'p1', 'p2', 'p3'];
 // SCA Scan is purely deterministic (sast-engine/'s dependency audit — no LLM equivalent is
 // worth building for known-CVE lookups). Reasoning Scan is a hybrid: sast-engine's 29
@@ -145,54 +153,6 @@ function loadSastEngine() {
     }));
   }
   return _sastEnginePromise;
-}
-
-// Deterministic severity+confidence -> priority table, replacing what agents/triage.md (an
-// LLM call) used to decide case by case. Mirrors triage.md's p0-p3 definitions: p0 same-day,
-// p1 this sprint, p2 normal backlog, p3 track only.
-function priorityFromSeverityConfidence(severity, confidence) {
-  if (severity === 'critical') return confidence === 'low' ? 'p1' : 'p0';
-  if (severity === 'high') return confidence === 'high' ? 'p0' : 'p1';
-  if (severity === 'medium') return confidence === 'low' ? 'p3' : 'p2';
-  return 'p3'; // low, informational, or unrecognized
-}
-
-// npm/pip audit tools use "moderate" where this app's SEVERITIES uses "medium" — normalize so
-// SCA findings sort/filter/display the same as reasoning findings.
-function normalizeSeverity(raw) {
-  const s = String(raw || '').toLowerCase();
-  if (s === 'moderate') return 'medium';
-  return SEVERITIES.includes(s) ? s : 'medium';
-}
-
-// Synthetic 'triage' run for a reasoning finding with no source directory to actually check
-// anything against — today that means one manually added via "+ Add"; see the /api/findings
-// POST handler below. (It also covered the boot-time sample findings, until seedFindings() was
-// removed and the store started empty.) Triage is no longer a live agent stage at all (its .md
-// file is gone), so every reasoning finding needs *some* triage run at creation time or the
-// Remediation Loop's first stage is permanently stuck pointing at a stage that can't run.
-function placeholderTriageRun(severity) {
-  return {
-    runId: crypto.randomUUID(),
-    agent: 'triage',
-    status: 'done',
-    startedAt: Date.now(),
-    finishedAt: Date.now(),
-    verdict: {
-      verdict: 'needs_review',
-      severity_confirmed: severity,
-      confidence: 'low',
-      priority: priorityFromSeverityConfidence(severity, 'low'),
-      reasoning: 'No scan or source directory to verify against.',
-      owasp: null,
-      asvs: null,
-      cwe: null,
-      nist_800_53: [],
-      next_agent: null,
-      source: 'manual-placeholder',
-    },
-    fullText: '',
-  };
 }
 
 function agentFilePath(name) {
@@ -631,228 +591,12 @@ app.delete('/api/scans/:id', (req, res) => {
 });
 
 // ---------- whole-directory run stores ----------
-//
-// App-level threat models and control assessments are the same KIND of thing: one holistic
-// `claude -p` run against an entire directory, producing a single report object, tied to no
-// finding and no scan. Only three things actually differ between them — which agent .md is
-// loaded, how the agent is named in an error message, and the opening line of the prompt.
-//
-// They used to be written out twice: two stores, two runIndexes, two byte-identical list-item
-// mappers, two pairs of REST routes, and two 134-line WebSocket handlers differing in three
-// strings. That is what this factory replaces. Everything below is deliberately derived from
-// `kind` rather than hardcoded, so adding a third whole-directory agent is a config entry
-// rather than another 170 lines to keep in sync.
-//
-// What is NOT collapsed here, on purpose:
-//   - The `scans` store. It carries a dozen extra fields (scope, budget, cost, agent counts)
-//     and a three-engine pipeline; forcing it through this shape would mean a config object
-//     with more exceptions than shared behaviour.
-//   - The `findings` store. A finding is a different domain object entirely — it owns a `runs`
-//     chain and a status machine, where these own exactly one run.
-// Deduplicating those too would be abstraction for its own sake, which costs more than the
-// duplication it removes.
-//
-// The per-family WebSocket message names (`app-threat-model-*` vs `controls-assist-*`) are
-// preserved exactly. They are not incidental duplication: the client keys its handlers on
-// them, and distinct names are what stop a runId collision between families routing one
-// family's message into another's handler.
-
-const DIRECTORY_RUN_KINDS = {
-  appThreatModel: {
-    routeBase: '/api/app-threat-models',
-    wsPrefix: 'app-threat-model',
-    agentName: 'app_threat_model',
-    agentLabel: 'App Threat Model',
-    openingLine: 'Analyze this codebase and produce a whole-app, architecture-level threat model.',
-  },
-  controlAssessment: {
-    routeBase: '/api/control-assessments',
-    wsPrefix: 'controls-assist',
-    agentName: 'controls_assist',
-    agentLabel: 'Controls Assist',
-    openingLine:
-      'Analyze this codebase and identify which NIST 800-53 controls the application layer provides evidence for, drafting SSP-ready narratives for each.',
-  },
-};
-
-/**
- * Build one whole-directory run store: its records, its runId index, its list-item mapper,
- * its two REST routes and its WebSocket handler.
- */
-function createDirectoryRunStore(kind) {
-  const records = new Map();   // id -> record
-  const runIndex = new Map();  // runId -> record, for O(1) lookup on done/error/cancel
-
-  const toListItem = (record) => ({
-    id: record.id,
-    runId: record.runId,
-    path: record.path,
-    app: record.app,
-    branch: record.branch,
-    instruction: record.instruction,
-    status: record.status,
-    verdict: record.verdict,
-    error: record.error,
-    startedAt: record.startedAt,
-    finishedAt: record.finishedAt,
-  });
-
-  app.get(kind.routeBase, (req, res) => {
-    res.json([...records.values()].sort((a, b) => b.startedAt - a.startedAt).map(toListItem));
-  });
-
-  app.get(`${kind.routeBase}/:id`, (req, res) => {
-    const record = records.get(req.params.id);
-    if (!record) {
-      res.status(404).json({ error: 'not found' });
-      return;
-    }
-    res.json(toListItem(record));
-  });
-
-  // Every error from this handler carries the family's own type name, so a client listening
-  // for one family never sees another's failures.
-  const fail = (send, runId, message, extra) =>
-    send({ type: `${kind.wsPrefix}-error`, ...(runId ? { runId } : {}), ...extra, message });
-
-  function handleMessage(msg, { children, send }) {
-    const runId = String(msg.runId || '').trim();
-    if (!RUN_ID_RE.test(runId)) {
-      fail(send, null, 'Invalid or missing runId.');
-      return;
-    }
-    if (children.has(runId)) {
-      fail(send, runId, 'This runId is already active.');
-      return;
-    }
-
-    const targetPath = String(msg.path || '').trim();
-    const instruction = String(msg.instruction || '').trim();
-    const branch = String(msg.branch || '').trim();
-    const appLabel = String(msg.app || '').trim();
-
-    if (!targetPath) {
-      fail(send, runId, 'A target directory path is required.');
-      return;
-    }
-
-    let stat;
-    try {
-      stat = fs.statSync(targetPath);
-    } catch (err) {
-      fail(send, runId, `Path not found: ${targetPath}`);
-      return;
-    }
-    if (!stat.isDirectory()) {
-      fail(send, runId, `Not a directory: ${targetPath}`);
-      return;
-    }
-
-    const agentPath = agentFilePath(kind.agentName);
-    if (!fs.existsSync(agentPath)) {
-      fail(send, runId, `${kind.agentLabel} agent (agents/${kind.agentName}.md) is not available.`);
-      return;
-    }
-
-    let systemPrompt;
-    try {
-      systemPrompt = fs.readFileSync(agentPath, 'utf8');
-    } catch (err) {
-      fail(send, runId, `Failed to read agent prompt: ${err.message}`);
-      return;
-    }
-
-    const record = {
-      id: crypto.randomUUID(),
-      runId,
-      path: targetPath,
-      app: appLabel || null,
-      branch: branch || null,
-      instruction,
-      status: 'running',
-      verdict: null,
-      error: null,
-      startedAt: Date.now(),
-      finishedAt: null,
-    };
-    records.set(record.id, record);
-    runIndex.set(runId, record);
-
-    const userPrompt = [kind.openingLine, instruction, `Target directory: ${targetPath}`]
-      .filter(Boolean)
-      .join('\n\n');
-
-    const args = [
-      '-p', userPrompt,
-      '--append-system-prompt', systemPrompt,
-      '--output-format', 'stream-json',
-      '--verbose',
-      '--allowedTools', 'Read,Grep,Glob',
-      '--permission-mode', 'acceptEdits',
-    ];
-
-    send({ type: `${kind.wsPrefix}-started`, runId, id: record.id, path: targetPath });
-
-    const child = spawn('claude', args, { cwd: targetPath, shell: false });
-    children.set(runId, child);
-
-    let stdoutBuffer = '';
-    let fullText = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdoutBuffer += chunk.toString();
-      const lines = stdoutBuffer.split('\n');
-      stdoutBuffer = lines.pop();
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        let event;
-        try {
-          event = JSON.parse(line);
-        } catch (err) {
-          continue;
-        }
-        if (event.type === 'assistant' && event.message && Array.isArray(event.message.content)) {
-          for (const block of event.message.content) {
-            if (block.type === 'text' && typeof block.text === 'string') fullText += block.text;
-          }
-        }
-        send({ type: `${kind.wsPrefix}-event`, runId, id: record.id, event });
-      }
-    });
-
-    child.stderr.on('data', (chunk) => {
-      send({ type: `${kind.wsPrefix}-stderr`, runId, id: record.id, data: chunk.toString() });
-    });
-
-    child.on('close', (code) => {
-      const verdict = extractVerdict(fullText);
-      if (record.status === 'running') {
-        record.status = code === 0 && verdict ? 'done' : 'error';
-        record.error = code === 0 && verdict ? null : `claude exited with code ${code}`;
-      }
-      record.verdict = verdict;
-      record.finishedAt = Date.now();
-      send({ type: `${kind.wsPrefix}-done`, runId, id: record.id, code, verdict });
-      children.delete(runId);
-      runIndex.delete(runId);
-    });
-
-    child.on('error', (err) => {
-      record.status = 'error';
-      record.error = err.message;
-      record.finishedAt = Date.now();
-      fail(send, runId, `Failed to spawn claude: ${err.message}`, { id: record.id });
-      children.delete(runId);
-      runIndex.delete(runId);
-    });
-  }
-
-  return { records, runIndex, toListItem, handleMessage };
-}
-
-const appThreatModelStore = createDirectoryRunStore(DIRECTORY_RUN_KINDS.appThreatModel);
-const controlAssessmentStore = createDirectoryRunStore(DIRECTORY_RUN_KINDS.controlAssessment);
+// App-level threat models and control assessments share one implementation; see
+// lib/directory-run-store.js for the factory and for what is deliberately NOT collapsed
+// into it (the scans store and the findings store).
+const { appThreatModelStore, controlAssessmentStore } = require('./lib/directory-run-store')({
+  app, fs, crypto, spawn, RUN_ID_RE, agentFilePath, extractVerdict,
+});
 
 // Kept as named bindings so the call sites below (cancel bookkeeping, WS close cleanup,
 // session clear) read the same as before rather than reaching through a store object.
@@ -997,50 +741,6 @@ app.get('/api/timeline', (req, res) => {
 // ---------- websocket: agent invocation ----------
 
 const server = http.createServer(app);
-/**
- * Is this WebSocket handshake coming from our own page, or from some other website?
- *
- * Exported for tests. Returns true to accept.
- *
- * The same-origin policy does NOT cover WebSockets: a page on evil.example can open a socket
- * to http://127.0.0.1:4500 and the browser will happily connect. Binding to loopback does not
- * help, because the request originates from the user's own browser. Nothing here requires
- * auth, and `remediate_fix` writes to disk — so without this check, visiting a web page was
- * enough to let that page start scans and apply edit plans to the user's repository. That is
- * cross-site WebSocket hijacking, and it is the one hole where "local single-user tool" stops
- * being an adequate excuse: the attacker never needs access to the machine.
- *
- * A browser ALWAYS sends Origin on a WebSocket handshake, and script cannot forge it. So:
- *   - Origin present  -> it must be one of our own loopback origins.
- *   - Origin absent   -> not a browser (curl, a test, a CLI). Allowed: anything running
- *                        locally outside a browser already has this user's privileges, so
- *                        rejecting it buys nothing and would break the test suite.
- */
-function isAllowedWsOrigin(origin, port = PORT) {
-  if (!origin) return true;
-  let parsed;
-  try {
-    parsed = new URL(origin);
-  } catch {
-    return false; // unparseable Origin is not something we should be lenient about
-  }
-  // Scheme is part of an origin by definition, so check it rather than comparing host/port
-  // alone. Only http/https can be a real browser page origin here; anything else (file:,
-  // data:, a custom scheme) is not something this app is ever served over.
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-  // A real Origin header is scheme://host:port with no path, so anything carrying one did
-  // not come from a browser's origin serialization and should not be treated as ours.
-  if (parsed.pathname !== '/' && parsed.pathname !== '') return false;
-  const hostOk = parsed.hostname === 'localhost'
-    || parsed.hostname === '127.0.0.1'
-    || parsed.hostname === '[::1]'
-    || parsed.hostname === '::1';
-  // Compare the port explicitly: another service on a different loopback port is still a
-  // different origin, and one of them being localhost does not make it ours.
-  const portOk = parsed.port === String(port);
-  return hostOk && portOk;
-}
-
 const wss = new WebSocketServer({
   server,
   verifyClient: ({ origin, req }) => {
@@ -1049,21 +749,6 @@ const wss = new WebSocketServer({
     return false;
   },
 });
-
-function extractVerdict(text) {
-  // Case-insensitive fence: every agent .md asks for ```json, but a model that emits ```JSON
-  // is following the instruction in spirit and there is no reason to punish the difference.
-  // It used to be case-sensitive, and the failure was silent and total — the run completed
-  // "successfully" with verdict null, so the finding got no triage, no status change and no
-  // error anywhere. A whole paid agent run produced nothing, and looked fine doing it.
-  const match = String(text || '').match(/```json\s*([\s\S]*?)```/i);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1]);
-  } catch (err) {
-    return null;
-  }
-}
 
 wss.on('connection', (ws) => {
   const children = new Map(); // runId -> ChildProcess
@@ -2580,72 +2265,6 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
 }
 
 
-const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, moderate: 2, low: 3, informational: 4 };
-function severityRank(sev) {
-  const r = SEVERITY_RANK[String(sev || '').toLowerCase()];
-  return r == null ? 5 : r;
-}
-
-// How far apart two hits of the same rule in the same file can be and still be treated as one
-// condition rather than two distinct sites. Small on purpose — see the call site.
-const ADJACENT_RULE_LINES = 3;
-
-/**
- * Collapse runs of the same rule firing on nearby lines of the same file down to their first
- * occurrence. Findings are grouped by file+rule, sorted by line, and a new group is started
- * whenever the gap to the previous line exceeds ADJACENT_RULE_LINES — so a file-wide condition
- * flagged on four consecutive lines becomes one finding, while the same rule firing at line 12
- * and line 200 stays two.
- */
-function dedupeAdjacentSameRule(findings) {
-  const groups = new Map();
-  for (const f of findings) {
-    const key = `${f.file}::${f.rule}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(f);
-  }
-  const kept = new Set();
-  for (const group of groups.values()) {
-    const sorted = [...group].sort((a, b) => (a.line || 0) - (b.line || 0));
-    // Anchor the comparison to the line that OPENED the group, not to the previous hit.
-    // Comparing against the previous hit let groups chain without bound: a rule firing every
-    // <= ADJACENT_RULE_LINES lines collapsed arbitrarily far down a file, so hits at
-    // 10,12,14,16,18,20 became ONE finding even though the ends are 10 lines apart. That is
-    // the opposite of what this function is for — distance is what separates "one condition
-    // observed repeatedly" from "several distinct sites", and an unbounded chain silently
-    // discards the distinct ones. A group can now never span more than ADJACENT_RULE_LINES.
-    let groupStart = null;
-    for (const f of sorted) {
-      const line = f.line || 0;
-      if (groupStart == null || line - groupStart > ADJACENT_RULE_LINES) {
-        kept.add(f);
-        groupStart = line;
-      }
-    }
-  }
-  // Preserve the engine's own severity ordering rather than the grouping order.
-  return findings.filter((f) => kept.has(f));
-}
-
-/** Whether a reasoning finding restates one already kept from another reasoning call. */
-function isDuplicateOfReasoning(rf, kept) {
-  const loc = parseFileLine(rf.file);
-  if (!loc.file || loc.line == null) return false;
-  return kept.some((k) => {
-    const kl = parseFileLine(k.file);
-    return kl.file === loc.file && kl.line != null && Math.abs(kl.line - loc.line) <= 2;
-  });
-}
-
-// Splits agents/scan.md's "path:line" file convention into parts for the dedup comparison in
-// runHybridReasoningScan(). Normalizes backslashes so a Windows-style path from the model still
-// compares equal to sast-engine's forward-slash-normalized relative paths.
-function parseFileLine(fileStr) {
-  if (!fileStr) return { file: null, line: null };
-  const normalized = String(fileStr).trim().split(path.sep).join('/');
-  const m = normalized.match(/^(.*?)(?::(\d+))?$/);
-  return { file: m ? m[1] : normalized, line: m && m[2] ? parseInt(m[2], 10) : null };
-}
 
 // SCA Scan, replacing the old free-reasoning `claude -p` pass over manifests/lockfiles with
 // sast-engine's runDepsAudit (wraps the project's own package-manager audit tool — npm/yarn/
