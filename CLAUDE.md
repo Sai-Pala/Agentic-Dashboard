@@ -23,31 +23,31 @@ in between: it's not a live agent anymore (its old `.md` file is gone), but ever
 gets a triage verdict synthesized at creation time — from the deterministic engine's
 verification pass, from the reasoning pass's own assessment (it triages what it finds in the
 same call), or a neutral placeholder for a manually added finding. The UI is a "mission control" style app with a
-global left nav ordered to mirror the actual finding pipeline — Dashboard / Reasoning Scan /
-SCA Scan / Control Scan / Agent Triage / Threat Model / Reports — with a theme toggle and
+global left nav ordered to mirror the actual finding pipeline — Dashboard / Hybrid Scan /
+Control Scan / Agent Triage / Threat Model / Attack Surface / Reports — with a theme toggle and
 Settings in the nav footer instead of the main list. There used to be a dedicated Agent
 Configuration admin screen here too (editing `agents/*.md` files from the browser); it's been
-removed — see the Agent Configuration bullet below for what replaced it. Reasoning
-Scan, SCA Scan, and Control Scan additionally sit grouped under a small non-clickable `SCANS`
-section label (`.nav-section-label`) and are visually indented (`.nav-item-indent`, both
-collapsing back to a plain centered icon when the sidebar is collapsed) — the flat list
-otherwise read as seven equally-weighted items with no hint that these three are all "kick off
-a whole-directory run against a target path" actions (two produce findings, one produces a
-compliance report — see the Control Scan bullet below for why it's grouped here despite that
-difference); the indent groups them without adding a second click target (the label itself
-does nothing — clicking any of the three still works exactly as any other nav item). Timeline
+removed — see the Agent Configuration bullet below for what replaced it. There used to be a
+small non-clickable `SCANS` section label (`.nav-section-label`) with the scan-kickoff items
+visually indented beneath it (`.nav-item-indent`), grouping Reasoning Scan / SCA Scan / Control
+Scan as the three "kick off a whole-directory run against a target path" actions; both classes
+are gone from the code entirely. The grouping stopped paying for itself once the standalone SCA
+Scan page was removed (see the SCA Scan bullet below) — a section label over what had become
+*two* items was more chrome than structure. Timeline
 is deliberately *not* one of these nav items — see the Timeline bullet below for why and where
-it lives instead. Four nav items carry a live status badge (`renderNavBadges()`, called from
+it lives instead. Three nav items carry a live status badge (`renderNavBadges()`, called from
 `upsertTimelineEntry()`, `upsertControlAssessment()`, and `renderNavStatus()` so it stays
 current from any view — `upsertControlAssessment()` needs its own explicit call since Control
 Scan runs never flow through `upsertTimelineEntry()` the way scans do):
-**Reasoning Scan** shows a pulsing yellow dot while any non-SCA scan is `status: 'running'`
-(`scansList`, filtered to `scanType !== 'sca'`); **SCA Scan** shows the same pulsing yellow dot,
-filtered the other way (`scanType === 'sca'`) — split so a running SCA scan doesn't make the
-Reasoning Scan page look like something's happening there when it isn't, and vice versa;
-**Control Scan** shows the same pulsing yellow dot while any `controlAssessmentsList` entry is
-`status: 'running'`; **Agent Triage** shows a red count pill of findings whose `status !==
-'closed'`. When the
+**Hybrid Scan** (`#nav-badge-scans`) shows a pulsing yellow dot while any `scansList` entry is
+`status: 'running'` — no `scanType` filter, since every scan record's `scanType` is `'reasoning'`
+now; this used to be split into two separately-filtered badges (`scanType !== 'sca'` here and a
+matching `=== 'sca'` one on the SCA Scan item) so a running SCA scan wouldn't make the Reasoning
+Scan page look busy when it wasn't, and vice versa — the SCA half went away with its page.
+**Control Scan** (`#nav-badge-controls-assist`) shows the same pulsing yellow dot while any
+`controlAssessmentsList` entry is `status: 'running'`; **Agent Triage** (`#nav-badge-findings`)
+shows a red count pill of findings whose `status !==
+'closed'`. Attack Surface, Threat Model, Dashboard, and Reports carry no badge. When the
 sidebar is collapsed, `#global-nav.collapsed .nav-item .nav-badge` forces every badge — dot
 or count pill alike — to the same 8×8 corner dot (text hidden via `font-size: 0`, the count
 still readable from the badge's `title` tooltip on hover); without this override the wider
@@ -525,7 +525,7 @@ dots do.
   agent stage at all (`agents/triage.md` was deleted; see the Reasoning Scan bullet above and
   "Pipeline shape" below): every finding gets a synthetic `triage` run pushed at creation time,
   either from sast-engine's `VerifierAgent` output (scan-sourced) or a neutral placeholder
-  (manually added via "+ Add", or this app's own seed data). **Remediated and Fixed are two
+  (manually added via "+ Add"). **Remediated and Fixed are two
   separate stages, not one** — this is the app's newest redesign (see the redesign history
   below for what it replaced): Remediate is a read-only stage (agent `remediation`) that
   proposes a fix — fix guidance, `corrected_code`, and, if the model is confident in an exact
@@ -781,10 +781,34 @@ dots do.
   severity/status badges, a meta grid (File, or Package/Fixed-in, or Endpoint/Method depending
   on `scanType`), the description, a syntax-highlighted code block when `finding.code` is
   present (`highlightCode()` — a hand-rolled regex tokenizer, no external highlighting
-  library, consistent with this app's no-external-deps/hand-drawn-icon aesthetic), and an
+  library, consistent with this app's no-external-deps/hand-drawn-icon aesthetic), a **Data
+  flow** section when the finding carries one (see below), and an
   **Agent runs** section (`runCardHtml()`) listing every run against this finding with its
   verdict badges/fields rendered generically (same key-badging convention described in "The
   verdict contract" below).
+
+  **The Data flow section** (`findingFlowHtml()`) is what a cross-line `TaintFlowAgent` finding
+  renders instead of a single line number. It's the one class of finding this app produces where
+  the location genuinely isn't the explanation: "SQL injection at line 20" is unactionable
+  without knowing that line 18 read a query parameter and line 19 concatenated it into the
+  statement. The engine already knows both ends, so `findingFromSastEngine()` reads the real
+  source lines between them off disk at finding-creation time and stores them as
+  `finding.flow` = `{sourceLine, sinkLine, lines: [{n, text}]}`. The renderer prints that span
+  as numbered, syntax-highlighted code with the entry and exit rows tagged "user input enters"
+  and "reaches the sink", above a one-line summary naming the distance between them. Findings
+  that fit on one line carry no `flow` and the section is omitted entirely — there'd be no path
+  to draw.
+
+  Two bounds are deliberate. The span is capped at **25 lines** (`span <= 25` in
+  `findingFromSastEngine()`) — past that it's a wall of code rather than an explanation, so
+  `flow` stays `null` and the finding falls back to its plain snippet. And the file read is
+  wrapped in a `try`/`catch` that resets `flow` to `null` on any failure, since the file may
+  have moved or become unreadable between the scan and the finding being built. Note this is
+  captured **once, at creation time** — it's a snapshot of the code as scanned, not a live
+  read, so it won't track later edits to the target file the way a Verify run does.
+  The same source→sink span is separately summarized as a one-line `Dataflow:` note in the
+  adjudication pass's prompt, built straight from `taintSourceLine`/`line` without reading the
+  file at all — the reasoning half gets the fact of the flow, not the code.
 
   The page header's actions (`renderFindingDetailActions()`, `fdLoopBoxesHtml()`) used to be a
   single "Agent Runs ▾" dropdown covering everything, including Triage/Remediation/Verify with
@@ -974,9 +998,9 @@ dots do.
   *not* routed through `upsertAppThreatModel()`, to avoid a full re-render on every single
   event) lands on the currently-attached node.
 - **Control Scan** — a top-level page for RMF/ISSO staff (renamed from "Controls Assist" —
-  shorter, and reads more like a peer to "Reasoning Scan"/"SCA Scan" in the nav, since it's the
-  same kind of whole-directory action just for a different purpose — now grouped with them
-  under the `SCANS` nav section label, see the intro above), structurally the same
+  shorter, and reads more like a peer to "Hybrid Scan" in the nav, since it's the
+  same kind of whole-directory action just for a different purpose — the two were briefly
+  grouped under a `SCANS` nav section label, since removed, see the intro above), structurally the same
   form-plus-accordion-list pattern as the Threat Model page's "App-level Threat Models"
   section (own store, own WS message-type family, own live stats) but entirely independent
   of it: it exists to help draft SSP (System Security Plan) content, not to find
@@ -1020,6 +1044,74 @@ dots do.
   display list now (see the Dashboard bullet above). Client-side `NON_FINDING_AGENTS` (the
   "Whole-app" badge mirror this screen used) was removed too, along with the screen it only
   existed for.
+- **Attack Surface** — a top-level page (`#view-surface`, `openSurfaceView()` /
+  `renderSurfaceView()`) that shows what a scanned codebase *exposes*, not what's wrong with
+  it. It reports no vulnerabilities and makes no LLM call — it's a read-only view of the
+  manifest `sast-engine/enumerate.js` already builds for every Hybrid Scan (see the
+  `enumerate.js` discussion in the Architecture section below), surfaced directly instead of
+  only being fed to the reasoning review pass and `UnusedGuardAgent`. That data was already
+  being computed and then discarded from the user's point of view; this page is the whole of
+  what it took to expose it.
+
+  Scoped to **one scan at a time** via a picker in the view header (`#surface-scan-btn`/
+  `#surface-scan-menu`, `renderSurfaceScanPicker()`) — the same `.scan-filter-dropdown` popover
+  pattern and the same `scanFilterLabel()` item text Agent Triage's per-scan filter uses. Only
+  `status: 'done'` scans are offered; `openSurfaceView()` defaults to the most recent one and
+  falls back to loading `scansList` first if the page is opened cold. Data comes from
+  `GET /api/scans/:id/surface` (`loadSurface()`), not from any client-side cache — a scan run
+  before this feature existed carries no `surface`, and the endpoint's `404` message is
+  rendered as-is in a `.placeholder-panel` rather than being shown as an error.
+
+  The page is organized around **mounted routers** where they exist, since a mount is where a
+  missing guard is actually fixed. `guardKindOf(node)` classifies a middleware chain three ways
+  by testing it against a privilege vocabulary (`admin|role|permission|privileg|acl|rbac|scope|
+  claim|owner|tenant`): `none` (no middleware at all → red "no guard"), `authn` (middleware
+  present but none matching → amber "authenticated, not authorized"), or `authz` (green
+  "guarded"). That middle case is the one the page exists to make visible, and it's the same
+  reasoning `PRIVILEGED_SURFACE_AUTHENTICATED_NOT_AUTHORIZED` encodes as a finding — a
+  reviewer reading the auth module sees a hardened system, while the mount only ever checks
+  *who* you are and never *whether you may*. Note this predicate is a deliberately separate,
+  simpler implementation from the engine's own — it's a display-time classification over an
+  already-computed manifest, not a detection rule, so the two are not kept in sync and this
+  page can label a mount `authn` without a corresponding finding existing. It takes anything
+  carrying a `middleware` array, mount or route alike, which is what lets the same
+  classification drive the per-route rollup described next.
+
+  **Both the stat tiles and the route listing are route-driven, not mount-driven, and that
+  distinction is load-bearing.** The original version derived everything from mounts, which
+  broke badly on an app that registers its routes directly on `app` with no `express.Router()`
+  anywhere — a completely ordinary way to write an Express service, and what this very repo
+  does. With no mounts, the unguarded/authenticated-only counts were both `0` and rendered in
+  the safe green, so the page reported **"0 with no guard"** for an app whose 19 endpoints were
+  *all* unauthenticated — while the same scan flagged seven `Route Without Auth Check`
+  findings. Worse, routes were only ever emitted nested inside a mount row, so the tile said
+  "19 Endpoints" and the page then listed none of them. A security view stating the reassuring
+  opposite of the truth is worse than one that says nothing, so:
+  - `ownerOf(r)` resolves a route's mount (same `r.file.includes(m.mounted)` substring
+    heuristic the mount rows use — a display heuristic, not the engine's own resolution, so a
+    route can be attributed to the wrong mount when two router filenames share a fragment).
+  - `routeKind(r)` classifies a route by its **effective** chain — its owning mount's
+    middleware concatenated with its own — so a bare route behind an authenticated mount still
+    counts as authenticated rather than unguarded.
+  - The "Unguarded endpoints" and "Authenticated only" tiles count **routes** matching those
+    kinds. They read `0`/green only when that is actually true of the endpoints.
+  - Routes with no owning mount render in their own **"Directly registered routes"** panel,
+    grouped by guard kind (`none` first) into the same colour-coded `.surface-mount` block the
+    mounted rows use, so nothing is ever enumerated in a tile but missing from the page.
+
+  The six-tile stat row is endpoints, mounted routers, unguarded endpoints, authenticated-only,
+  unapplied controls, dangerous operations — the three risk tiles green when zero and
+  red/amber otherwise. Each mount renders its prefix → router, its guard chain (or "nothing"),
+  and the routes it owns with per-route middleware and `file:line`. The "Mounted routers" panel
+  is omitted entirely when there are none, rather than rendering an empty "none were detected"
+  shell above the routes that do exist; a target with **no routes at all** (a library, CLI, or
+  worker) gets that explanatory empty state instead.
+  A closing panel lists security controls with `callCount === 0` — "each of these was written
+  to enforce something and currently enforces nothing" — the same signal
+  `SECURITY_CONTROL_NEVER_APPLIED` reports as a finding, shown here as a plain inventory.
+
+  This page carries no nav badge and no timeline clock button: it has nothing of its own that
+  runs, and reads only from scans that already finished.
 - **Reports** — a placeholder top-level screen (`#view-reports`), added ahead of any actual
   reporting feature so the nav slot and page shell exist for whatever gets built there next
   (an exportable compliance/findings report was the motivating idea, per the intro's
@@ -1148,8 +1240,8 @@ through the browser.
 ## Architecture
 
 ```
-server.js          Express + ws. In-memory findings store (seeded with sample data on
-                    boot) and a separate in-memory scans store, behind a small REST API,
+server.js          Express + ws. In-memory findings store (empty on boot — no seed
+                    data) and a separate in-memory scans store, behind a small REST API,
                     plus a WebSocket handler that spawns `claude -p` per per-finding agent
                     run (Threat Model, Remediation, Verify), relays stream-json lines live,
                     and extracts the final JSON block from the accumulated assistant text.
@@ -1184,7 +1276,9 @@ sast-engine/        Deterministic security-scanning engine, adapted (MIT license
                     formats it as prompt text. The orchestrator computes it once per run and
                     puts it on `context.surface` (accepting `options.surface` when the caller
                     already built one, so it is never computed twice per scan), and returns it
-                    on the run result. Two consumers:
+                    on the run result. It is also persisted onto the scan record as
+                    `scan.surface`, which is what makes the third consumer below possible after
+                    the run has finished. Three consumers:
                       1. **The reasoning review pass.** It is handed every route and sink,
                     plus whole-app mount/unused-control context, as an
                     explicit worklist with four questions it must answer per route. This is
@@ -1214,6 +1308,11 @@ sast-engine/        Deterministic security-scanning engine, adapted (MIT license
                     be added). That last one is the "admin gated by requireUser while
                     requireAdmin sits unused" case, which is more dangerous than having no
                     control at all: a reviewer reading auth.js sees a hardened system.
+                      3. **The Attack Surface page** (`#view-surface`), which reads
+                    `scan.surface` back via `GET /api/scans/:id/surface` and renders the
+                    manifest directly — no findings, no LLM. This is purely a second view of
+                    data the first two consumers were already using; enumeration gained nothing
+                    for it. See the Attack Surface bullet above.
                       Extraction runs off a real parse tree (`ast-extract.js`, `@babel/parser`
                     — pure JS, one parser for JS/TS/JSX/TSX), falling back to the regex path in
                     `enumerate.js` **per file** when a file won't parse, so a syntax error
@@ -1260,7 +1359,10 @@ public/index.html   The whole app: global nav (theme toggle slider + Settings en
                     accordion-style App-level Threat Models list, also heat-mapped, plus a
                     clock button), a Control Scan page (its own "New control scan"
                     form plus an accordion list of runs grouping identified NIST 800-53
-                    controls by family, for SSP drafting), a Reports
+                    controls by family, for SSP drafting), an Attack Surface page (a per-scan
+                    picker over the enumerated route/mount/sink manifest, grouped by mounted
+                    router and flagging unguarded and authenticated-but-not-authorized mounts),
+                    a Reports
                     placeholder, a slide-in timeline drawer shared by three clock buttons, a
                     right-click context menu on table rows for the same agent actions, and
                     modals for adding a finding / running a stage with custom instructions.
@@ -1307,12 +1409,19 @@ agents/*.md         Agent system prompts (passed via --append-system-prompt). Pl
 ```
 
 **Findings store**: `findings` (Map, in `server.js`) is session-lifetime only — reset on
-restart, seeded from `seedFindings()` with six sample AppSec findings (five reasoning, one
-SCA — enough to populate both Agent Triage type tabs on first run). Every finding has
+restart, and **starts empty**: the app has no seed data, so a fresh boot shows an empty Agent
+Triage table until a scan produces findings (or one is added by hand via "+ Add"). There used
+to be a `seedFindings()` that populated six sample AppSec findings (five reasoning, one SCA)
+on boot, enough to fill both Agent Triage type tabs on first run; it was removed as demo
+scaffolding. Its sample `code` fields held deliberately vulnerable snippets as string
+literals, which meant this app's own scanner reported them as real findings when pointed at
+this repo. Every finding has
 a `scanType` (`reasoning | sca`, `FINDING_SCAN_TYPES`) plus a handful of
 optional type-specific fields: `code` (reasoning, syntax-highlighted on the detail page),
 `packageName`/`packageVersion`/`fixedVersion` (SCA), `endpoint`/`method` (reasoning, for an
-attack-surface finding). Every reasoning finding — seeded, scan-sourced, or manually added via
+attack-surface finding), and `flow` (reasoning, only on a cross-line `TaintFlowAgent` finding —
+`{sourceLine, sinkLine, lines}`, rendered as the Data flow section described in the Finding
+Detail bullet above; `null` for everything else). Every reasoning finding — scan-sourced or manually added via
 `POST /api/findings` — gets a synthetic `triage` run (`placeholderTriageRun()`, or
 `findingFromSastEngine()`'s real sast-engine-derived version for scan-sourced ones) pushed
 onto its `runs` array at creation time, since Triage is no longer a live agent stage anywhere
@@ -1331,10 +1440,31 @@ Threat Model page fetches on load if the drawer hasn't been opened yet; live run
 are patched into the client's copy directly from WebSocket messages, not re-fetched).
 
 **Scans store**: `scans` (Map, in `server.js`) is the same session-lifetime pattern as
-`findings`, separate Map. A scan record is `{id, path, status, findingIds, startedAt,
-finishedAt, error}` — it doesn't hold a `runs` chain like a finding does, since a scan is
-one invocation, not a pipeline. REST surface: `GET /api/scans`, `GET /api/scans/:id`
-(includes the full finding list-items it produced, via `findingIds`).
+`findings`, separate Map. A scan record is `{id, runId, path, instruction, branch, app,
+scanType, scope, baseBranch, diffFileCount, status, error, findingIds, startedAt, finishedAt,
+budgetEnabled, reasoningCostUsd, agentsRun, agentsSkipped}` (`toScanListItem()` is the
+authoritative shape) — it doesn't hold a `runs` chain like a finding does, since a scan is
+one invocation, not a pipeline. Two fields exist only on the in-memory record and are
+deliberately *not* in `toScanListItem()`: `moduleRunIds` (cancel bookkeeping for the reasoning
+half's in-flight `claude` children) and **`surface`** — the full attack-surface manifest
+`enumerateSurface()` produced for this scan, assigned from `detResult.surface` once the
+deterministic half finishes. It's kept off the list item because it's large and no list view
+needs it; the Attack Surface page fetches it on demand instead (see that bullet above).
+REST surface: `GET /api/scans`, `GET /api/scans/:id`
+(includes the full finding list-items it produced, via `findingIds`),
+`GET /api/scans/:id/surface` (the persisted `surface` manifest, flattened alongside the scan's
+own `id`/`path`/`app`/`startedAt` — `404`s with an explanatory message rather than an empty
+body when the scan predates the feature and carries none), and `DELETE /api/scans/:id`
+(refuses with `409` while the scan is still `running`, since a plain REST route can't reach
+the `children` map to kill its child processes — the same constraint `POST /api/session/clear`
+works around, see the Settings bullet above). Deleting a scan removes only the scan record;
+the findings it produced are left in place, and their `sourceScanId` then points at a scan
+that no longer exists — `findingSourcePath()` handles that by returning `null` rather than
+throwing, but it does mean such a finding silently loses its resolvable source directory and,
+with it, the ability to run the write-capable Fix stage or a live-code Verify (see the
+Remediation Loop discussion above, where a `null` path is what disables those boxes). The
+per-scan filter popover in Agent Triage drops the scan too, since `renderFindingsScanFilter()`
+builds its items from `scansList` rather than from findings' `sourceScanId` values.
 
 **App-level threat models store**: `appThreatModels` (Map, in `server.js`) is a third,
 independent session-lifetime store, same pattern again. A record is `{id, runId, path, app,
@@ -1600,7 +1730,22 @@ the finding is real — that was already decided upstream — only whether it's 
 keeps `confidence` (reusing Triage's scale, see the Verify bullet above) but has no
 `priority`/framework-mapping fields at all, since it's not re-triaging.
 
-**Security posture**: this is a local single-user dev tool. No auth on the
+**Security posture**: this is a local single-user dev tool. Two things enforce that framing
+rather than merely assuming it, both added after the app's own scanner found their absence:
+- **The server binds loopback only** (`HOST`, defaulting `127.0.0.1`, passed to
+  `server.listen`). It previously called `server.listen(PORT)` with no host, which binds
+  `0.0.0.0`/`::` — every interface — putting the whole unauthenticated surface on whatever
+  network the machine was attached to, while the startup banner printed "localhost" and hid
+  it. `HOST` is overridable, and a non-loopback value prints an explicit warning.
+- **The WebSocket validates `Origin`** (`isAllowedWsOrigin()`, wired through `verifyClient`).
+  The same-origin policy does not cover WebSockets, so any page the user visited could open a
+  socket to the local server and drive `remediate_fix` — writing to their repository — without
+  ever touching the machine. That is cross-site WebSocket hijacking, and loopback binding does
+  not help, since the request comes from the user's own browser. A present `Origin` must be a
+  loopback origin on the served port; an absent one is allowed, because a browser always sends
+  it and anything local outside a browser already has the user's privileges.
+
+Beyond those two, there is still no auth on the
 WebSocket or REST endpoints; `--permission-mode acceptEdits` and `--allowedTools`
 ("Read,Grep" for per-finding agents by default, "Read,Grep,Glob" for app-level threat models,
 control assessments, Remediation's apply mode, and — only when a `path` was resolved — Verify
