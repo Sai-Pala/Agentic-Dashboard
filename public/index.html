@@ -4432,14 +4432,29 @@ function renderSurfaceView() {
   const routes = surfaceData.routes || [];
   const unused = (surfaceData.securityFunctions || []).filter((f) => f.callCount === 0);
 
-  const unguarded = mounts.filter((m) => guardKindOf(m) === 'none').length;
-  const authnOnly = mounts.filter((m) => guardKindOf(m) === 'authn').length;
+  // Which mount, if any, owns a route. Same substring heuristic the mount rows use — a route
+  // is attributed to the mount whose router filename appears in the route's own file path.
+  const ownerOf = (r) => mounts.find((m) => r.file && m.mounted && r.file.includes(m.mounted)) || null;
+  // A route's effective guard chain is its mount's middleware plus its own: a route with no
+  // guard of its own sitting behind an authenticated mount is still authenticated.
+  const routeKind = (r) => {
+    const owner = ownerOf(r);
+    return guardKindOf({ middleware: [...((owner && owner.middleware) || []), ...(r.middleware || [])] });
+  };
+
+  // These counts are derived from ROUTES, not mounts. Deriving them from mounts meant an app
+  // that registers its routes directly on `app` — no express.Router() anywhere, which is a
+  // completely ordinary way to write one — reported "0 with no guard" in the safe green while
+  // every one of its endpoints was in fact unguarded. A security view stating the reassuring
+  // opposite of the truth is worse than one that says nothing.
+  const unguarded = routes.filter((r) => routeKind(r) === 'none').length;
+  const authnOnly = routes.filter((r) => routeKind(r) === 'authn').length;
 
   const stats = `
     <div class="stat-grid surface-stats">
       <div class="stat-tile"><div class="stat-value">${routes.length}</div><div class="stat-label">Endpoints</div></div>
       <div class="stat-tile"><div class="stat-value">${mounts.length}</div><div class="stat-label">Mounted routers</div></div>
-      <div class="stat-tile"><div class="stat-value" style="color:${unguarded ? 'var(--crit)' : 'var(--ok)'}">${unguarded}</div><div class="stat-label">With no guard</div></div>
+      <div class="stat-tile"><div class="stat-value" style="color:${unguarded ? 'var(--crit)' : 'var(--ok)'}">${unguarded}</div><div class="stat-label">Unguarded endpoints</div></div>
       <div class="stat-tile"><div class="stat-value" style="color:${authnOnly ? 'var(--warn)' : 'var(--ok)'}">${authnOnly}</div><div class="stat-label">Authenticated only</div></div>
       <div class="stat-tile"><div class="stat-value" style="color:${unused.length ? 'var(--warn)' : 'var(--ok)'}">${unused.length}</div><div class="stat-label">Unapplied controls</div></div>
       <div class="stat-tile"><div class="stat-value">${(surfaceData.sinks || []).length}</div><div class="stat-label">Dangerous operations</div></div>
@@ -4448,30 +4463,42 @@ function renderSurfaceView() {
   const mountRows = mounts.map((m) => {
     const kind = guardKindOf(m);
     const owned = routes.filter((r) => r.file && m.mounted && r.file.includes(m.mounted));
-    const badge = kind === 'none'
-      ? '<span class="surface-badge crit">no guard</span>'
-      : kind === 'authn'
-        ? '<span class="surface-badge warn">authenticated, not authorized</span>'
-        : '<span class="surface-badge ok">guarded</span>';
     return `
       <div class="surface-mount ${kind}">
         <div class="surface-mount-head">
           <span class="surface-prefix">${escapeHtml(m.prefix)}</span>
           <span class="surface-arrow">→</span>
           <span class="surface-router">${escapeHtml(m.mounted)}</span>
-          ${badge}
+          ${surfaceGuardBadge(kind)}
           <span class="surface-count">${owned.length} route${owned.length === 1 ? '' : 's'}</span>
         </div>
         <div class="surface-guards">${m.middleware.length ? m.middleware.map((g) => `<code>${escapeHtml(g)}</code>`).join(' → ') : '<span class="surface-none">nothing</span>'}</div>
-        ${owned.length ? `<div class="surface-routes">${owned.map((r) => `
-          <div class="surface-route">
-            <span class="surface-method ${escapeHtml(r.method.toLowerCase())}">${escapeHtml(r.method)}</span>
-            <span class="surface-path">${escapeHtml(r.path)}</span>
-            <span class="surface-mw">${r.middleware.length ? r.middleware.map(escapeHtml).join(', ') : '<em>no route guard</em>'}</span>
-            <span class="surface-loc">${escapeHtml(r.file)}:${r.line}</span>
-          </div>`).join('')}</div>` : ''}
+        ${owned.length ? `<div class="surface-routes">${surfaceRouteRowsHtml(owned)}</div>` : ''}
       </div>`;
   }).join('');
+
+  // Routes that belong to no mount. Previously these rendered nowhere at all — routes were
+  // only ever emitted nested inside a mount row — so an app with no express.Router() showed
+  // "19 Endpoints" in the tiles above and then listed none of them. Grouped by guard kind so
+  // the unguarded ones lead, reusing the same .surface-mount colour-coded block as above.
+  const unmounted = routes.filter((r) => !ownerOf(r));
+  const unmountedGroups = ['none', 'authn', 'authz']
+    .map((kind) => ({ kind, list: unmounted.filter((r) => routeKind(r) === kind) }))
+    .filter((g) => g.list.length);
+
+  const unmountedHtml = unmounted.length ? `
+    <div class="panel">
+      <div class="panel-title">Directly registered routes</div>
+      <div class="surface-note">Registered straight on the app object rather than through a mounted router, so no mount-level middleware applies — whatever guards these is on the route itself.</div>
+      ${unmountedGroups.map((g) => `
+        <div class="surface-mount ${g.kind}">
+          <div class="surface-mount-head">
+            ${surfaceGuardBadge(g.kind)}
+            <span class="surface-count">${g.list.length} route${g.list.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="surface-routes">${surfaceRouteRowsHtml(g.list)}</div>
+        </div>`).join('')}
+    </div>` : '';
 
   const unusedHtml = unused.length ? `
     <div class="panel">
@@ -4488,10 +4515,17 @@ function renderSurfaceView() {
   el.innerHTML = `
     <div class="surface-target">${escapeHtml(surfaceData.path || '')}${surfaceData.fileCount ? ` · ${surfaceData.fileCount} files` : ''}</div>
     ${stats}
+    ${mounts.length ? `
     <div class="panel">
       <div class="panel-title">Mounted routers</div>
-      ${mounts.length ? mountRows : '<div class="surface-note">No mounted routers were detected in this codebase.</div>'}
-    </div>
+      ${mountRows}
+    </div>` : ''}
+    ${unmountedHtml}
+    ${!routes.length ? `
+    <div class="panel">
+      <div class="panel-title">Mounted routers</div>
+      <div class="surface-note">No HTTP routes were detected in this codebase — it may be a library, CLI, or worker rather than a service.</div>
+    </div>` : ''}
     ${unusedHtml}
   `;
 }
