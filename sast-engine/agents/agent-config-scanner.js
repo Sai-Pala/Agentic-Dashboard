@@ -253,6 +253,12 @@ export class AgentConfigScanner extends BaseAgent {
     );
   }
 
+  // Reads coding-assistant config/rule files. No such file, nothing to read.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.agentConfigs || []).length > 0 || (recon.mcpConfigs || []).length > 0;
+  }
+
   async analyze(context) {
     const { rootPath } = context;
     let findings = [];

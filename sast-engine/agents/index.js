@@ -44,6 +44,7 @@ import { ClickFixAgent } from './clickfix-agent.js';
 import { InstallGuardAgent } from './install-guard-agent.js';
 import { SecretsAgent } from './secrets-agent.js';
 import { TaintFlowAgent } from './taint-flow-agent.js';
+import { UnusedGuardAgent } from './unused-guard-agent.js';
 import { loadPlugins } from '../utils/plugin-loader.js';
 
 const BUILT_IN_AGENTS = () => [
@@ -78,6 +79,7 @@ const BUILT_IN_AGENTS = () => [
   new InstallGuardAgent(),
   new SecretsAgent(),
   new TaintFlowAgent(),
+  new UnusedGuardAgent(),
 ];
 
 export const BUILT_IN_AGENT_COUNT = BUILT_IN_AGENTS().length;

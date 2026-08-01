@@ -254,7 +254,12 @@ export class AgentAttestationAgent extends BaseAgent {
     super('AgentAttestationAgent', 'Agent Attestation & Supply Chain — unsigned manifests, unpinned versions, missing provenance', 'supply-chain');
   }
 
-  shouldRun() { return true; }
+  // Attestation only means something where there is an agent manifest to
+  // attest — an assistant config, MCP wiring, or a model SDK in the tree.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.mcpConfigs || []).length > 0 || (recon.aiFrameworks || []).length > 0;
+  }
 
   async analyze(context) {
     const { files = [], rootPath } = context;

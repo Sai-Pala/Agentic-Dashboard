@@ -201,8 +201,11 @@ export class MemoryPoisoningAgent extends BaseAgent {
     );
   }
 
-  shouldRun() {
-    return true; // Always run — memory poisoning applies to any project
+  // Memory poisoning targets an agent's persisted context files. A project with
+  // no assistant config and no model SDK has no such memory to poison.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.agentConfigs || []).length > 0 || (recon.aiFrameworks || []).length > 0;
   }
 
   async analyze(context) {

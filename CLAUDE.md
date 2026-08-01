@@ -10,7 +10,8 @@ browser UI over WebSocket and parsing a structured JSON verdict out of each run.
 *detection* is a mix: SCA Scan is purely deterministic (`sast-engine/`'s dependency-audit
 wrapper, no LLM at all) and also standalone — it's its own top-level page for a fast,
 LLM-free check; Reasoning Scan is a **hybrid of three engines** — `sast-engine/` (vendored from
-the open-source `ship-safe` project) runs 31 regex/heuristic pattern agents plus a code-context
+the open-source `ship-safe` project) runs 31 regex/heuristic pattern agents, a structural
+`UnusedGuardAgent` (whole-app, finds controls defined but never applied), and a code-context
 `VerifierAgent`, in parallel with a real `claude -p` reasoning pass (`agents/scan.md`), in
 parallel with that same dependency audit SCA Scan uses on its own — over the same directory, and
 all three result sets are merged/deduped — the deterministic engine covers known vulnerability
@@ -101,6 +102,65 @@ dots do.
     for the full list) run in parallel over the repo, followed by a deterministic second-pass
     `VerifierAgent` that confirms or downgrades each finding by reading its surrounding code —
     no LLM call anywhere in this half (`runDeterministicPatternScan()` in `server.js`).
+
+    **Only the agents relevant to the target actually run**, decided by each agent's
+    `shouldRun(recon)` against `ReconAgent`'s output. This used to be nearly vacuous: `BaseAgent`
+    defaults `shouldRun()` to `return true`, and only three agents overrode it meaningfully, so a
+    plain Express API was paying for a full Roblox/Luau pass, a React Native Hermes bytecode pass,
+    and every AI/agentic/MCP/RAG/model-scanning agent on every scan. Two of those were gated on
+    signals `ReconAgent` *already computed and then discarded* — it detects the Roblox toolchain
+    (Rojo/Wally project files, `.rbxl*`/`.rbxm*`) and `react-native`, and `RobloxSecurityAgent` /
+    `HermesSecurityAgent` returned `true` regardless.
+
+    `ReconAgent` now also collects `mcpConfigs` / `aiFrameworks` / `vectorStores` /
+    `agentConfigs` / `modelFiles` — deliberately mirroring the file lists and dependency names
+    the consuming agents themselves open, since a signal that doesn't match what an agent
+    actually reads is worse than no signal: it gates the agent off its own real input. Filenames
+    are matched case-insensitively (`CLAUDE.md` vs `claude.md`, `AGENTS.md` vs `agents.md` — the
+    convention is not consistent about case, and a case miss silently disables the agent), and
+    Python manifests (`requirements.txt`, `pyproject.toml`, `Pipfile`) are read as text alongside
+    `package.json` so a langchain/chromadb project is recognised at all.
+
+    **The selection is visible in the UI, not just in the logs.** `onScopeReady(realTotal,
+    skippedNames)` now reports *which* agents were filtered out, not only how many survived —
+    a bar reading "17/17 agents done" makes gating invisible, since it reads as though 17 is
+    the whole engine. Three surfaces show it: the live scan card's Pattern-match bar
+    (`updateDetBar()`, "17/17 agents done · 15 n/a" with a tooltip naming each skipped agent),
+    a chip in the card's meta row (`makeScanCard()`, "17/32 agents"), and — the durable one —
+    the timeline drawer's expanded scan row ("17 of 32 pattern agents applied to this codebase
+    · 15 not applicable"). That last one matters because scan cards are only ever created by
+    `startScan()` and are **never** rebuilt from `scansList`, so a page reload loses them
+    entirely; the timeline row refetches `GET /api/scans/:id` every time it opens, and the
+    record carries `agentsRun`/`agentsSkipped` (`toScanListItem()`) for exactly this reason.
+
+    Measured effect (`nothing was deleted` — every agent is still registered and still runs where
+    it applies): Express + `pg` → **17** of 32; `openai` + `@modelcontextprotocol/sdk` → **25**
+    (MCP/LLMRedTeam/Agentic\* switch on, RAG stays off with no vector store); Rojo/Wally + `.luau`
+    → **15** (Roblox on, every AI agent off); langchain + chromadb via `requirements.txt` → **21**
+    (RAG on, MCP correctly off). Recon itself costs 3–35ms.
+
+    One distinction is load-bearing and easy to collapse by accident: `AgentConfigScanner` and
+    `MemoryPoisoningAgent` gate on `agentConfigs` because the config file *is* their subject — a
+    poisoned `CLAUDE.md` is the threat they detect. `AgenticSecurityAgent`, `ManagedAgentScanner`,
+    `AgentAttestationAgent` and `AgenticSupplyChainAgent` deliberately do **not**, because they
+    assess whether the *application* is agentic, and a `CLAUDE.md` only means someone edits the
+    repo with an assistant. Gating that second group on `agentConfigs` fires them on the large and
+    growing share of repos that merely contain an assistant config.
+
+    **An agent that doesn't finish is reported, not silently counted as clean.** The
+    orchestrator has always recorded `success: false` for an agent that errored or timed out,
+    but nothing read that field: `onAgentDone` took the findings (empty) and advanced the
+    progress bar, so a scan that *could not finish* checking for SQL injection looked exactly
+    like a scan that found none. That is the single confusion a security tool cannot afford,
+    and it was live until it was found while reasoning about large-repo behaviour.
+    `runDeterministicPatternScan()` now collects failures into `failedAgents` and emits a
+    `scan-warning` naming each one and stating plainly that those vulnerability classes were
+    **not checked**. The per-agent deadline was also raised from the orchestrator's own 30s
+    default to `DETERMINISTIC_AGENT_TIMEOUT_MS` (180s): every agent walks the whole file list,
+    so its work scales with repo size while that deadline did not. It is a hang detector, not a
+    work budget — a small repo is unaffected (agents finish in well under a second) and a large
+    one gets the room it needs.
+
     Two of those 31 were added to close specific structural holes, and both are different in
     kind from the other 29 rather than being more pattern lists:
     - **`SecretsAgent`** (`secrets-agent.js`) runs `SECRET_PATTERNS` over **working-tree
@@ -142,171 +202,125 @@ dots do.
       nothing about a different variable fetched later, which is exactly the SSRF-allowlist-
       bypass this engine must keep finding. Any rework of the guard logic needs to preserve that
       distinction specifically — it is the difference between precision and a missed SSRF.
-  - **Reasoning half**: real `claude -p` calls against `agents/scan.md` (`runLLMReasoningScan()`
-    in `server.js`), run *concurrently* with the deterministic half, not before or after it.
-    `scan.md`'s framing explicitly tells it a fixed-pattern engine is covering known categories
-    in parallel, so it should lean into what that engine structurally can't do — business logic,
-    authorization reasoning, attack-surface analysis — though it's free to report anything real
-    regardless of category. **This is no longer a single unscoped call over the whole
-    directory** — that scaled both token spend and hallucination surface directly with repo
-    size, with nothing bounding how far the model could roam on a large codebase. Instead:
-    - A **"full" scope** scan partitions the target directory into modules
-      (`partitionReasoningModules()`) sized by *actual file count*, not just directory
-      boundaries — an earlier version grouped purely by top-level subdirectory, which gave zero
-      real scoping benefit to the extremely common case of one big top-level `src/` and nothing
-      else at the root (that one "module" was still the whole codebase in one call). Now:
-      `fast-glob` enumerates every real file under the target (respecting sast-engine's own
-      `SKIP_DIRS`/`SKIP_EXTENSIONS`/`SKIP_FILENAMES`/`.gitignore` rules — the same "real code"
-      definition the deterministic engine uses), and `splitFileGroup()` recursively re-groups any
-      bucket over `REASONING_MODULE_MAX_FILES` (30) by the *next* path segment — e.g. a repo
-      whose only top-level entry is `src/` groups everything under that one segment at depth 0
-      (no separation), so it tries depth 1 next and splits by `src`'s own subdirectories instead;
-      any of those still too big splits one level deeper again, up to
-      `REASONING_MODULE_SPLIT_MAX_DEPTH` (3). A group that can't be subdivided further even at
-      max depth (a single flat directory with hundreds of files and no nesting left to split on)
-      is accepted as-is — still bounded by `--max-budget-usd` regardless of size. The resulting
-      groups are then bin-packed smallest-first into buckets capped at
-      `REASONING_MODULE_MAX_FILES` each (by actual size, not an arbitrary directory index the way
-      an earlier version's round-robin merge worked), so a repo with many small directories
-      doesn't spawn one process per directory; never exceeds `REASONING_MODULE_MAX` (24) total
-      buckets — anything beyond that keeps merging into whichever bucket is currently smallest. A
-      small repo (or one without much real code) naturally collapses into a single module here —
-      there's no special-cased "skip partitioning" path, it falls out of the algorithm. A
-      module's `paths` is the literal list of relative file paths it covers (not a directory
-      reference) — the same explicit-file-list style the diff-scope flow already used, so the
-      model gets an exact manifest instead of needing its own `Glob` call to discover what's in
-      scope.
-    - Each module gets its **own scoped `claude -p` call** — the same "limit your review to only
-      these files" prompt-level restriction the diff-scope flow already used (not a hard
-      filesystem sandbox; `cwd`/`--allowedTools` are unchanged, the model is instructed and
-      trusted to stay in scope, same trust model as everywhere else in this app) — capped via
-      the CLI's own `--max-budget-usd` flag at a **size-scaled** figure (`moduleBudgetUsd()`:
-      `$0.75 + $0.12/file`, clamped to `$2.50`; the cross-cutting pass takes a flat `$2.00`,
-      since it samples across the whole tree rather than covering a fixed file list, so file
-      count isn't a meaningful input for it). This replaced a flat `$0.50` that measurement
-      showed was simply too low: a 9-file module exhausted it — and exhausted a first-attempt
-      scaled `$0.85` too — while an uncapped call over a comparable directory settled around
-      `$2.30` on its own. The instructive result is that the low cap **wasn't saving money**:
-      the post-fix scan completed with no truncation at `$2.24`, slightly *less* than the
-      `$2.31` truncated run, because the scan pays for the tokens either way and a cutoff just
-      discards the conclusion. Because raising per-module spend would have made worst-case cost
-      worse, a **per-scan ceiling** was added alongside it (`REASONING_SCAN_BUDGET_USD`, `$12`);
-      previously nothing bounded the total at all (worst case was `REASONING_MODULE_MAX` ×
-      the per-module cap). Once accumulated spend crosses it, remaining modules are skipped and
-      reported in a `scan-warning` rather than run, so coverage degrades to "partial, stated
-      plainly" instead of an open-ended bill. The cross-cutting pass is explicitly **exempt**
-      from that ceiling — it's appended last, so a naive "stop when the ceiling is hit" would
-      drop the single highest-value call first; it has its own cap, so letting it through
-      overshoots by a bounded amount at most. At most
-      `REASONING_MODULE_CONCURRENCY` (3) run at once, via a small concurrency-limited queue
-      inside `runLLMReasoningScan()` — keeps process count sane on a dev machine and avoids
-      hammering rate limits on a repo with many top-level directories.
-    - **The cap itself is a per-scan toggle, not a hardcoded always-on constraint.** The
-      Reasoning Scan form has a **"Budget cap" On/Off** pill toggle (`#scan-budget-toggle`,
-      mirroring the Scope toggle's `.group-toggle` styling) next to Branch/App, defaulting to
-      On — the safe default, since every reasoning call being bounded is the whole point of this
-      design. Turning it off is an explicit opt-in (with an inline hint explaining the tradeoff:
-      "each module/cross-cutting call can run unbounded on spend until it finishes on its own")
-      for when a scan is getting cut short by the cap and the user wants it to finish regardless
-      of cost. The toggle's state (`scanBudgetEnabled`) rides along on the `scan` WS message as
-      `budgetEnabled`; `handleScanMessage()` reads it (`msg.budgetEnabled !== false`, so an old
-      client that never sends the field still defaults to the safe On behavior) and stores it on
-      the scan record. `runOneModule()` in `runLLMReasoningScan()` only pushes
-      `--max-budget-usd` onto the spawned `claude` args when `scan.budgetEnabled` is true — with
-      it off, the flag is omitted entirely rather than passed as some enormous number, so the
-      budget-exhaustion detection path (see below) simply never triggers, no special-casing
-      needed. Verified empirically: an uncapped scan against this app's own `agents/` directory
-      ran for several minutes and reached **$2.29** in real cost — far past what either budget
-      constant would ever allow — and still completed normally rather than hanging, confirming
-      omitting the flag doesn't change anything about how or whether the model decides to stop.
-      Persisted on the scan record (`toScanListItem()`'s `budgetEnabled` field, always `true` for
-      an SCA scan, which has no reasoning half) and surfaced on the scan card as a small amber
-      "No budget cap" chip (`makeScanCard()`) whenever a reasoning scan ran with it off, so a
-      finished scan's card doesn't quietly hide that its cost was uncapped.
-    - A **cross-cutting pass** runs once more per "full" scope scan, appended to the module list
-      as `{ label: '(cross-cutting review)', paths: null, crosscut: true }` — the one call in the
-      whole design that sees the *entire* tree, unscoped, since every module call above is told
-      to stay inside its own file list and therefore can't notice a protection defined in one
-      module (auth middleware, a validator) never actually being applied in another. Its user
-      prompt is framed differently from a module call's ("check whether protections defined in
-      one place are actually applied everywhere they should be... do NOT re-review file internals
-      in depth, separate calls already do that") but shares the exact same `agents/scan.md`
-      system prompt and output contract, so no new taxonomy was needed. Capped at
-      `REASONING_CROSSCUT_BUDGET_USD` ($0.75, slightly higher than a module's since it has to
-      sample across the whole tree rather than deep-dive one area). **Verified empirically, not
-      just assumed** — a controlled side-by-side test (a route wired to a decoy `logRequest`
-      middleware instead of the real `requireAdminAuth`, both defined in a separate module) found
-      that a module-scoped call *does* still usually catch this class of gap on its own, via
-      naming heuristics and shape ("this looks like it should have an auth check and doesn't"),
-      but self-reports lower confidence (`medium`) and explicitly hedges ("I could not read
-      middleware/auth.js to confirm — the naming makes it unlikely \[to be a real check\]"). The
-      cross-cutting pass, with full-tree access, confirmed the same finding at `confidence: high`
-      by grepping the whole repo for the real middleware's call sites (finding zero) — real proof
-      instead of a name-based guess — and reported one clean finding instead of the module call's
-      five, since it explicitly declines to re-review file internals the module calls already
-      cover. So: the cross-cutting pass's measured value is **confidence and precision**, not
-      rescuing a total miss — the original "per-module scoping might create a total blind spot"
-      concern was real in principle but less severe in practice than assumed. Treat that as the
-      current evidence, not a permanent guarantee — it was one test case, not a general proof.
-    - A **"diff" scope** scan skips partitioning entirely and stays exactly one call over the
-      changed-file list (`modules = [{label:'diff', paths: diffFiles}]`) — the git diff is
-      already a tight, pre-bounded scope, so there's nothing to gain from splitting it further,
-      and it gets no cross-cutting pass either (same reasoning: already narrow).
-    - Each module's (and the cross-cutting pass's) child process is registered under its own
-      synthetic `` `${scan.runId}::mod${i}` `` key in `children` (tracked on
-      `scan.moduleRunIds`) rather than the scan's own runId, so the WS `cancel` handler (and the
-      `ws.on('close')` cleanup) can kill every in-flight call for a cancelled scan, not just one
-      process.
-    - **Budget exhaustion is detected and reported distinctly, not silently swallowed as a clean
-      "nothing found."** Empirically confirmed (a real `claude -p` run against a deliberately
-      tiny `--max-budget-usd`): the CLI exits non-zero with a final `stream-json` `result` event
-      carrying `subtype: 'error_max_budget_usd'`, `is_error: true`, `terminal_reason:
-      'budget_exhausted'`, and — critically — a real `total_cost_usd` field with actual dollar
-      spend for that call (not an estimate). `runOneModule()` captures that `result` event
-      (`resultEvent`) and, on a non-zero exit, checks its `subtype` to produce a specific message
-      ("hit its $0.50 budget cap before finishing... coverage may be incomplete") instead of the
-      generic "claude exited with code 1" — any findings the model did manage to report before
-      the cutoff are still kept, not discarded just because the process technically errored.
-    - **Real dollar spend is aggregated and surfaced, not estimated from token/tool-call
-      counts.** Each call's `total_cost_usd` sums into `totalCostUsd`, sent live via
-      `scan-progress`'s new `costUsd` field (index.html's `updateReasoningModuleProgress()`
-      appends it to the Reasoning bar's stat text, e.g. "3/5 modules done · $1.23") and persisted
-      on the scan record as `scan.reasoningCostUsd` (`toScanListItem()`), so it's visible via
-      `GET /api/scans/:id` after the fact too, not just live in the browser tab that started it.
-    - **A dedicated `scan-warning` message type exists for this app's own non-fatal notes** —
-      distinct from `scan-stderr` (raw CLI stderr chatter, still silently discarded client-side,
-      unchanged). Before this, the "one engine/module failed but the scan still recovered"
-      summary was itself sent as `scan-stderr` and therefore silently dropped by the client too —
-      caught during the budget-exhaustion verification above, when a real induced failure
-      produced no visible signal anywhere in the UI despite the server correctly detecting and
-      describing it. `scan-warning` renders as a small amber `.scan-warning-msg` banner on the
-      scan card (`handleScanServerMessage()`'s `scan-warning` branch) — appended, not replaced, so
-      multiple notes across different modules all stay visible; never touches `run.status` or
-      the elapsed timer, since the scan is still running or already succeeded. Used for: one
-      engine erroring while the other still produced results, and the "N/M reasoning calls had
-      issues" partial-failure summary (which now includes budget-exhaustion messages).
-    - **Every module and cross-cutting call's system prompt also carries a coverage summary** —
-      `buildCoverageSummary()` in `server.js`, appended after `agents/scan.md`'s own content —
-      telling the model what the deterministic half already checks, so it leans into business
-      logic/authz/attack-surface reasoning instead of re-deriving known pattern categories. Built
-      from `sast-engine/agents/index.js`'s new `listBuiltInAgents()` export, which just maps each
-      registered agent to the `name`/`description`/`category` already passed to its own `super()`
-      call (e.g. `super('SSRFProber', 'Detect Server-Side Request Forgery vulnerabilities',
-      'ssrf')`) — deliberately **not** a second hand-maintained file and **not** each pattern's
-      full regex/description/fix text: the former would drift out of sync with sast-engine the
-      first time an agent is added/changed without a matching doc update, and the latter would
-      run to hundreds of entries across 29 agents, real prompt bloat for a block repeated on
-      every module + cross-cutting call in a scan. One line per agent keeps the whole summary to
-      ~29 lines (~800 tokens, verified), a small fixed cost per scan that doesn't grow with repo
-      size and can never go stale, since it's read from the same constructor call that defines
-      the agent's actual detection logic.
-    - This design (bounded-context scoping instead of full-repo roam, a hard per-call dollar cap,
-      concurrency-limited execution, a cross-cutting pass for wiring gaps, and honest
-      budget/cost/failure reporting) is phase 1 of a larger reasoning-engine hardening effort
-      discussed with the user — see that conversation for the fuller design (bounded-context
-      triage of deterministic findings via grep-based blast radius, self-consistency voting
-      across repeated runs, stricter citation enforcement, real per-endpoint route enumeration, a
-      rule-mining feedback loop into sast-engine) — phases not yet implemented.
+  - **Reasoning half**: two `claude -p` calls (`runLLMReasoningScan()` in `server.js`), run
+    *after* the deterministic half rather than alongside it, because both take its output as
+    their input. This replaced a design that partitioned the target into up to 24
+    file-count-sized modules and spawned a scoped call per module plus an unscoped
+    cross-cutting pass, three concurrently, each with its own scaled dollar cap and a `$12`
+    per-scan ceiling on top (`partitionReasoningModules()`, `splitFileGroup()`,
+    `moduleBudgetUsd()` — all deleted). That design made cost scale with *repo size*, and had
+    the expensive engine re-reading every file the free one had just read while knowing nothing
+    about what it found — a union of two engines, not a hybrid. The two passes are:
+    - **Adjudicate** (`agents/adjudicate.md`, capped at `REASONING_ADJUDICATE_BUDGET_USD`,
+      `$1.50`) — takes the deterministic findings with their code context and decides which are
+      real. This is the pass that removes false positives, which pattern matching structurally
+      cannot do for itself: it matches *syntax*, not *meaning*, so it cannot tell a genuine SQL
+      injection from a parameterized query sitting next to a string concatenation. Its verdicts
+      flow back through `findingFromSastEngine()`'s existing synthetic `triage` run (via a 4th
+      `adjudication` parameter), so a finding it calls `false_positive` lands at
+      `status: 'closed'` through `deriveStatus()`'s existing branch — **still created, still
+      inspectable in Agent Triage**, just out of the open queue. Nothing is ever dropped: a
+      wrong adjudication costs visibility, not evidence, and `adjudicate.md` is explicitly told
+      to prefer `needs_review` over `false_positive` whenever the evidence is incomplete. The
+      run's `verdict.source` is `'reasoning-adjudication'` rather than `'sast-engine-verifier'`
+      so Finding Detail can tell which one decided. Bounded at `ADJUDICATE_MAX_FINDINGS` (40,
+      taken most-severe-first); anything past the cap keeps its pattern-engine verdict and the
+      shortfall is reported in a `scan-warning` rather than silently ignored.
+    - **Review** (`agents/scan.md`, unchanged, capped at `REASONING_REVIEW_BUDGET_USD`, `$3.50`)
+      — takes the enumerated attack surface (`renderWorklist()`: every route with its resolved
+      middleware chain, every mount and its guards, every security control with its real call
+      count) and asks the authorization and business-logic questions no fixed rule set can
+      express. It is *also* handed the deterministic findings' locations under a "do NOT report
+      these again" instruction, so it doesn't spend budget rediscovering the same hardcoded
+      secret the free engine already found — that avoidance is the other half of what makes
+      this a hybrid rather than two independent scans reconciled afterwards.
+
+      **The review pass is sharded by attack surface** (`planReviewShards()`), not by files, and
+      its `$3.50` cap is now *per shard* with `REASONING_REVIEW_TOTAL_USD` (`$8`) bounding the
+      scan. Sharding exists because **the budget cap was never the binding constraint** — one
+      call cannot genuinely answer four questions about several hundred routes, and long before
+      the dollar cap binds the *context window* does. `claude -p` responds to a full context by
+      compacting, which silently discards its own earlier analysis, so simply removing the cap
+      buys a larger bill and the same missing coverage without saying so. Bounding routes per
+      call is the only thing that actually fixes it.
+
+      Routes are grouped **by file** (sibling handlers must be reviewed together — the coupon-
+      stacking and refund flaws in the measured fixture are only visible when routes sharing
+      state are seen side by side), scored by risk (no middleware `+3`; middleware present but
+      none matching a privilege vocabulary `+2` — the authenticated-but-not-authorized case
+      that reads as protected and isn't; plus capped contributions from sinks and existing
+      findings in the same file), then packed highest-risk-first into shards of
+      `REVIEW_ROUTES_PER_SHARD` (40). A file with more routes than that becomes its own
+      oversized shard rather than being split, since splitting one router across two calls is
+      exactly the sibling-context loss this design exists to avoid.
+
+      40 is chosen so the measured 31-route fixture stays a **single shard** — identical cost
+      and behaviour to before sharding existed. With the budget cap on, at most
+      `REVIEW_MAX_SHARDS` (6) run, ~240 routes; anything beyond that is reported in a
+      `scan-warning` naming how many routes were **not** reviewed. With the cap off (the form's
+      existing toggle — the user has explicitly chosen completeness over cost) the limit rises
+      to `REVIEW_MAX_SHARDS_UNCAPPED` (24) and the per-scan ceiling is not enforced. At most
+      `REVIEW_SHARD_CONCURRENCY` (3) shards run at once.
+
+      A shard's file list is **focus, not a sandbox**: the prompt says these are the routes it
+      is responsible for and that it should not report issues rooted in files outside the list
+      (another shard owns those), but explicitly permits reading anything in the repository —
+      answering "could this data belong to someone else" almost always means following the call
+      into a service or model file elsewhere. A target with **no HTTP surface at all** (a
+      library, CLI, or worker) yields one unscoped shard, which is exactly the pre-sharding
+      behaviour.
+    - **The two passes run concurrently** (`Promise.all` over `adjudicatePass()`/`reviewPass()`)
+      — they share no data with *each other*, only with the deterministic half that already
+      finished, so sequencing them just adds the shorter one's wall clock to every scan for
+      nothing. Measured before this was fixed: adjudication alone took 268s with the review pass
+      only starting afterwards, which made a scan slower than the module-partitioned design it
+      replaced — the opposite of the point.
+    - **Neither pass scales with repo size.** Adjudication scales with finding count, review
+      with endpoint count. A large codebase therefore costs roughly what a small one does, which
+      is what removed the need for a per-scan ceiling at all: worst-case spend is now the sum of
+      the two per-call caps, by construction.
+    - The cap is still a **per-scan toggle**, not a hardcoded constraint — the Hybrid Scan
+      form's "Budget cap" On/Off pill (`#scan-budget-toggle` → `scanBudgetEnabled` →
+      `msg.budgetEnabled` → `scan.budgetEnabled`), defaulting On. `handleScanMessage()` reads it
+      as `msg.budgetEnabled !== false` so an old client that never sends the field still gets the
+      safe default. With it off, `--max-budget-usd` is omitted from the spawn args entirely
+      rather than passed as some enormous number, so the budget-exhaustion detection path below
+      simply never triggers — no special-casing needed. Surfaced after the fact as an amber
+      "No budget cap" chip on the scan card (`toScanListItem()`'s `budgetEnabled`).
+    - **Budget exhaustion is still detected distinctly, not swallowed as a clean "nothing
+      found."** The CLI exits non-zero with a final `stream-json` `result` event carrying
+      `subtype: 'error_max_budget_usd'` and a real `total_cost_usd`; `runReasoningCall()`
+      captures that event and reports a specific message via `scan-warning`. Findings reported
+      before the cutoff are kept rather than discarded because the process technically errored —
+      the scan paid for those tokens either way.
+    - **Real dollar spend is aggregated, not estimated** from token/tool-call counts: each
+      call's `total_cost_usd` sums into `totalCostUsd`, rides live on `scan-progress`'s `costUsd`
+      field, and persists as `scan.reasoningCostUsd` (`toScanListItem()`) so it's visible via
+      `GET /api/scans/:id` after the fact too.
+    - Each pass's child process is registered under its own synthetic `` `${scan.runId}::mod${i}` ``
+      key in `children` (tracked on `scan.moduleRunIds`) rather than the scan's own runId, so the
+      WS `cancel` handler and the `ws.on('close')` cleanup can kill both in-flight calls. The key
+      name kept its `mod` prefix through the module design and back out of it again — nothing but
+      cancel bookkeeping reads those keys, so renaming them would be churn.
+    - A **`scan-warning` message type** exists for this app's own non-fatal notes, distinct from
+      `scan-stderr` (raw CLI chatter, still silently discarded client-side). It renders as a small
+      amber `.scan-warning-msg` banner on the scan card, appended rather than replaced so several
+      notes stay visible, and never touches `run.status` or the elapsed timer. Used for: one
+      engine erroring while others succeeded, the adjudication overflow above, budget exhaustion,
+      and the "N/M reasoning passes had issues" partial-failure summary. This distinction exists
+      because that summary *was* originally sent as `scan-stderr` and therefore silently dropped
+      by the same client code that discards CLI noise — a real induced failure produced no visible
+      signal anywhere in the UI despite the server correctly describing it.
+    - Both passes' system prompts still carry a **coverage summary** (`buildCoverageSummary()`),
+      built from `listBuiltInAgents()` — one line per registered agent, using the exact
+      `name`/`description`/`category` strings passed to its own `super()` call. Deliberately not
+      a second hand-maintained file (it would drift the first time an agent changed) and not each
+      pattern's full regex/fix text (hundreds of entries, real prompt bloat). ~800 tokens, fixed,
+      and it can never go stale because it reads from the same constructor that defines the
+      agent's detection logic.
+    - A **"diff" scope** scan narrows the review pass's worklist to the changed-file list and
+      tells it to review nothing else; adjudication is unaffected, since it reviews findings
+      rather than files.
   - **SCA half**: a dependency audit (`runDeterministicScaScan()`), the same engine slice the
     standalone SCA Scan page's own flow uses (`runStandaloneScaScan()` — see the SCA Scan bullet
     below for what the audit itself does) — folded in here too since it's fast, free of LLM
@@ -326,7 +340,7 @@ dots do.
     Runs concurrently with the other two, but signals its *own* completion the moment it
     resolves (`scan-progress {engine:'sca', done:1, total:1}`) rather than waiting for
     `Promise.all` below — it's typically the fastest of the three by far (one shell-out, no
-    per-file/per-module work), so the client's third engine bar reaches "Done" well before the
+    per-file work), so the client's third engine bar reaches "Done" well before the
     other two finish. Ignores scope entirely — a dependency audit always reads the whole
     manifest/lockfile, "diff" scope or not.
   - **Merge**: `runHybridReasoningScan()` awaits all three (`Promise.all`), then deduplicates
@@ -336,10 +350,11 @@ dots do.
       proximity check); anything without a resolvable line (most business-logic/attack-surface
       findings, and every SCA finding — package/version-keyed, not file+line-keyed) always
       survives, since there's nothing to compare it against.
-    - *Reasoning vs. reasoning* (`isDuplicateOfReasoning()`): the reasoning half is several
-      independent `claude -p` calls (one per module, plus the cross-cutting pass) and nothing
-      stopped two of them reporting the same issue — in practice the same unwired-auth gap comes
-      back 2-3x per scan and the same IDOR twice. Titles vary far too
+    - *Reasoning vs. reasoning* (`isDuplicateOfReasoning()`): retained from the module-based
+      design, where the reasoning half was several independent `claude -p` calls that nothing
+      stopped from reporting the same issue — in practice the same unwired-auth gap came
+      back 2-3x per scan and the same IDOR twice. With a single review pass this rarely fires,
+      but it still guards against one call reporting the same issue twice. Titles vary far too
       much between calls for text comparison to catch this ("requireAuth … applied to zero
       routes" vs. "Payment, order, and profile endpoints registered without requireAuth"), but
       they land on the same line consistently, so location is the signal. Findings are sorted
@@ -1139,23 +1154,93 @@ server.js          Express + ws. In-memory findings store (seeded with sample da
                     run (Threat Model, Remediation, Verify), relays stream-json lines live,
                     and extracts the final JSON block from the accumulated assistant text.
                     SCA Scan calls into sast-engine/ directly (see below), no `claude -p`
-                    involved. Reasoning Scan is a hybrid — it calls into sast-engine/ *and*
-                    spawns a real `claude -p` against agents/scan.md concurrently, then
-                    merges/dedupes both result sets (runHybridReasoningScan()); both sides
+                    involved. Reasoning Scan is a hybrid — sast-engine/ runs first (seconds,
+                    free), then its output drives two concurrent `claude -p` passes:
+                    adjudicate (agents/adjudicate.md, over its findings) and review
+                    (agents/scan.md, over the enumerated attack surface), whose results are
+                    merged/deduped (runHybridReasoningScan()); both sides
                     relay scan-events in the same shape (one real, one synthetic to match
                     it) so the client needed no changes to keep showing live progress from
                     either.
 sast-engine/        Deterministic security-scanning engine, adapted (MIT license, see
                     `sast-engine/LICENSE`) from the open-source `ship-safe` project and now
                     fully self-contained in this repo, trimmed to just what this app uses:
-                    `agents/` (31 regex/heuristic pattern agents plus ReconAgent and
-                    VerifierAgent, orchestrated by `orchestrator.js`), `commands/deps.js`
+                    `agents/` (31 regex/heuristic pattern agents, plus the structural
+                    `UnusedGuardAgent`, plus ReconAgent and VerifierAgent, orchestrated by
+                    `orchestrator.js`), `enumerate.js` (attack-surface enumeration — see
+                    below), `commands/deps.js`
                     (wraps the project's own package-manager audit tool for SCA Scan), and
                     `remediation-apply.js` (validates and applies a Remediation verdict's
                     proposed `edit_plan` against the real file — the only place any agent's
                     output can reach disk in this app). Its own `package.json` sets `"type":
                     "module"` so it can stay real ESM without converting server.js's
                     CommonJS; server.js loads it via dynamic `import()` (`loadSastEngine()`).
+
+                    **`enumerate.js`** is not a scanner — it reports no vulnerabilities and
+                    makes no LLM call. It extracts what *exists*: every HTTP route with its
+                    resolved middleware chain, every mount and its guards, every dangerous
+                    sink, and every security-relevant function together with its real call
+                    count. `enumerateSurface()` returns that manifest; `renderWorklist()`
+                    formats it as prompt text. The orchestrator computes it once per run and
+                    puts it on `context.surface` (accepting `options.surface` when the caller
+                    already built one, so it is never computed twice per scan), and returns it
+                    on the run result. Two consumers:
+                      1. **The reasoning review pass.** It is handed every route and sink,
+                    plus whole-app mount/unused-control context, as an
+                    explicit worklist with four questions it must answer per route. This is
+                    also what bounds the pass's scope now that the target is no longer
+                    partitioned into modules — the worklist grows with endpoint count, not
+                    file count, so one call covers a whole repository. This
+                    exists because "review these files for vulnerabilities" produces a skim —
+                    the model reports what looks interesting. Authorization and business-logic
+                    flaws are not interesting-looking; they are *absences*, found only by
+                    asking the same questions about every endpoint. Enumeration converts free
+                    reading into forced answers. Measured at ~1,300 tokens per call on the
+                    31-route fixture, and bounded rather than fixed: each section has a
+                    hard cap (WORKLIST_MAX_ROUTES/_MOUNTS/_UNUSED/_SINKS_PER_KIND in
+                    enumerate.js) with an explicit "+N more not reviewed" line on overflow,
+                    so a large application cannot spend a call's whole budget on its own
+                    instructions.
+                      2. **`UnusedGuardAgent`** (`unused-guard-agent.js`), which turns the same
+                    manifest into findings no line-local rule can produce, because the evidence
+                    is an absence spread across the tree: a security control defined and
+                    exported but never called (`SECURITY_CONTROL_NEVER_APPLIED`), a safe helper
+                    that exists while callers use the unsafe alternative
+                    (`SAFE_HELPER_NEVER_USED`), a privileged router mounted with no guard at
+                    all (`PRIVILEGED_ROUTER_MOUNTED_UNGUARDED`), and a privileged surface
+                    guarded by authentication but never authorization
+                    (`PRIVILEGED_SURFACE_AUTHENTICATED_NOT_AUTHORIZED` — reported at the mount,
+                    not at the unused control, because the mount is where the middleware has to
+                    be added). That last one is the "admin gated by requireUser while
+                    requireAdmin sits unused" case, which is more dangerous than having no
+                    control at all: a reviewer reading auth.js sees a hardened system.
+                      Extraction runs off a real parse tree (`ast-extract.js`, `@babel/parser`
+                    — pure JS, one parser for JS/TS/JSX/TSX), falling back to the regex path in
+                    `enumerate.js` **per file** when a file won't parse, so a syntax error
+                    degrades one file instead of blanking it. `options.forceRegex` still selects
+                    the regex path, which is how the two were diffed before the AST became the
+                    default. That migration happened because every extraction bug found was the
+                    same category — a regex losing to syntax: routes enumerated out of `/* */`
+                    doc comments and out of string literals, `__dirname` inside
+                    `path.join(__dirname, …)` read as a security guard, `https://` truncated by
+                    comment-stripping. Measured on this repo, the switch removed **7 phantom
+                    routes and lost 0 real ones**, and dropped sinks 275 → 158 (the regex was
+                    matching function *definitions* like `async function query(sql)` as SQL
+                    calls). One trap that is silent and severe if reversed: a non-computed
+                    member property (`db.verifyPassword`) MUST count as a reference — excluding
+                    it as "a property, not a variable" reports every function reached through a
+                    CommonJS namespace import as never called.
+                      Two further implementation details are load-bearing and easy to reintroduce
+                    as bugs. Reference counting must exclude a function's *own body* (a recursive
+                    helper nothing else calls is still unused) and must exclude *multi-line*
+                    `module.exports = { … }` blocks — an earlier version excluded only the
+                    first line of such a block, which made every exported function look called
+                    and silently defeated the whole check. Likewise the privilege-check
+                    vocabulary needs a case-insensitive regex while the camelCase predicate
+                    check (`canX`/`isX`) needs a case-sensitive one; folding them into one `/i`
+                    regex stops `requireAdmin` matching `admin`. Confidence is capped at medium
+                    for the unused-function rules, since textual reference counting cannot see
+                    a function invoked dynamically or wired by a framework decorator.
 public/index.html   The whole app: global nav (theme toggle slider + Settings entry in the nav
                     footer — no Agent Configuration screen anymore, see that bullet above) with
                     Dashboard (briefing + stats + a plain, non-clickable agents panel),
@@ -1181,12 +1266,17 @@ public/index.html   The whole app: global nav (theme toggle slider + Settings en
                     modals for adding a finding / running a stage with custom instructions.
 agents/*.md         Agent system prompts (passed via --append-system-prompt). Plain
                     markdown, no code — this is the only place agent-specific analysis
-                    logic lives (`scan.md`, `threat_model.md`, `remediation.md`,
-                    `verify.md`, `app_threat_model.md`, `controls_assist.md` — `triage.md`
+                    logic lives (`scan.md`, `adjudicate.md`, `threat_model.md`,
+                    `remediation.md`, `verify.md`, `app_threat_model.md`,
+                    `controls_assist.md` — `triage.md`
                     was deleted when Triage moved to a synthetic verdict assigned at
                     finding-creation time; `scan.md` itself was deleted and then revived
                     once Reasoning Scan became a hybrid of sast-engine + a real reasoning
-                    pass — see the Reasoning Scan bullet above). `fix` is a second synthetic
+                    pass — see the Reasoning Scan bullet above). `adjudicate.md` is the
+                    reasoning half's first pass: it reviews the deterministic engine's
+                    findings rather than searching for new ones, and is in
+                    NON_FINDING_AGENTS so it never appears as a per-finding stage a user
+                    can start. `fix` is a second synthetic
                     agent name alongside `triage` — its runs carry `agent: 'fix'` on
                     `finding.runs` (see the Agent Triage bullet's Remediation Loop
                     description) but there is no `agents/fix.md`: the Fix stage makes no
@@ -1284,22 +1374,24 @@ SCA (`scanType: 'sca'`, the standalone SCA Scan page): `runStandaloneScaScan()` 
 sast-engine once, calls `runDeterministicScaScan()` — `runDepsAudit(path)` shells out to
 whichever package manager's own audit tool is present — **no `claude -p` involved** — and drives
 it straight to `finish()`/`fail()`. Reasoning (`scanType: 'reasoning'`, the default):
-`runHybridReasoningScan()` kicks off three things concurrently (`Promise.all`) and waits for all
-three — `runDeterministicPatternScan()` (`buildOrchestratorAsync(path)` +
+`runHybridReasoningScan()` starts the SCA audit in the background, then **awaits
+`runDeterministicPatternScan()` first** (`buildOrchestratorAsync(path)` +
 `orchestrator.runAll(path, { onlyFiles, onAgentDone })`, no `claude -p`, relays each completed
 pattern-agent's findings via `onAgentDone` as a synthetic `{type: "scan-event", ...}` shaped like
-an assistant-text stream-json block), `runLLMReasoningScan()` (real `claude -p` calls against
-`agents/scan.md`, `cwd` set to the target path, `--allowedTools "Read,Grep,Glob"` — one call per
-module on a "full" scope scan, one call total on a "diff" scope scan, see the Reasoning Scan
-bullet above for the module partitioning/budget-cap/concurrency details — relaying each module's
-actual stream-json events the same way any other per-finding stage does), and
-`runDeterministicScaScan()` (the same engine slice the standalone SCA Scan page uses, see
-above — no `claude -p`, ignores `scope`/`diffFiles` entirely since a dependency audit always
-reads the whole manifest). All three send the same `{type: "scan-event", runId, scanId, event}`
-shape regardless of which one (or which module) produced it, so the client's live-card parser
+an assistant-text stream-json block). Its findings — collapsed via `dedupeAdjacentSameRule()` —
+and its enumerated `surface` are then passed into `runLLMReasoningScan()`, which runs its two
+`claude -p` passes concurrently (`cwd` set to the target path, `--allowedTools "Read,Grep,Glob"`,
+each capped via `--max-budget-usd`; see the Reasoning Scan bullet above), relaying their
+stream-json events the same way any other per-finding stage does. The ordering is the point: the
+free engine's output is what scopes the expensive one. `runDeterministicScaScan()` (the same
+engine slice the standalone SCA Scan page uses, see above — no `claude -p`, ignores
+`scope`/`diffFiles` entirely since a dependency audit always
+reads the whole manifest) shares no data with either and is simply awaited at the end. All three
+send the same `{type: "scan-event", runId, scanId, event}`
+shape regardless of which one produced it, so the client's live-card parser
 needs no changes — see the Reasoning Scan bullet above; SCA additionally sends its own
 `{type: "scan-progress", engine: 'sca', done: 1, total: 1}` the moment it resolves, independent
-of the other two, since it's typically the fastest of the three by far. Once all three resolve,
+of the others, since it's typically the fastest of the three by far. Once all three resolve,
 the server dedupes (drops a reasoning-pass finding whose file+line is within 2 lines of a
 deterministic one in the same file — SCA findings have no file+line to collide with either
 engine's, so they're never deduped against anything) and builds a Finding per surviving result
@@ -1316,7 +1408,7 @@ and SCA engines never spawn a child, so `scanRunIndex` alone is enough to track 
 deterministic/SCA scan and let `cancel` mark it `status: 'cancelled'` so its `onAgentDone`
 callback (deterministic) or in-flight `.then()` (SCA) stops relaying events/progress and the
 completion handler skips creating findings. This suppresses all visible effects but doesn't
-abort the underlying `orchestrator.runAll()`/`runDepsAudit()` promise early — the 29 agents (or
+abort the underlying `orchestrator.runAll()`/`runDepsAudit()` promise early — the relevance-gated agents (or
 the audit subprocess) keep running to completion in the background either way (they're regex
 passes over files or a single quick shell-out, not long-running child processes, so
 in practice this finishes quickly regardless).
@@ -1350,11 +1442,11 @@ threat models, control assessments, and — for a Reasoning Scan — the reasoni
 process(es) (the deterministic half never spawns a child, see "Request flow (scans)" above, but a
 scan's `runId` is still tracked independently in `scanRunIndex` regardless of whether a child
 exists under it) — not a single in-flight run, so multiple stages/scans/whole-directory runs
-can be running at once from one browser tab. A "full" scope reasoning scan is the one exception
-to "one runId, one child": every module call plus the cross-cutting pass (see the Reasoning Scan
+can be running at once from one browser tab. A reasoning scan is the one exception
+to "one runId, one child": each of its two concurrent passes (see the Reasoning Scan
 bullet above) is registered under its own synthetic `` `${scan.runId}::mod${i}` `` key instead,
-tracked on the scan's own `moduleRunIds` array, since a single scan can have several of these
-processes in flight concurrently. `{type: "cancel", runId}` kills a specific run's child process if it has one, marks
+tracked on the scan's own `moduleRunIds` array, since a single scan has both of these
+processes in flight at once. `{type: "cancel", runId}` kills a specific run's child process if it has one, marks
 it `status: 'cancelled'` either way (checked against `runIndex`, `scanRunIndex`,
 `appThreatModelRunIndex`, and `controlAssessmentRunIndex`), and — specifically for a scan —
 additionally walks `scanIndexed.moduleRunIds` to kill every one of that scan's in-flight module
@@ -1571,17 +1663,18 @@ does a browser-side `fetch()` that's expected to hit CORS — if that logic move
 app, it should move server-side, where Node has no CORS problem), and the **Reports** screen
 (currently a bare placeholder — no data, no server endpoint, see the Reports bullet above).
 
-**Reasoning-engine hardening, phase 1 of several**: module-scoped scanning, size-aware
-splitting/merging, a cross-cutting pass for wiring gaps, and honest budget/cost/failure
-reporting (see the Reasoning Scan bullet above) are the first phase of a larger design discussed
-with the user for reducing hallucination and token-cost risk on large codebases — all shipped
-and empirically verified, including catching and fixing two real bugs the first pass introduced
-(a splitting algorithm that silently failed to split a repo with only one top-level directory,
-and a partial-failure summary that was itself being silently discarded by the same client-side
-code path that discards raw CLI stderr chatter). Not yet built: bounded-context triage of
-deterministic findings (re-verify a sast-engine finding VerifierAgent couldn't confirm, using a
-grep-based blast radius of the finding's function + likely callers rather than a real call-graph
-index — this app has no symbol/AST infrastructure at all); self-consistency voting (run a
+**Reasoning-engine design, current shape**: the reasoning half is deterministic-first and
+two-pass (adjudicate + review, concurrent — see the Reasoning Scan bullet above). This replaced
+module-scoped scanning with size-aware splitting/merging and a cross-cutting pass, which was an
+earlier attempt at the same goal (bounding token spend and hallucination surface) that solved it
+by *subdividing the input* rather than by *deriving the scope from the deterministic engine's
+output*. That earlier design worked but had cost scale with repo size and left the two engines
+blind to each other; both its splitting algorithm and its partial-failure reporting also shipped
+with real bugs found later (a split that silently failed on a repo with one top-level directory;
+a failure summary sent as `scan-stderr`, which the client discards). Bounded-context triage of
+deterministic findings is now **built** — that's the adjudication pass, though it works from the
+finding's captured code context rather than the grep-based blast radius originally sketched.
+Not yet built: self-consistency voting (run a
 discovery-mode task 2-3 times, surface only findings that repeat, as a cheap hallucination
 filter before acting on a finding); stricter citation enforcement (reject/downgrade a finding
 that doesn't cite a real, verifiable file:line — today `extractVerdict()` just parses whatever

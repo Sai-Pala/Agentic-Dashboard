@@ -565,6 +565,80 @@
   .fd-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; font-family: var(--mono); margin-bottom: 8px; }
   .fd-prose { font-size: 13px; line-height: 1.6; color: var(--text-dim); white-space: pre-wrap; }
   .fd-code-wrap { position: relative; }
+
+  /* Attack Surface */
+  /* A scan label carries a full absolute path, which wraps to three lines and
+     takes over the header if left unconstrained. Truncate; the full path is
+     shown under the stats anyway. */
+  #surface-scan-btn {
+    max-width: 280px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; display: block;
+  }
+  .surface-target {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-bottom: 12px; word-break: break-all;
+  }
+  .surface-stats { margin-bottom: 16px; }
+  .surface-note { color: var(--text-dim); font-size: 12px; margin-bottom: 10px; }
+  .surface-mount {
+    border: 1px solid var(--border); border-left-width: 3px;
+    border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 10px;
+  }
+  .surface-mount.none { border-left-color: var(--crit); }
+  .surface-mount.authn { border-left-color: var(--warn); }
+  .surface-mount.authz { border-left-color: var(--ok); }
+  .surface-mount-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .surface-prefix { font-family: var(--mono); font-size: 13px; color: var(--text); }
+  .surface-arrow, .surface-none { color: var(--muted); }
+  .surface-router { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+  .surface-count { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .surface-guards { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .surface-guards code { background: var(--panel-2); padding: 1px 5px; border-radius: var(--radius-sm); }
+  .surface-badge {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+    padding: 1px 6px; border-radius: var(--radius-sm);
+  }
+  .surface-badge.crit { background: color-mix(in srgb, var(--crit) 20%, transparent); color: var(--crit); }
+  .surface-badge.warn { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+  .surface-badge.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .surface-routes { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+  .surface-route {
+    display: grid; grid-template-columns: 58px 1fr 1fr auto; gap: 10px;
+    align-items: baseline; padding: 3px 0; font-size: 12px;
+  }
+  .surface-method { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+  .surface-path { font-family: var(--mono); color: var(--text); }
+  .surface-mw, .surface-loc { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .surface-unused {
+    display: flex; align-items: center; gap: 10px; padding: 5px 0;
+    border-bottom: 1px solid var(--border); font-size: 12px;
+  }
+  .surface-unused:last-child { border-bottom: none; }
+  .surface-unused code { font-family: var(--mono); color: var(--text); }
+  .surface-unused .surface-loc { margin-left: auto; }
+
+  /* Data-flow path: source line, the lines it travels through, and the sink. */
+  .flow-summary { color: var(--text-dim); font-size: 12px; margin: 0 0 8px; }
+  .flow-block {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 8px 0; overflow-x: auto;
+    font-family: var(--mono); font-size: 12px; line-height: 1.7;
+  }
+  .flow-line { display: flex; align-items: baseline; gap: 8px; padding: 0 12px; white-space: pre; }
+  .flow-line.source { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .flow-line.sink { background: color-mix(in srgb, var(--crit) 14%, transparent); }
+  .flow-marker { width: 10px; color: var(--text-dim); }
+  .flow-line.source .flow-marker { color: var(--warn); }
+  .flow-line.sink .flow-marker { color: var(--crit); }
+  .flow-num { width: 34px; text-align: right; color: var(--muted); flex-shrink: 0; }
+  .flow-code { flex: 1; }
+  .flow-tag {
+    font-family: var(--font); font-size: 10px; text-transform: uppercase;
+    letter-spacing: .04em; padding: 1px 6px; border-radius: var(--radius-sm);
+    white-space: nowrap; align-self: center;
+  }
+  .flow-tag.source { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+  .flow-tag.sink { background: color-mix(in srgb, var(--crit) 22%, transparent); color: var(--crit); }
   .code-block { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 14px; font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 0; }
   .fd-copy-btn { position: absolute; top: 8px; right: 8px; font-size: 10.5px; padding: 4px 9px; }
   .tok-keyword { color: var(--accent); font-weight: 600; }
@@ -765,6 +839,10 @@
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/></svg>
     <span>Threat Model</span>
   </button>
+  <button class="nav-item" data-view="surface">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="12" width="18" height="8" rx="1"/><path d="M7 16h4"/></svg>
+    <span>Attack Surface</span>
+  </button>
   <button class="nav-item" data-view="reports">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h9L19.5 8v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M9 12v4M12 9.5v6.5M15 13v3"/></svg>
     <span>Reports</span>
@@ -859,7 +937,7 @@
           </div>
         </div>
       </div>
-      <div class="hint" id="scan-budget-hint" hidden style="margin-top:-6px;">No cap — each module/cross-cutting call can run unbounded on spend until it finishes on its own. Turn this off only if a scan is getting cut short by the cap and you want it to finish regardless of cost.</div>
+      <div class="hint" id="scan-budget-hint" hidden style="margin-top:-6px;">No cap — each reasoning pass can run unbounded on spend until it finishes on its own. Turn this off only if a scan is getting cut short by the cap and you want it to finish regardless of cost.</div>
 
       <div>
         <label for="scan-path-input">Target directory</label>
@@ -1052,6 +1130,22 @@
       <button id="ca-start-btn" class="scan-start-btn atm-start-btn" style="width:100%;">Start control scan</button>
     </div>
     <div id="ca-content"></div>
+  </div>
+</div>
+
+<div id="view-surface" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>Attack Surface</h1>
+      <div class="view-subtitle">Every endpoint this app exposes, and what guards it</div>
+    </div>
+    <div class="scan-filter-dropdown">
+      <button id="surface-scan-btn" class="secondary" type="button">Select a scan</button>
+      <div id="surface-scan-menu" class="scan-filter-menu" hidden></div>
+    </div>
+  </div>
+  <div class="view-body">
+    <div id="surface-content"></div>
   </div>
 </div>
 
@@ -1516,6 +1610,7 @@ function showView(view, opts = {}) {
   document.getElementById('view-finding-detail').hidden = view !== 'finding-detail';
   document.getElementById('view-threatmodel').hidden = view !== 'threatmodel';
   document.getElementById('view-controls-assist').hidden = view !== 'controls-assist';
+  document.getElementById('view-surface').hidden = view !== 'surface';
   document.getElementById('view-reports').hidden = view !== 'reports';
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === view));
 
@@ -1525,6 +1620,7 @@ function showView(view, opts = {}) {
   if (view === 'findings') renderFindingsView();
   if (view === 'threatmodel') openThreatModelView();
   if (view === 'controls-assist') renderControlsAssistView();
+  if (view === 'surface') openSurfaceView();
   if (view === 'settings') renderSettings();
 }
 
@@ -1771,7 +1867,7 @@ function renderTimeline() {
           detail = await fetch(`/api/scans/${entry.scanId}`).then((r) => r.json());
           scanDetailCache.set(entry.scanId, detail);
         }
-        renderScanFindingsBody(body, detail.findings, entry.scanId);
+        renderScanFindingsBody(body, detail.findings, entry.scanId, detail);
       });
     } else {
       row.addEventListener('click', () => openFindingDetail(entry.findingId));
@@ -2559,12 +2655,35 @@ function upsertAppThreatModel(patch) {
   if (currentView === 'threatmodel') renderThreatModelView();
 }
 
-function renderScanFindingsBody(body, scanFindings, scanId) {
+// `detail` is the full scan record from GET /api/scans/:id — used for the coverage line, which
+// needs fields the finding list doesn't carry.
+function renderScanFindingsBody(body, scanFindings, scanId, detail) {
+  body.innerHTML = '';
+
+  // Which pattern agents this target actually warranted. The live scan card shows the same
+  // thing, but only for a scan started in the current tab and only until the page reloads
+  // (cards are never rebuilt from scansList). This row is rebuilt from the server every time
+  // the drawer opens, so it is the durable answer to "what did that scan actually cover" —
+  // which matters most exactly when the scan is no longer in front of you.
+  if (detail && detail.agentsRun && (detail.agentsSkipped || []).length) {
+    const nSkipped = detail.agentsSkipped.length;
+    const cov = document.createElement('div');
+    cov.className = 'hint';
+    cov.style.cssText = 'padding:6px 14px 2px;';
+    cov.title = 'Not applicable here (skipped by their own relevance check):\n'
+      + detail.agentsSkipped.map((n) => `• ${n}`).join('\n');
+    cov.textContent = `${detail.agentsRun} of ${detail.agentsRun + nSkipped} pattern agents applied to this codebase · ${nSkipped} not applicable`;
+    body.appendChild(cov);
+  }
+
   if (!scanFindings.length) {
-    body.innerHTML = '<div class="hint" style="padding:10px 14px;">No findings produced by this scan.</div>';
+    const none = document.createElement('div');
+    none.className = 'hint';
+    none.style.cssText = 'padding:10px 14px;';
+    none.textContent = 'No findings produced by this scan.';
+    body.appendChild(none);
     return;
   }
-  body.innerHTML = '';
   if (scanId) {
     const linkRow = document.createElement('div');
     linkRow.style.cssText = 'padding:2px 14px 8px;';
@@ -2598,6 +2717,17 @@ function makeScanCard(runId, targetPath, meta, containerEl) {
   if (meta.app) metaTags.push(`<span class="scan-meta-text">${escapeHtml(meta.app)}</span>`);
   if (meta.scanType === 'reasoning' && meta.budgetEnabled === false) {
     metaTags.push(`<span class="scan-meta-text" style="color:var(--warn);" title="Reasoning calls have no --max-budget-usd cap for this scan">No budget cap</span>`);
+  }
+  // Which pattern agents this target warranted. Scoped to this tab's session: cards are only
+  // ever created by startScan() and are never rebuilt from scansList, so a reload loses them.
+  // The durable version of this lives on the timeline drawer's scan row
+  // (renderScanFindingsBody), which refetches from the server every time it opens.
+  const nSkippedAgents = (meta.agentsSkipped || []).length;
+  if (meta.agentsRun && nSkippedAgents) {
+    const tip = `${meta.agentsRun} of ${meta.agentsRun + nSkippedAgents} pattern agents apply to this codebase.\n\n`
+      + `Not applicable here (skipped by their own relevance check):\n`
+      + meta.agentsSkipped.map((n) => `• ${n}`).join('\n');
+    metaTags.push(`<span class="scan-meta-text" title="${escapeHtml(tip)}">${meta.agentsRun}/${meta.agentsRun + nSkippedAgents} agents</span>`);
   }
 
   // Hybrid Scan runs three engines in parallel (sast-engine's deterministic pattern agents +
@@ -2874,16 +3004,32 @@ function reattachConsoleRefs(containerEl, runsMap, panelClass) {
 }
 
 // Updates the "Pattern match" bar from a scan-progress message (deterministic engine only —
-// see server.js's runDeterministicPatternScan, which counts completed sast-engine agents out
-// of the fixed 29-agent total).
-function updateDetBar(run, done, total) {
+// see server.js's runDeterministicPatternScan).
+//
+// `total` is the count of agents actually relevant to THIS target, not the registered total:
+// every agent declares shouldRun(recon), and most repos legitimately skip a dozen or more
+// (Roblox, React Native, MCP, RAG, model-scanning — see CLAUDE.md's relevance-gating note).
+// Reporting only the survivors as "17/17 agents done" hides that entirely: it reads as though
+// 17 is the whole engine, when 15 more were deliberately judged inapplicable. The "N n/a"
+// suffix makes the selection visible, and the tooltip names the skipped agents so "why didn't
+// it check for X" has an answer without reading the source.
+function updateDetBar(run, done, total, skipped) {
   if (!run.detFillEl) return;
   run.detDone = done;
   run.detTotal = total;
+  if (Array.isArray(skipped)) run.detSkipped = skipped;
   const pct = total ? Math.round((done / total) * 100) : 0;
   run.detFillEl.style.width = pct + '%';
   run.detFillEl.classList.toggle('done', done >= total && total > 0);
-  run.detStatEl.textContent = total ? `${done}/${total} agents done` : 'Starting…';
+  const nSkipped = (run.detSkipped || []).length;
+  run.detStatEl.textContent = total
+    ? `${done}/${total} agents done${nSkipped ? ` · ${nSkipped} n/a` : ''}`
+    : 'Starting…';
+  run.detStatEl.title = nSkipped
+    ? `${total} of ${total + nSkipped} agents apply to this codebase.\n\n`
+      + `Not applicable here (skipped by their own relevance check):\n`
+      + (run.detSkipped || []).map((n) => `• ${n}`).join('\n')
+    : '';
 }
 
 // Updates the "Dependency audit" bar from a scan-progress {engine:'sca'} message — sent exactly
@@ -2907,13 +3053,13 @@ function reasoningCostSuffix(run) {
 }
 
 // Updates the "Reasoning" bar from per-event tool-call activity. This is the fallback display
-// for when there's no real module total to show a percentage against — a "diff" scope scan (one
-// call over the changed-file list) or a "full" scope scan whose target directory only yielded a
-// single module (see partitionReasoningModules() in server.js) — in which case this is an
-// indeterminate-feeling fill that grows with tool-call count and settles at 100% once the run
-// reports its own `done`/`error` (see markReasoningBarDone below) rather than trying to predict
-// completion from activity alone. Once a scan has more than one module, updateReasoningModuleProgress()
-// below owns this same bar instead — real modules-done/total beats an indeterminate estimate.
+// for when there's only one reasoning pass to report — which happens when the deterministic
+// half found nothing, so there is nothing to adjudicate and only the review pass runs. In that
+// case this is an indeterminate-feeling fill that grows with tool-call count and settles at
+// 100% once the run reports its own `done`/`error` (see markReasoningBarDone below) rather than
+// trying to predict completion from activity alone. With both passes running,
+// updateReasoningModuleProgress() below owns this same bar instead — a real done/total beats an
+// indeterminate estimate.
 function updateReasoningBar(run) {
   if (!run.reasoningFillEl) return;
   if (run.reasoningModulesTotal > 1) return;
@@ -2925,15 +3071,13 @@ function updateReasoningBar(run) {
 }
 
 // Updates the "Reasoning" bar from a scan-progress {engine:'reasoning'} message — sent once per
-// completed module (and once for the cross-cutting pass, see CLAUDE.md) on a "Full" scope scan,
-// since server.js's runLLMReasoningScan() now partitions the target directory into modules and
-// runs one scoped claude -p call per module instead of a single unscoped pass (this exists to
-// keep token spend and hallucination surface from scaling with total repo size). A "diff" scope
-// scan, or a full scan whose directory only yielded one module, reports total <= 1 — nothing
-// module-like to show in that case, so the bar keeps using updateReasoningBar()'s per-event
-// tool-call estimate instead; real dollar spend (costUsd, aggregated server-side from each
+// completed reasoning pass. server.js's runLLMReasoningScan() runs two: an adjudication pass
+// over the deterministic half's findings, then a review pass over the enumerated attack surface
+// (see CLAUDE.md). A scan whose deterministic half found nothing skips adjudication and reports
+// total <= 1 — nothing worth a percentage there, so the bar falls back to updateReasoningBar()'s
+// per-event tool-call estimate; real dollar spend (costUsd, aggregated server-side from each
 // call's actual stream-json result — not an estimate) is tracked either way, so it's still shown
-// once a call completes even when the module count itself isn't interesting enough to display.
+// once a pass completes even when the pass count isn't interesting enough to display.
 function updateReasoningModuleProgress(run, done, total, costUsd) {
   if (!run.reasoningFillEl) return;
   run.reasoningModulesDone = done;
@@ -2943,7 +3087,7 @@ function updateReasoningModuleProgress(run, done, total, costUsd) {
   const pct = Math.round((done / total) * 100);
   run.reasoningFillEl.style.width = pct + '%';
   run.reasoningFillEl.classList.toggle('done', done >= total);
-  run.reasoningStatEl.textContent = `${done}/${total} modules done` + reasoningCostSuffix(run);
+  run.reasoningStatEl.textContent = `${done}/${total} passes done` + reasoningCostSuffix(run);
 }
 
 function markReasoningBarDone(run) {
@@ -3068,7 +3212,7 @@ function handleScanServerMessage(msg) {
   if (msg.type === 'scan-progress') {
     if (msg.engine === 'reasoning') updateReasoningModuleProgress(run, msg.done, msg.total, msg.costUsd);
     else if (msg.engine === 'sca') updateScaBar(run, msg.done, msg.total);
-    else updateDetBar(run, msg.done, msg.total);
+    else updateDetBar(run, msg.done, msg.total, msg.skipped);
     return;
   }
   if (msg.type === 'scan-event') {
@@ -3913,6 +4057,8 @@ function renderFindingDetail(findingId) {
     </div>
   `;
 
+  const flowHtml = findingFlowHtml(finding);
+
   const codeHtml = finding.code ? `
     <div class="fd-section">
       <div class="fd-section-title">Code</div>
@@ -3932,7 +4078,7 @@ function renderFindingDetail(findingId) {
     </div>
   `;
 
-  fdBodyEl.innerHTML = badgesHtml + scanSourceHtml + metaHtml + descriptionHtml + codeHtml + runsHtml;
+  fdBodyEl.innerHTML = badgesHtml + scanSourceHtml + metaHtml + descriptionHtml + flowHtml + codeHtml + runsHtml;
 
   const copyBtn = fdBodyEl.querySelector('[data-action="copy-code"]');
   if (copyBtn) {
@@ -4201,6 +4347,198 @@ const HL_KEYWORDS = new Set([
   'int', 'string', 'bool', 'float', 'double', 'char', 'long', 'short', 'unsigned', 'const', 'include', 'define',
 ]);
 const HL_TOKEN_RE = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_$][A-Za-z0-9_$]*\b)/g;
+
+// ── Attack Surface ──────────────────────────────────────────────────────────
+//
+// A posture view, not a findings view. Every scan already builds a complete
+// structural map of the target — each route with its resolved middleware chain,
+// each mount and what guards it, and every security function that exists but is
+// never called — and until now that was assembled for the reasoning prompts and
+// then discarded. This is the one place the app can answer "what does this
+// application expose, and what is protecting it" rather than "what is wrong with
+// it", which is a question no list of findings answers.
+//
+// Fed by GET /api/scans/:id/surface. Only scans run after the feature existed
+// carry a map, so an older scan says so plainly instead of rendering empty.
+
+let surfaceScanId = null;
+let surfaceData = null;
+
+function openSurfaceView() {
+  renderSurfaceScanPicker();
+  if (!scansList.length) { loadScans().then(renderSurfaceScanPicker); }
+  const done = scansList.filter((s) => s.status === 'done');
+  if (!surfaceScanId && done.length) surfaceScanId = done[0].id;
+  if (surfaceScanId) loadSurface(surfaceScanId);
+  else renderSurfaceView();
+}
+
+async function loadSurface(scanId) {
+  const el = document.getElementById('surface-content');
+  if (el) el.innerHTML = '<div class="placeholder-panel">Loading the map…</div>';
+  try {
+    const res = await fetch(`/api/scans/${scanId}/surface`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      surfaceData = { unavailable: body.error || 'No attack-surface map for this scan.' };
+    } else {
+      surfaceData = await res.json();
+    }
+  } catch (err) {
+    surfaceData = { unavailable: err.message };
+  }
+  renderSurfaceView();
+  renderSurfaceScanPicker();
+}
+
+function renderSurfaceScanPicker() {
+  const btn = document.getElementById('surface-scan-btn');
+  const menu = document.getElementById('surface-scan-menu');
+  if (!btn || !menu) return;
+  const done = scansList.filter((s) => s.status === 'done');
+  const current = done.find((s) => s.id === surfaceScanId);
+  btn.textContent = current ? scanFilterLabel(current) : (done.length ? 'Select a scan' : 'No completed scans');
+  btn.disabled = !done.length;
+  menu.innerHTML = done.map((s) =>
+    `<button type="button" class="scan-filter-item${s.id === surfaceScanId ? ' active' : ''}" data-scan-id="${s.id}">${escapeHtml(scanFilterLabel(s))}</button>`
+  ).join('') || '<div class="scan-filter-empty">Run a scan first.</div>';
+  menu.querySelectorAll('[data-scan-id]').forEach((b) => {
+    b.onclick = () => { surfaceScanId = b.dataset.scanId; menu.hidden = true; loadSurface(surfaceScanId); };
+  });
+  btn.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; };
+}
+
+/** Is this mount's guard chain doing authorization, or only authentication? */
+function guardKindOf(mount) {
+  if (!mount.middleware || !mount.middleware.length) return 'none';
+  const privileged = mount.middleware.some((m) => /admin|role|permission|privileg|acl|rbac|scope|claim|owner|tenant/i.test(m));
+  return privileged ? 'authz' : 'authn';
+}
+
+function renderSurfaceView() {
+  const el = document.getElementById('surface-content');
+  if (!el) return;
+
+  if (!surfaceData) {
+    el.innerHTML = '<div class="placeholder-panel">Run a scan, then pick it above to see the map of what it exposes.</div>';
+    return;
+  }
+  if (surfaceData.unavailable) {
+    el.innerHTML = `<div class="placeholder-panel">${escapeHtml(surfaceData.unavailable)}</div>`;
+    return;
+  }
+
+  const mounts = (surfaceData.mounts || []).filter((m) => m.prefix && m.mounted);
+  const routes = surfaceData.routes || [];
+  const unused = (surfaceData.securityFunctions || []).filter((f) => f.callCount === 0);
+
+  const unguarded = mounts.filter((m) => guardKindOf(m) === 'none').length;
+  const authnOnly = mounts.filter((m) => guardKindOf(m) === 'authn').length;
+
+  const stats = `
+    <div class="stat-grid surface-stats">
+      <div class="stat-tile"><div class="stat-value">${routes.length}</div><div class="stat-label">Endpoints</div></div>
+      <div class="stat-tile"><div class="stat-value">${mounts.length}</div><div class="stat-label">Mounted routers</div></div>
+      <div class="stat-tile"><div class="stat-value" style="color:${unguarded ? 'var(--crit)' : 'var(--ok)'}">${unguarded}</div><div class="stat-label">With no guard</div></div>
+      <div class="stat-tile"><div class="stat-value" style="color:${authnOnly ? 'var(--warn)' : 'var(--ok)'}">${authnOnly}</div><div class="stat-label">Authenticated only</div></div>
+      <div class="stat-tile"><div class="stat-value" style="color:${unused.length ? 'var(--warn)' : 'var(--ok)'}">${unused.length}</div><div class="stat-label">Unapplied controls</div></div>
+      <div class="stat-tile"><div class="stat-value">${(surfaceData.sinks || []).length}</div><div class="stat-label">Dangerous operations</div></div>
+    </div>`;
+
+  const mountRows = mounts.map((m) => {
+    const kind = guardKindOf(m);
+    const owned = routes.filter((r) => r.file && m.mounted && r.file.includes(m.mounted));
+    const badge = kind === 'none'
+      ? '<span class="surface-badge crit">no guard</span>'
+      : kind === 'authn'
+        ? '<span class="surface-badge warn">authenticated, not authorized</span>'
+        : '<span class="surface-badge ok">guarded</span>';
+    return `
+      <div class="surface-mount ${kind}">
+        <div class="surface-mount-head">
+          <span class="surface-prefix">${escapeHtml(m.prefix)}</span>
+          <span class="surface-arrow">→</span>
+          <span class="surface-router">${escapeHtml(m.mounted)}</span>
+          ${badge}
+          <span class="surface-count">${owned.length} route${owned.length === 1 ? '' : 's'}</span>
+        </div>
+        <div class="surface-guards">${m.middleware.length ? m.middleware.map((g) => `<code>${escapeHtml(g)}</code>`).join(' → ') : '<span class="surface-none">nothing</span>'}</div>
+        ${owned.length ? `<div class="surface-routes">${owned.map((r) => `
+          <div class="surface-route">
+            <span class="surface-method ${escapeHtml(r.method.toLowerCase())}">${escapeHtml(r.method)}</span>
+            <span class="surface-path">${escapeHtml(r.path)}</span>
+            <span class="surface-mw">${r.middleware.length ? r.middleware.map(escapeHtml).join(', ') : '<em>no route guard</em>'}</span>
+            <span class="surface-loc">${escapeHtml(r.file)}:${r.line}</span>
+          </div>`).join('')}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  const unusedHtml = unused.length ? `
+    <div class="panel">
+      <div class="panel-title">Security controls that are never applied</div>
+      <div class="surface-note">Each of these was written to enforce something and currently enforces nothing.</div>
+      ${unused.map((f) => `
+        <div class="surface-unused">
+          <code>${escapeHtml(f.name)}()</code>
+          <span class="surface-loc">${escapeHtml(f.file)}:${f.line}</span>
+          <span class="surface-badge warn">0 call sites</span>
+        </div>`).join('')}
+    </div>` : '';
+
+  el.innerHTML = `
+    <div class="surface-target">${escapeHtml(surfaceData.path || '')}${surfaceData.fileCount ? ` · ${surfaceData.fileCount} files` : ''}</div>
+    ${stats}
+    <div class="panel">
+      <div class="panel-title">Mounted routers</div>
+      ${mounts.length ? mountRows : '<div class="surface-note">No mounted routers were detected in this codebase.</div>'}
+    </div>
+    ${unusedHtml}
+  `;
+}
+
+/**
+ * Render a dataflow finding as the path the value actually takes, rather than
+ * as the single line where it happened to end up.
+ *
+ * A cross-line finding is the one kind this app produces where the *location* is
+ * genuinely not the explanation: "SQL injection at line 20" is unactionable
+ * without knowing that line 18 read a query parameter and line 19 concatenated
+ * it. The engine already knows both ends (`flow.sourceLine` / `flow.sinkLine`)
+ * and every line between them; before this it was all discarded at render time
+ * and the user saw one number.
+ *
+ * Only appears when the finding carries a `flow` — pattern findings that fit on
+ * one line have no path to draw, and forcing one would be noise.
+ */
+function findingFlowHtml(finding) {
+  const flow = finding.flow;
+  if (!flow || !Array.isArray(flow.lines) || !flow.lines.length) return '';
+
+  const rows = flow.lines.map((l) => {
+    const isSource = l.n === flow.sourceLine;
+    const isSink = l.n === flow.sinkLine;
+    const cls = isSource ? 'flow-line source' : isSink ? 'flow-line sink' : 'flow-line';
+    const marker = isSource ? '▸' : isSink ? '▸' : ' ';
+    const label = isSource ? '<span class="flow-tag source">user input enters</span>'
+      : isSink ? '<span class="flow-tag sink">reaches the sink</span>'
+      : '';
+    return `<div class="${cls}">`
+      + `<span class="flow-marker">${marker}</span>`
+      + `<span class="flow-num">${l.n}</span>`
+      + `<span class="flow-code">${highlightCode(l.text)}</span>`
+      + label
+      + '</div>';
+  }).join('');
+
+  const span = flow.sinkLine - flow.sourceLine;
+  return `
+    <div class="fd-section">
+      <div class="fd-section-title">Data flow</div>
+      <div class="flow-summary">Untrusted input enters at line ${flow.sourceLine} and reaches a dangerous operation ${span} line${span === 1 ? '' : 's'} later, with nothing validating it in between.</div>
+      <div class="flow-block">${rows}</div>
+    </div>
+  `;
+}
 
 function highlightCode(code) {
   let out = '';

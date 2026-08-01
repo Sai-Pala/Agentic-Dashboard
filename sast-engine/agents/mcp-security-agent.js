@@ -269,6 +269,14 @@ export class MCPSecurityAgent extends BaseAgent {
     );
   }
 
+  // Only meaningful against a project that actually is, or talks to, an MCP
+  // server — evidenced by one of the config files this agent reads, or by the
+  // SDK dependency. Everywhere else it reads every file and finds nothing.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.mcpConfigs || []).length > 0 || (recon.aiFrameworks || []).includes('mcp');
+  }
+
   async analyze(context) {
     const { files, rootPath } = context;
     let findings = [];

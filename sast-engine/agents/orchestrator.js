@@ -25,6 +25,7 @@
 import path from 'path';
 import { ReconAgent } from './recon-agent.js';
 import { VerifierAgent } from './verifier-agent.js';
+import { enumerateSurface } from '../enumerate.js';
 
 // =============================================================================
 // CONSTANTS
@@ -124,7 +125,14 @@ export class Orchestrator {
     // what earlier agents found (e.g., secrets agent finds a key,
     // supply-chain agent can check if it's committed to a public repo).
     const sharedFindings = [];
-    const context = { rootPath: absolutePath, files, recon, options, sharedFindings };
+    // Structural map of the app — routes with their middleware chains, sinks,
+    // and every security-relevant function with its real call count. Computed
+    // once here and shared, because more than one consumer needs it: agents that
+    // reason about whole-app wiring, and (via the caller) the reasoning pass,
+    // which is handed it as an enumerated worklist. Accepted from options when
+    // the caller already built it, so it is never computed twice per scan.
+    const surface = options.surface || enumerateSurface(absolutePath, { files });
+    const context = { rootPath: absolutePath, files, recon, options, sharedFindings, surface };
     if (options.changedFiles) {
       context.changedFiles = options.changedFiles;
     }
@@ -148,8 +156,16 @@ export class Orchestrator {
     // live progress bar off its own upfront guess will under-report a total that never reaches
     // 100%. Report the real, post-filter count as soon as it's known so the caller can correct
     // its total before the per-agent loop (and its onAgentDone calls) even starts.
+    // Also reports which agents were filtered out and are therefore contributing nothing to
+    // this scan. A caller showing only the surviving count ("17/17 agents") makes relevance
+    // gating invisible — it reads as though 17 is all there is, when 15 more were deliberately
+    // judged inapplicable. Which ones were skipped is the interesting half of that decision.
     if (typeof options.onScopeReady === 'function') {
-      options.onScopeReady(relevantAgents.length);
+      const relevant = new Set(relevantAgents.map((a) => a.name));
+      options.onScopeReady(
+        relevantAgents.length,
+        this.agents.filter((a) => !relevant.has(a.name)).map((a) => a.name),
+      );
     }
 
     for (let i = 0; i < relevantAgents.length; i += concurrency) {
@@ -217,7 +233,7 @@ export class Orchestrator {
       floorAttempts: agentResults.reduce((n, a) => n + (a.floorSuppressionAttempts || 0), 0),
     };
 
-    return { recon, findings: allFindings, agentResults, suppression, skippedAgents, totalAgents: relevantAgents.length };
+    return { recon, surface, findings: allFindings, agentResults, suppression, skippedAgents, totalAgents: relevantAgents.length };
   }
 
   /**

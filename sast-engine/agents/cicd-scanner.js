@@ -517,6 +517,13 @@ export class CICDScanner extends BaseAgent {
     return findings;
   }
 
+  // Needs a pipeline or container/IaC definition to inspect.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.cicd || []).length > 0
+      || recon.hasDockerfile || recon.hasKubernetes || recon.hasTerraform;
+  }
+
   async analyze(context) {
     const { rootPath, files } = context;
 

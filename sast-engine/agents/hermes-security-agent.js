@@ -710,8 +710,11 @@ export class HermesSecurityAgent extends BaseAgent {
    * exercised it). Returning true unconditionally restores the agent; the
    * file-read cost is already paid by the secret scanner and other agents.
    */
-  shouldRun() {
-    return true;
+  // Hermes is React Native's JS engine — outside an RN/Expo project there is no
+  // Hermes bytecode or config to inspect.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.frameworks || []).some((f) => ['react-native', 'expo', 'flutter'].includes(f));
   }
 
   async analyze(context) {

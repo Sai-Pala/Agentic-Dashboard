@@ -141,8 +141,13 @@ export class RobloxSecurityAgent extends BaseAgent {
 
   // Roblox-specific rules only; the cross-platform ClickFix lure is now its
   // own first-class detector (ClickFixAgent).
-  shouldRun() {
-    return true;
+  // ReconAgent already detects the Roblox toolchain (Rojo/Wally project files,
+  // .rbxl*/.rbxm* places) and Luau sources — this used to return true anyway,
+  // so every non-Roblox scan paid for a full Luau pass that could not match.
+  shouldRun(recon) {
+    if (!recon) return true;
+    const langs = recon.languages instanceof Set ? recon.languages : new Set(recon.languages || []);
+    return (recon.frameworks || []).includes('roblox') || langs.has('luau') || langs.has('lua');
   }
 
   async analyze(context) {

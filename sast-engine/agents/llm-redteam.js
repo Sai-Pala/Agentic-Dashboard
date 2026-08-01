@@ -250,6 +250,13 @@ export class LLMRedTeam extends BaseAgent {
     super('LLMRedTeam', 'AI/LLM security audit based on OWASP LLM Top 10', 'llm');
   }
 
+  // Prompt-injection and jailbreak surface only exists where the project makes
+  // model calls at all.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.aiFrameworks || []).length > 0;
+  }
+
   async analyze(context) {
     const { files } = context;
     const codeFiles = files.filter(f => {

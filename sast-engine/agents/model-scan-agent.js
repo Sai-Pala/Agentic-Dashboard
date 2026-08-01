@@ -83,8 +83,13 @@ export class ModelScanAgent extends BaseAgent {
     );
   }
 
-  shouldRun() {
-    return true; // cheap: exits immediately when no model files are present
+  // "Exits immediately when no model files are present" — but only after its
+  // own independent discovery walk. Recon already knows, so ask it instead.
+  shouldRun(recon) {
+    if (!recon) return true;
+    const ai = recon.aiFrameworks || [];
+    return (recon.modelFiles || []).length > 0
+      || ai.includes('transformers') || ai.includes('pytorch');
   }
 
   async analyze(context) {

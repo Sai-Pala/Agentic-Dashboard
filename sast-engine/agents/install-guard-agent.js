@@ -45,8 +45,10 @@ export class InstallGuardAgent extends BaseAgent {
     );
   }
 
-  shouldRun() {
-    return true;
+  // Targets npm lifecycle scripts and binding.gyp specifically.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.packageManagers || []).includes('npm');
   }
 
   async analyze(context) {

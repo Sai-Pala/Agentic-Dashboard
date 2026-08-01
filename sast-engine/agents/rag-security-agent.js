@@ -185,6 +185,15 @@ export class RAGSecurityAgent extends BaseAgent {
     );
   }
 
+  // RAG-specific risks need a retrieval layer to exist: a vector store, or an
+  // orchestration framework whose whole purpose is retrieval-augmented calls.
+  shouldRun(recon) {
+    if (!recon) return true;
+    const ai = recon.aiFrameworks || [];
+    return (recon.vectorStores || []).length > 0
+      || ai.includes('langchain') || ai.includes('llamaindex');
+  }
+
   async analyze(context) {
     const { files } = context;
 

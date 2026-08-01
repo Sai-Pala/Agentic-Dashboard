@@ -11,6 +11,66 @@ import fs from 'fs';
 import path from 'path';
 import { BaseAgent } from './base-agent.js';
 
+// ── Relevance-evidence tables ───────────────────────────────────────────────
+// These mirror what the agents that consume them actually open. Keep them in
+// sync with the target lists in mcp-security-agent.js / agent-config-scanner.js
+// / model-scan-agent.js — a signal that doesn't match what the agent reads is
+// worse than no signal, because it gates the agent off its own real input.
+
+const MCP_CONFIG_NAMES = new Set([
+  'mcp.json', '.mcp.json', 'mcp-config.json', 'claude_desktop_config.json',
+]);
+const MCP_CONFIG_SUFFIXES = ['.cursor/mcp.json', '.vscode/mcp.json'];
+
+const AGENT_CONFIG_NAMES = new Set([
+  'claude.md', 'agents.md', 'agent.md', '.cursorrules', '.clinerules',
+  '.windsurfrules', '.aiderignore', 'openclaw.config.json', '.roomodes',
+]);
+const AGENT_CONFIG_SUFFIXES = [
+  '.continue/config.json', '.cody/config.json', '.augment/config.json',
+  '.github/copilot-instructions.md', '.claude/settings.json',
+];
+
+const MODEL_EXTENSIONS = new Set([
+  '.safetensors', '.gguf', '.ggml', '.pt', '.pth', '.onnx', '.pkl', '.h5', '.pb',
+]);
+
+// Dependency name → signal. Checked against package.json deps and, for Python,
+// requirements.txt / pyproject.toml text.
+const AI_DEPS = {
+  openai: 'openai',
+  '@anthropic-ai/sdk': 'anthropic',
+  anthropic: 'anthropic',
+  ai: 'vercel-ai',
+  langchain: 'langchain',
+  '@langchain/core': 'langchain',
+  langgraph: 'langchain',
+  llamaindex: 'llamaindex',
+  'llama-index': 'llamaindex',
+  crewai: 'crewai',
+  pyautogen: 'autogen',
+  autogen: 'autogen',
+  transformers: 'transformers',
+  torch: 'pytorch',
+  ollama: 'ollama',
+  '@modelcontextprotocol/sdk': 'mcp',
+  mcp: 'mcp',
+};
+
+const VECTOR_DEPS = {
+  '@pinecone-database/pinecone': 'pinecone',
+  pinecone: 'pinecone',
+  chromadb: 'chroma',
+  weaviate: 'weaviate',
+  'weaviate-client': 'weaviate',
+  '@qdrant/js-client-rest': 'qdrant',
+  'qdrant-client': 'qdrant',
+  pgvector: 'pgvector',
+  'faiss-cpu': 'faiss',
+  'faiss-gpu': 'faiss',
+  pymilvus: 'milvus',
+};
+
 export class ReconAgent extends BaseAgent {
   constructor() {
     super('ReconAgent', 'Attack surface discovery and mapping', 'recon');
@@ -35,6 +95,16 @@ export class ReconAgent extends BaseAgent {
       hasKubernetes: false,
       envFiles: [],
       configFiles: [],
+      // ── Relevance evidence ────────────────────────────────────────────────
+      // Signals that exist purely so agents can gate themselves via shouldRun().
+      // Without these, every AI/agentic/model agent inherits BaseAgent's
+      // `shouldRun() { return true; }` and runs against projects it can never
+      // find anything in — which is most of them.
+      mcpConfigs: [],
+      aiFrameworks: [],
+      vectorStores: [],
+      agentConfigs: [],
+      modelFiles: [],
     };
 
     // ── Detect by config files ────────────────────────────────────────────────
@@ -129,6 +199,26 @@ export class ReconAgent extends BaseAgent {
       if (basename === 'Cargo.toml') recon.packageManagers.push('cargo');
       if (basename === 'composer.json') recon.packageManagers.push('composer');
 
+      // Compared case-insensitively: these are conventional filenames, but the
+      // convention isn't consistent about case (CLAUDE.md vs claude.md,
+      // AGENTS.md vs agents.md) and a case miss silently gates the agent off.
+      const lowerBase = basename.toLowerCase();
+      const lowerRel = relPath.toLowerCase();
+
+      // MCP servers/clients — the config filenames MCPSecurityAgent itself targets.
+      if (MCP_CONFIG_NAMES.has(lowerBase) || MCP_CONFIG_SUFFIXES.some((s) => lowerRel.endsWith(s))) {
+        recon.mcpConfigs.push(relPath);
+      }
+
+      // Coding-agent / assistant configs — what AgentConfigScanner,
+      // MemoryPoisoningAgent and AgentAttestationAgent read.
+      if (AGENT_CONFIG_NAMES.has(lowerBase) || AGENT_CONFIG_SUFFIXES.some((s) => lowerRel.endsWith(s))) {
+        recon.agentConfigs.push(relPath);
+      }
+
+      // Serialized model weights — ModelScanAgent's entire subject.
+      if (MODEL_EXTENSIONS.has(ext)) recon.modelFiles.push(relPath);
+
       // Env files
       if (basename.startsWith('.env')) recon.envFiles.push(relPath);
 
@@ -175,9 +265,11 @@ export class ReconAgent extends BaseAgent {
         if (allDeps['@upstash/redis']) recon.databases.push('upstash-redis');
 
         // AI/LLM
-        if (allDeps['openai'] || allDeps['@anthropic-ai/sdk'] || allDeps['ai']) {
-          recon.frameworks.push('ai-app');
+        for (const dep of Object.keys(allDeps)) {
+          if (AI_DEPS[dep]) recon.aiFrameworks.push(AI_DEPS[dep]);
+          if (VECTOR_DEPS[dep]) recon.vectorStores.push(VECTOR_DEPS[dep]);
         }
+        if (recon.aiFrameworks.length > 0) recon.frameworks.push('ai-app');
 
         // Mobile
         if (allDeps['react-native'] || allDeps['expo']) recon.frameworks.push('react-native');
@@ -185,7 +277,39 @@ export class ReconAgent extends BaseAgent {
       } catch { /* skip parse errors */ }
     }
 
+    // ── Python dependency manifests ───────────────────────────────────────────
+    // Read as text rather than parsed: requirements.txt has no structure worth
+    // parsing and pyproject.toml would need a TOML dependency for one lookup.
+    // A substring hit on a package name is enough to say "this project uses it".
+    for (const manifest of ['requirements.txt', 'pyproject.toml', 'Pipfile']) {
+      const p = path.join(rootPath, manifest);
+      if (!fs.existsSync(p)) continue;
+      try {
+        const text = fs.readFileSync(p, 'utf-8').toLowerCase();
+        for (const [dep, signal] of Object.entries(AI_DEPS)) {
+          if (new RegExp(`(^|[\\s"'\\[])${dep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s"'\\]=<>~!,]|$)`, 'm').test(text)) {
+            recon.aiFrameworks.push(signal);
+          }
+        }
+        for (const [dep, signal] of Object.entries(VECTOR_DEPS)) {
+          if (text.includes(dep)) recon.vectorStores.push(signal);
+        }
+      } catch { /* skip unreadable manifests */ }
+    }
+    if (recon.aiFrameworks.length > 0 && !recon.frameworks.includes('ai-app')) {
+      recon.frameworks.push('ai-app');
+    }
+    // An MCP SDK dependency is MCP evidence even with no config file on disk.
+    if (recon.aiFrameworks.includes('mcp') && recon.mcpConfigs.length === 0) {
+      recon.mcpConfigs.push('(via @modelcontextprotocol/sdk dependency)');
+    }
+
     // Deduplicate arrays
+    recon.aiFrameworks = [...new Set(recon.aiFrameworks)];
+    recon.vectorStores = [...new Set(recon.vectorStores)];
+    recon.mcpConfigs = [...new Set(recon.mcpConfigs)];
+    recon.agentConfigs = [...new Set(recon.agentConfigs)];
+    recon.modelFiles = [...new Set(recon.modelFiles)];
     recon.frameworks = [...new Set(recon.frameworks)];
     recon.languages = [...recon.languages];
     recon.authPatterns = [...new Set(recon.authPatterns)];
