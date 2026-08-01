@@ -870,6 +870,13 @@ function isAllowedWsOrigin(origin, port = PORT) {
   } catch {
     return false; // unparseable Origin is not something we should be lenient about
   }
+  // Scheme is part of an origin by definition, so check it rather than comparing host/port
+  // alone. Only http/https can be a real browser page origin here; anything else (file:,
+  // data:, a custom scheme) is not something this app is ever served over.
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  // A real Origin header is scheme://host:port with no path, so anything carrying one did
+  // not come from a browser's origin serialization and should not be treated as ours.
+  if (parsed.pathname !== '/' && parsed.pathname !== '') return false;
   const hostOk = parsed.hostname === 'localhost'
     || parsed.hostname === '127.0.0.1'
     || parsed.hostname === '[::1]'
@@ -2446,11 +2453,20 @@ function dedupeAdjacentSameRule(findings) {
   const kept = new Set();
   for (const group of groups.values()) {
     const sorted = [...group].sort((a, b) => (a.line || 0) - (b.line || 0));
-    let lastLine = null;
+    // Anchor the comparison to the line that OPENED the group, not to the previous hit.
+    // Comparing against the previous hit let groups chain without bound: a rule firing every
+    // <= ADJACENT_RULE_LINES lines collapsed arbitrarily far down a file, so hits at
+    // 10,12,14,16,18,20 became ONE finding even though the ends are 10 lines apart. That is
+    // the opposite of what this function is for — distance is what separates "one condition
+    // observed repeatedly" from "several distinct sites", and an unbounded chain silently
+    // discards the distinct ones. A group can now never span more than ADJACENT_RULE_LINES.
+    let groupStart = null;
     for (const f of sorted) {
       const line = f.line || 0;
-      if (lastLine == null || line - lastLine > ADJACENT_RULE_LINES) kept.add(f);
-      lastLine = line;
+      if (groupStart == null || line - groupStart > ADJACENT_RULE_LINES) {
+        kept.add(f);
+        groupStart = line;
+      }
     }
   }
   // Preserve the engine's own severity ordering rather than the grouping order.

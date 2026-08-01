@@ -81,6 +81,22 @@ describe('isAllowedWsOrigin', () => {
   test('rejects an unparseable Origin rather than being lenient', () => {
     assert.equal(isAllowedWsOrigin('not a url', 4500), false);
   });
+
+  test('scheme is part of the origin, so a non-http scheme on the right host is rejected', () => {
+    // Found by the WebSocket protocol tests: the check compared hostname and port only, so
+    // anything that parsed with the right host/port passed regardless of scheme.
+    assert.equal(isAllowedWsOrigin('ws://localhost:4500', 4500), false);
+    assert.equal(isAllowedWsOrigin('file://localhost:4500', 4500), false);
+    assert.equal(isAllowedWsOrigin('chrome-extension://localhost:4500', 4500), false);
+    // http and https are both legitimate page origins for a locally served app.
+    assert.equal(isAllowedWsOrigin('http://localhost:4500', 4500), true);
+    assert.equal(isAllowedWsOrigin('https://localhost:4500', 4500), true);
+  });
+
+  test('an Origin carrying a path did not come from a browser and is rejected', () => {
+    // A real Origin header is scheme://host:port with no path component.
+    assert.equal(isAllowedWsOrigin('http://localhost:4500/evil', 4500), false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -326,15 +342,35 @@ describe('dedupeAdjacentSameRule', () => {
     assert.deepEqual(ids(out), ['a.js:R1:10', 'a.js:R1:14']);
   });
 
-  test('adjacency chains: each hit resets the window, so 10/12/14/16 all collapse into one', () => {
-    // CONCERN: the comparison is against the *previous* line, not the group's first line, so a
-    // rule firing every 3 lines collapses arbitrarily far down a file — 10 and 16 are 6 lines
-    // apart yet end up as one finding. Recorded as current behaviour, not endorsed.
+  test('a group can never span more than the adjacency window', () => {
+    // WAS A BUG (fixed): the comparison ran against the *previous* line rather than the line
+    // that opened the group, so a rule firing every <= 3 lines chained arbitrarily far down a
+    // file and 10/12/14/16 collapsed into a single finding despite the ends being 6 lines
+    // apart. Distance is the whole signal this function relies on to tell "one condition
+    // observed repeatedly" from "several distinct sites", so an unbounded chain silently
+    // discarded the distinct ones. Now anchored to the group's first line.
     const out = dedupeAdjacentSameRule([
       detFinding('a.js', 'R1', 10),
       detFinding('a.js', 'R1', 12),
       detFinding('a.js', 'R1', 14),
       detFinding('a.js', 'R1', 16),
+    ]);
+    assert.deepEqual(ids(out), ['a.js:R1:10', 'a.js:R1:14']);
+  });
+
+  test('a long runaway chain splits into bounded groups rather than one finding', () => {
+    const out = dedupeAdjacentSameRule(
+      [10, 12, 14, 16, 18, 20].map((n) => detFinding('a.js', 'R1', n)),
+    );
+    assert.deepEqual(ids(out), ['a.js:R1:10', 'a.js:R1:14', 'a.js:R1:18']);
+  });
+
+  test('a genuinely tight cluster still collapses to one', () => {
+    // The fix must not over-correct: hits within the window are still one condition.
+    const out = dedupeAdjacentSameRule([
+      detFinding('a.js', 'R1', 10),
+      detFinding('a.js', 'R1', 11),
+      detFinding('a.js', 'R1', 13),
     ]);
     assert.deepEqual(ids(out), ['a.js:R1:10']);
   });
