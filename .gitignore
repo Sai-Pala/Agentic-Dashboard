@@ -1,13 +1,3 @@
 node_modules/
 .claude/
 *.log
-
-# Benchmark and test assets — kept local, not shipped.
-# The vulnerable fixtures, ground truth, scoring harnesses and their generated
-# output (scan JSON, CodeQL SARIF) exist to measure the engine, not to run it.
-# Nothing under sast-engine/ or server.js imports any of this, so the engine
-# builds and runs identically without it.
-benchmark/
-.sast-engineignore
-ENGINE_BENCHMARK.md
-SCAN_STRESS_TEST.md

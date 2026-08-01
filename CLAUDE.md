@@ -101,9 +101,8 @@ dots do.
     for the full list) run in parallel over the repo, followed by a deterministic second-pass
     `VerifierAgent` that confirms or downgrades each finding by reading its surrounding code —
     no LLM call anywhere in this half (`runDeterministicPatternScan()` in `server.js`).
-    Two of those 31 were added after a measured benchmark run showed specific holes (see
-    `SCAN_STRESS_TEST.md` and `benchmark/`), and both are structurally different from the other
-    29 rather than being more pattern lists:
+    Two of those 31 were added to close specific structural holes, and both are different in
+    kind from the other 29 rather than being more pattern lists:
     - **`SecretsAgent`** (`secrets-agent.js`) runs `SECRET_PATTERNS` over **working-tree
       files**. Before it, that ~50-pattern list had exactly one consumer — `GitHistoryScanner`,
       which greps `git log --max-count=50` — so secret detection depended entirely on git: a
@@ -125,13 +124,12 @@ dots do.
       HTML response, redirect). Intra-procedural only, resets taint at function/handler
       boundaries, clears taint through sanitizers/casts, and **only fires when the source is on
       an earlier line than the sink** — so it's purely additive and never restates a same-line
-      finding another agent already reports. This took benchmark cross-line recall from 1/9 to
-      5/9. Behaviour is pinned by `benchmark/taint-cases.test.mjs`, half of whose cases assert
-      that clean code stays clean; that suite caught a real bug on its first run (naive `//`
-      comment-stripping truncated `https://…`, silently dropping an SSRF flow).
-        Three precision mechanisms were added after the hard fixture's negative controls showed
-      the agent flagging correctly-written code — the failure mode that matters most, since a
-      scanner that cries wolf on the exact patterns developers are told to write gets ignored.
+      finding another agent already reports. One subtlety worth preserving if this is ever
+      rewritten: comment-stripping must be quote-aware (`stripLineComment()`), because a naive
+      `//` strip truncates `https://…` mid-URL and silently drops the flow through it.
+        Three precision mechanisms exist because the agent would otherwise flag correctly-written
+      code — the failure mode that matters most, since a scanner that cries wolf on the exact
+      patterns developers are told to write gets ignored.
       (1) A per-sink **`safeWhen`** predicate suppresses a hit when the *call shape itself* is
       safe regardless of taint: `PARAMETERIZED_QUERY` (a quoted statement literal followed by a
       bindings argument — deliberately not matching a template literal, which is the bug) and
@@ -142,8 +140,8 @@ dots do.
       .test(id)) return …`), since code below only runs for values that passed. Critically it
       clears *only the variables named in the condition*: a guard on `parsed.hostname` says
       nothing about a different variable fetched later, which is exactly the SSRF-allowlist-
-      bypass this engine must keep finding — pinned by a test asserting that case still fires.
-      Together these took hard-fixture false positives from 4 to 1 with no recall loss.
+      bypass this engine must keep finding. Any rework of the guard logic needs to preserve that
+      distinction specifically — it is the difference between precision and a missed SSRF.
   - **Reasoning half**: real `claude -p` calls against `agents/scan.md` (`runLLMReasoningScan()`
     in `server.js`), run *concurrently* with the deterministic half, not before or after it.
     `scan.md`'s framing explicitly tells it a fixed-pattern engine is covering known categories
@@ -340,13 +338,13 @@ dots do.
       survives, since there's nothing to compare it against.
     - *Reasoning vs. reasoning* (`isDuplicateOfReasoning()`): the reasoning half is several
       independent `claude -p` calls (one per module, plus the cross-cutting pass) and nothing
-      stopped two of them reporting the same issue — measured on the benchmark, the same
-      unwired-auth gap came back 2-3x per scan and the same IDOR twice. Titles vary far too
+      stopped two of them reporting the same issue — in practice the same unwired-auth gap comes
+      back 2-3x per scan and the same IDOR twice. Titles vary far too
       much between calls for text comparison to catch this ("requireAuth … applied to zero
       routes" vs. "Payment, order, and profile endpoints registered without requireAuth"), but
       they land on the same line consistently, so location is the signal. Findings are sorted
       most-severe-first before deduping, so when two calls disagree on severity for one issue —
-      also measured: `critical` in one run, `medium` in another — the surviving copy is the more
+      `critical` in one call, `medium` in another — the surviving copy is the more
       severe reading rather than whichever call happened to finish first.
     - *Deterministic vs. itself* (`dedupeAdjacentSameRule()`): collapses a rule firing on
       *consecutive* lines of one file, e.g. "no security headers configured" flagged once per
@@ -1147,56 +1145,6 @@ server.js          Express + ws. In-memory findings store (seeded with sample da
                     relay scan-events in the same shape (one real, one synthetic to match
                     it) so the client needed no changes to keep showing live progress from
                     either.
-benchmark/          Scanner regression suite. TWO fixtures: `fixture/` is a deliberately
-                    vulnerable Express app carrying 22 documented vulnerabilities, and
-                    `fixture-hard/` is a larger commerce API carrying 39 seeded across three
-                    difficulty tiers (easy = single-line classic pattern, medium = needs
-                    intra-file dataflow or config semantics, hard = needs cross-file reasoning,
-                    business-logic understanding, or semantic nuance: second-order SQLi,
-                    prototype pollution, TOCTOU, zip slip, JWT confusion, coupon stacking,
-                    IDOR, SSRF-allowlist-bypass-via-redirect).
-                      `ground-truth.json` / `ground-truth-hard.json` record each vulnerability's
-                    file, CWE, class, tier and whether source and sink are line-local. The hard
-                    fixture locates each entry by a unique `anchor` substring rather than a
-                    hardcoded line number, resolved by `resolve-anchors.mjs`, which throws if an
-                    anchor matches zero or more than one line — editing the fixture cannot
-                    silently desynchronize the expected line numbers.
-                      `fixture-hard` additionally carries 16 NEGATIVE CONTROLS: safe code that
-                    superficially resembles a vulnerable pattern (parameterized query, execFile
-                    with an argv array, timingSafeEqual, resolve+prefix path check, a merge
-                    helper that blocks __proto__, documented placeholder credentials). A finding
-                    landing on one AND claiming that class counts as a false positive. Recall
-                    without this number is half a measurement — a scanner that flags everything
-                    scores 100%. Controls may carry `exceptRules` for rules making a narrower
-                    correct claim about the same code (a "placeholder left in code" rule is not
-                    mistaking a placeholder for a live credential).
-                      Harnesses: `score.mjs` (deterministic engine, `--hard`/`--all`/`--deps`/
-                    `--json`, recall split by tier and by line-local vs cross-line, plus the
-                    negative-control tally); `run-hybrid.mjs` (drives the app's real WebSocket
-                    scan flow headlessly, recording findings, narration, real dollar cost and
-                    scan-warnings per run — exercising the same path the browser uses, so a
-                    regression in message handling shows up too); `analyze-runs.mjs` (the three
-                    demo-critical axes: run-to-run CONSISTENCY split between the deterministic
-                    and reasoning halves, citation-level HALLUCINATION checking for every
-                    LLM-sourced finding, and COST per run / per vulnerability / per 1k lines);
-                    `compare.mjs` + `score-codeql.mjs` (map a CodeQL SARIF through the identical
-                    scorer for an apples-to-apples industry baseline, and print the four-way
-                    capability diff). `taint-cases.test.mjs` (15 cases) and `dedup.test.mjs`
-                    (7 cases) pin behaviour, with roughly half of each asserting that clean code
-                    stays clean.
-                      Scoring is deliberately **class-aware** — a finding only counts if it
-                    matches the seeded vulnerability's CWE or keywords, not merely its line,
-                    because an early version credited an unrelated "Returning Full Database
-                    Object" rule as catching a path traversal on the same line, which inflates
-                    recall with findings that wouldn't tell a user what's wrong. The same trap
-                    recurred on the hard fixture (a "Missing Security Headers" rule scored as
-                    catching an authorization gap purely via the word "missing") and was fixed
-                    the same way, by tightening that entry's keywords rather than loosening the
-                    rule.
-                      `.sast-engineignore` at the repo root excludes this directory from the
-                    app's own self-scans, so the fixtures' fake secrets never show up as real
-                    findings. Run it after any engine change — it turns "this feels better"
-                    into a number. See `SCAN_STRESS_TEST.md` for the measured before/after.
 sast-engine/        Deterministic security-scanning engine, adapted (MIT license, see
                     `sast-engine/LICENSE`) from the open-source `ship-safe` project and now
                     fully self-contained in this repo, trimmed to just what this app uses:

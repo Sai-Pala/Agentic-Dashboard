@@ -86,8 +86,8 @@ function extractValue(matchText) {
 }
 
 // Below this, a generic match is far more likely to be prose or an identifier
-// than key material. Tuned against this repo (which must produce zero findings)
-// and the benchmark fixture (which must produce all of its seeded secrets).
+// than key material. Only applied to patterns carrying `requiresEntropyCheck`;
+// specific-prefix patterns (AKIA…, sk_live_…) report regardless of entropy.
 const MIN_ENTROPY = 3.0;
 
 export class SecretsAgent extends BaseAgent {

@@ -36,7 +36,7 @@ const SCAN_SCOPES = ['full', 'diff'];
 // partitioning entirely — the changed-file list from git is already a tight, pre-bounded scope,
 // so it stays exactly one call, same as before.
 // Per-module budget, scaled by how much code the module actually covers. A flat cap was the
-// first design and measurably too low at the small end: a 10-file, ~200-line benchmark module
+// first design and measurably too low at the small end: a 10-file, ~200-line module
 // exhausted a flat $0.50 and reported "coverage may be incomplete" on every run, which is both
 // a real coverage loss and the kind of thing that undermines a scan's credibility. Scaling by
 // file count gives a small module enough room to actually finish while still bounding a large
@@ -68,11 +68,11 @@ const REASONING_MODULE_MAX = 24; // hard cap on total modules after merging — 
 // defined in one module (auth middleware, a validator) never actually applied where it should be
 // in another. Slightly higher budget than a single module since it has to sample across the
 // whole tree rather than deep-dive one area. See runLLMReasoningScan()'s crosscut branch.
-// Measured, not guessed: at $2.00 this pass was truncated in 2 of 3 benchmark runs
-// against a 747-line fixture, each time discarding a partially-built picture of the
-// app's wiring. Since it is the only call that sees the whole tree, truncating it
-// costs exactly the findings no other call can produce — so it gets the largest
-// per-call budget in the design rather than the smallest.
+// Measured, not guessed: at $2.00 this pass was observed truncating mid-analysis on
+// even a small tree, each time discarding a partially-built picture of the app's
+// wiring. Since it is the only call that sees the whole tree, truncating it costs
+// exactly the findings no other call can produce — so it gets the largest per-call
+// budget in the design rather than the smallest.
 const REASONING_CROSSCUT_BUDGET_USD = 3.5;
 
 // Dollar cap for one module's claude -p call. The cross-cutting pass gets its own flat figure
@@ -1725,9 +1725,9 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   };
 
   // The reasoning half is several independent claude -p calls — one per module plus the
-  // cross-cutting pass — and nothing stopped two of them reporting the same issue. Measured on
-  // the benchmark: the same unwired-auth gap came back 2-3x per scan under differently-worded
-  // titles, and the same IDOR twice. Titles vary too much between calls for text comparison to
+  // cross-cutting pass — and nothing stopped two of them reporting the same issue. In practice
+  // the same unwired-auth gap comes back 2-3x per scan under differently-worded titles, and the
+  // same IDOR twice. Titles vary too much between calls for text comparison to
   // catch it ("requireAuth ... applied to zero routes" vs. "Payment, order, and profile
   // endpoints registered without requireAuth"), but they consistently land on the same line, so
   // location is the reliable signal. Sorted most-severe-first so that when two calls disagree on

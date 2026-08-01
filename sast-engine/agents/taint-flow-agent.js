@@ -13,12 +13,11 @@
  *     const clause = "SELECT * FROM products WHERE sku = '" + term;   // propagation
  *     const rows = await db.query(clause);                            // sink
  *
- * Measured on the benchmark: three seeded vulnerabilities (cross-line SQL
- * injection, cross-line path traversal, cross-line command injection) were
- * missed by all 29 pattern agents *and* by the LLM reasoning pass, while
- * eslint-plugin-security caught them with five rules — because AST analysis
- * doesn't care about line boundaries. This agent closes that gap without adding
- * a parser dependency.
+ * Cross-line SQL injection, path traversal and command injection are all
+ * invisible to every line-local pattern agent for this reason, and an LLM pass
+ * is not a reliable substitute — AST-based tools catch them precisely because
+ * they do not care about line boundaries. This agent closes that gap without
+ * adding a parser dependency.
  *
  * Deliberate scope limits — this is a heuristic, not sound dataflow analysis:
  *   - Intra-procedural only. A value tainted in one function and passed to
