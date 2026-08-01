@@ -1,36 +1,9 @@
+import { uid, truncate, formatRelativeTime, dateGroupLabel, formatElapsed, formatTokenCount, statusLabel, severityLabel, verdictFieldLabel } from './util/format.js';
+import { escapeHtml, formatInlineText, downloadTextFile } from './util/html.js';
+import { ICONS, icon } from './ui/icons.js';
 
 // ---------- icon system (hand-drawn monoline SVGs, no emoji anywhere in the UI) ----------
 
-const ICONS = {
-  search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8"/>',
-  target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/>',
-  wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2-2 2.7-2.7Z"/>',
-  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1l2.1-2.1M17 7l2.1-2.1"/>',
-  hourglass: '<path d="M6.5 3h11M6.5 21h11M7.5 3c0 5 4.5 6 4.5 9s-4.5 4-4.5 9M16.5 3c0 5-4.5 6-4.5 9s4.5 4 4.5 9"/>',
-  inbox: '<path d="M3.5 12h4.3l1.8 3h4.8l1.8-3h4.3"/><path d="M3.5 12 5 5h14l1.5 7v6a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1v-6Z"/>',
-  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
-  checkCircle: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.3 2.6 2.6 5.2-5.2"/>',
-  folder: '<path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2h8.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3 17.5v-11Z"/>',
-  trending: '<path d="m3 16 6-6 4 4 8-8"/><path d="M15 6h6v6"/>',
-  radar: '<circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/>',
-  package: '<path d="M3.5 8.2 12 4l8.5 4.2v7.6L12 20 3.5 15.8V8.2Z"/><path d="M3.5 8.2 12 12l8.5-3.8"/><path d="M12 12v8"/>',
-  edit: '<path d="M4 20h4l10-10a2 2 0 0 0 0-2.8L16.8 5a2 2 0 0 0-2.8 0L4 15v5Z"/><path d="m13.5 6.5 4 4"/>',
-  branch: '<circle cx="6" cy="4.5" r="2.2"/><circle cx="6" cy="19.5" r="2.2"/><circle cx="18" cy="7.5" r="2.2"/><path d="M6 6.7V17.3"/><path d="M18 9.7A7 7 0 0 1 11 16.5"/>',
-  shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6L12 3Z"/><path d="m9 12 2 2 4-4"/>',
-  clipboard: '<path d="M8 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M9.5 3.5h5a1 1 0 0 1 1 1V6h-7V4.5a1 1 0 0 1 1-1Z"/><path d="m9.5 11 1.5 1.5L14 9M9.5 15.5h5"/>',
-  terminal: '<rect x="3" y="4.5" width="18" height="15" rx="1.8"/><path d="m7.5 9.5 3 2.7-3 2.7"/><path d="M13 15.2h4"/>',
-  more: '<circle cx="12" cy="5.5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.7" fill="currentColor" stroke="none"/>',
-  arrowRight: '<path d="M4 12h16"/><path d="m13 5 7 7-7 7"/>',
-  fastForward: '<path d="m5 5 7 7-7 7"/><path d="m13 5 7 7-7 7"/>',
-  // Distinct from each other on purpose (Remediation Loop's advance vs. run-all buttons sit
-  // right next to each other at small size — a single chevron vs. a skip-to-end glyph reads
-  // clearly apart, where two chevron variants (arrowRight/fastForward above) didn't).
-  chevronRight: '<path d="m9 5 7 7-7 7"/>',
-  skipForward: '<path d="M6 5v14l10-7L6 5Z"/><path d="M19 5v14"/>',
-};
-function icon(name, cls) {
-  return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
-}
 
 // ---------- agent metadata (shared across dashboard / timeline / findings) ----------
 
@@ -165,43 +138,6 @@ let controlAssessmentsLoaded = false;
 const scanRuns = new Map();      // runId -> live scan run state (mirrors a stage's shape)
 const scanDetailCache = new Map(); // scanId -> full scan detail (with findings)
 
-function uid() {
-  return (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now());
-}
-
-function truncate(str, n) {
-  str = String(str);
-  return str.length > n ? str.slice(0, n) + '…' : str;
-}
-
-function escapeHtml(s) {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
-}
-
-function formatRelativeTime(ts) {
-  if (!ts) return '';
-  const diff = Date.now() - ts;
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return 'just now';
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  return `${day}d ago`;
-}
-
-function dateGroupLabel(ts) {
-  const d = new Date(ts);
-  const now = new Date();
-  const isSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-  if (isSameDay(d, now)) return 'Today';
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (isSameDay(d, yesterday)) return 'Yesterday';
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 function setStatus(connected) {
   statusEl.textContent = connected ? 'connected' : 'disconnected';
@@ -1189,17 +1125,6 @@ function renderControlsAssistDetail(record) {
   `;
 }
 
-function downloadTextFile(filename, content) {
-  const blob = new Blob([content], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
 
 function buildControlAssessmentMarkdown(record) {
   const v = record.verdict;
@@ -1587,11 +1512,6 @@ function renderScanCardResults(run, scanFindings) {
   }
 }
 
-function formatElapsed(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, '0')}`;
-}
 
 function updateScanElapsed(run) {
   if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);
@@ -1666,10 +1586,6 @@ function trackRunToolActivity(run, event) {
   if (run.filesEl) run.filesEl.textContent = String(run.fileCount);
 }
 
-function formatTokenCount(n) {
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-  return String(n);
-}
 
 function trackRunTokens(run, event) {
   if (event.type !== 'assistant' || !event.message || !event.message.usage) return;
@@ -2075,10 +1991,6 @@ async function loadFindings() {
   if (currentView === 'dashboard') renderDashboard();
 }
 
-function statusLabel(status) {
-  return { new: 'Not started', in_review: 'In review', remediation_ready: 'Remediation ready', remediation_generated: 'Remediation generated', verified_fixed: 'Verified fixed', closed: 'Closed' }[status] || status;
-}
-function severityLabel(sev) { return sev.charAt(0).toUpperCase() + sev.slice(1); }
 
 const SEV_ORDER_MAP = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
 const STATUS_ORDER_MAP = { new: 0, in_review: 1, remediation_ready: 2, remediation_generated: 3, closed: 4, verified_fixed: 5 };
@@ -2843,24 +2755,6 @@ function openFindingsFilteredByScan(scanId) {
   showView('findings');
 }
 
-// Verdict fields are raw snake_case JSON keys (root_cause, nist_800_53, ...) — title-case them
-// for display so the row label reads like the fd-meta-grid labels above it, not raw JSON.
-function verdictFieldLabel(key) {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-// Agent free-text (reasoning/root_cause/evidence/etc.) commonly contains Markdown-ish inline
-// code spans and bold the model wrote assuming a Markdown renderer downstream — this app had
-// none, so a literal backtick or `**` pair just showed up as stray punctuation. A small
-// hand-rolled inline formatter (escape first, then linkify backtick spans and bold — no lists/
-// headers/links, this app's verdict fields never use them) fixes that without pulling in an
-// external Markdown library, consistent with this app's other hand-rolled renderers
-// (highlightCode(), diffLineHtml()).
-function formatInlineText(str) {
-  return escapeHtml(str)
-    .replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`)
-    .replace(/\*\*([^*]+)\*\*/g, (_, b) => `<strong>${b}</strong>`);
-}
 
 // An array field like `evidence`/`verification_steps` joined into one comma-separated run-on
 // string reads as a wall of text once items are full sentences (and gets actively confusing

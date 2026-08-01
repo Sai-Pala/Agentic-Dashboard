@@ -88,7 +88,10 @@ function readMainScript() {
 function indexTopLevelDeclarations() {
   const { source, startLine } = readMainScript();
   const ast = parser.parse(source, {
-    sourceType: 'script',
+    // 'module', not 'script': as of Phase 4 step 2 app.js has real `import` statements, which
+    // are a parse error in script mode. Nothing else about the extraction changes — the
+    // declarations being lifted are still plain top-level function/const declarations.
+    sourceType: 'module',
     allowReturnOutsideFunction: false,
     errorRecovery: false,
   });
@@ -130,7 +133,7 @@ function indexTopLevelDeclarations() {
  *                   non-enumerable `__meta` describing what was pulled and from where.
  * @throws if any name is missing — see "LOUD FAILURE IS THE POINT" above.
  */
-function extract(names) {
+function extract(names, { bindings = {} } = {}) {
   const { decls } = indexTopLevelDeclarations();
 
   const missing = names.filter((n) => !decls.has(n));
@@ -158,7 +161,14 @@ function extract(names) {
   }
 
   // Bare context on purpose: no document, no window, no app globals. See the header comment.
-  const context = vm.createContext(Object.create(null));
+  //
+  // `bindings` is the one sanctioned exception, and it exists because of the Phase 4 split:
+  // once a helper moves out of app.js into a real module, anything still extracted from
+  // app.js that CALLS that helper can no longer resolve it here. Passing the real module
+  // export in is strictly better than the alternatives — re-extracting a copy (two versions
+  // of one function under test) or stubbing it (testing the stub). Every binding should be a
+  // genuine import, and the whole mechanism disappears with the harness.
+  const context = vm.createContext(Object.assign(Object.create(null), bindings));
   const program = chunks.join('\n\n') + '\n\n;({' + names.map((n) => `${n}: ${n}`).join(', ') + '});';
 
   let exported;
