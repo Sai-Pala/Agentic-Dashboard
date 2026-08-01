@@ -749,6 +749,20 @@ export const SECRET_PATTERNS = [
     severity: 'high',
     requiresEntropyCheck: true,
     description: 'Private keys should be loaded from files, not hardcoded.'
+  },
+  {
+    // `process.env.JWT_SECRET || 'dev-only-change-me'` reads as safe because the
+    // env lookup is right there, but the literal IS the value in every
+    // environment that forgets to set the variable — which is how weak defaults
+    // reach production. Every other pattern here skips these lines precisely
+    // because they mention process.env, so without this rule the whole class is
+    // invisible. Deliberately not entropy-checked: the danger is a guessable
+    // default, so low entropy makes it worse, not less reportable.
+    name: 'Hardcoded Fallback for a Secret Environment Variable',
+    pattern: /process\.env\.[A-Za-z_][A-Za-z0-9_]*(?:SECRET|KEY|TOKEN|PASSWORD|PASSWD|PWD|CREDENTIAL|AUTH|SALT|CERT)[A-Za-z0-9_]*\s*\|\|\s*["'`]([^"'`]{4,})["'`]/gi,
+    insecureDefault: true,
+    severity: 'high',
+    description: 'A hardcoded literal is used whenever this environment variable is unset, so the fallback becomes the live secret in any environment that forgets to set it.'
   }
 ];
 
@@ -826,6 +840,8 @@ export const SKIP_EXTENSIONS = new Set([
 export const SKIP_FILENAMES = new Set([
   'package-lock.json',
   'pnpm-lock.yaml',
+  'yarn.lock',
+  'bun.lockb',
   'composer.lock',
   'Gemfile.lock',
   'Pipfile.lock',

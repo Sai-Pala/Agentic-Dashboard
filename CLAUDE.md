@@ -8,12 +8,15 @@ A local Node app combining a deterministic security scanner with a set of specia
 agents that invoke Claude Code headless (`claude -p`), streaming their reasoning live to a
 browser UI over WebSocket and parsing a structured JSON verdict out of each run. Finding
 *detection* is a mix: SCA Scan is purely deterministic (`sast-engine/`'s dependency-audit
-wrapper, no LLM at all); Reasoning Scan is a **hybrid** — `sast-engine/` (vendored from the
-open-source `ship-safe` project) runs 29 regex/heuristic pattern agents plus a code-context
-`VerifierAgent` in parallel with a real `claude -p` reasoning pass (`agents/scan.md`) over the
-same directory, and the two result sets are merged/deduped — the deterministic half covers
-known vulnerability categories fast and consistently, the reasoning half covers business-logic/
-authorization/attack-surface reasoning no fixed rule set can do. Finding *analysis* (Threat
+wrapper, no LLM at all) and also standalone — it's its own top-level page for a fast,
+LLM-free check; Reasoning Scan is a **hybrid of three engines** — `sast-engine/` (vendored from
+the open-source `ship-safe` project) runs 31 regex/heuristic pattern agents plus a code-context
+`VerifierAgent`, in parallel with a real `claude -p` reasoning pass (`agents/scan.md`), in
+parallel with that same dependency audit SCA Scan uses on its own — over the same directory, and
+all three result sets are merged/deduped — the deterministic engine covers known vulnerability
+categories fast and consistently, the reasoning engine covers business-logic/authorization/
+attack-surface reasoning no fixed rule set can do, and the dependency audit is folded in because
+it's cheap enough that there's no reason not to always run it alongside the other two. Finding *analysis* (Threat
 Model, Remediation, Verify) still uses `claude -p` against each finding, unchanged. Triage sits
 in between: it's not a live agent anymore (its old `.md` file is gone), but every finding still
 gets a triage verdict synthesized at creation time — from the deterministic engine's
@@ -70,28 +73,77 @@ dots do.
   scans-count status block in the sidebar (`#nav-status`) — removed as redundant with the
   per-page nav badges, which already surface running/attention state contextually; the sidebar
   now only carries the theme toggle, Settings, and a small connection indicator.
-- **Reasoning Scan** — the scan kickoff form and its live cards, on their own top-level page: a
-  target-directory input, branch/app fields, and a Start button — followed by
+- **Reasoning Scan** (displayed as **"Hybrid Scan"** in the UI — nav item, page `<h1>`, form
+  title, scan-type chips, Agent Triage type tab, and the Timeline pill all say "Hybrid Scan"/
+  "Hybrid" now, since it's a better description once three engines run rather than a
+  reasoning-only pass — but the internal `scanType: 'reasoning'` value, function names like
+  `runHybridReasoningScan()`, and every reference to "the reasoning half/pass/engine" as one of
+  the three engines inside this bullet are unchanged and deliberately not renamed, to avoid
+  conflating the page-level display name with the LLM-reasoning-engine concept the rest of this
+  bullet still needs to refer to precisely) — the scan kickoff form and its live cards, on their
+  own top-level page: a target-directory input, branch/app fields, and a Start button — followed by
   `#scan-live-container` (2-column grid of live scan cards). Starting a scan optimistically
   pushes into both `scansList` and `timelineEntries` so the Dashboard briefing and timeline
   drawer update before the server round-trip completes.
 
-  **This scan is a hybrid — a deterministic pattern engine and a real LLM reasoning pass run
-  in parallel over the same directory, and their results are merged.** This replaced two
-  earlier designs in sequence: originally this page spawned `claude -p` against
-  `agents/scan.md` and let it freely reason over the whole directory with no fixed rule set
-  behind it (inconsistent results, easy to miss known patterns); that was then replaced with a
-  purely deterministic engine, which fixed the consistency problem but meant Reasoning Scan
-  could no longer catch anything a fixed rule set can't — business-logic flaws, authorization/
-  access-control gaps that only make sense in context, multi-file reasoning. Current design
-  keeps both:
+  **This scan runs three engines in parallel over the same directory, and their results are
+  merged.** This replaced two earlier designs in sequence: originally this page spawned
+  `claude -p` against `agents/scan.md` and let it freely reason over the whole directory with no
+  fixed rule set behind it (inconsistent results, easy to miss known patterns); that was then
+  replaced with a purely deterministic engine, which fixed the consistency problem but meant
+  Reasoning Scan could no longer catch anything a fixed rule set can't — business-logic flaws,
+  authorization/access-control gaps that only make sense in context, multi-file reasoning.
+  Current design keeps both — plus, more recently, a third engine folded in alongside them:
   - **Deterministic half**: `sast-engine/` (adapted, MIT-licensed, from the open-source
-    `ship-safe` project, fully self-contained in this repo — see `sast-engine/LICENSE`): 29
+    `ship-safe` project, fully self-contained in this repo — see `sast-engine/LICENSE`): 31
     regex/heuristic pattern agents (SQLi, SSRF, auth bypass, hardcoded secrets, supply-chain,
     IaC misconfig, LLM/agentic-security patterns, and more — see `sast-engine/agents/index.js`
     for the full list) run in parallel over the repo, followed by a deterministic second-pass
     `VerifierAgent` that confirms or downgrades each finding by reading its surrounding code —
     no LLM call anywhere in this half (`runDeterministicPatternScan()` in `server.js`).
+    Two of those 31 were added after a measured benchmark run showed specific holes (see
+    `SCAN_STRESS_TEST.md` and `benchmark/`), and both are structurally different from the other
+    29 rather than being more pattern lists:
+    - **`SecretsAgent`** (`secrets-agent.js`) runs `SECRET_PATTERNS` over **working-tree
+      files**. Before it, that ~50-pattern list had exactly one consumer — `GitHistoryScanner`,
+      which greps `git log --max-count=50` — so secret detection depended entirely on git: a
+      non-git directory found nothing at all, a secret committed 51 commits ago was invisible,
+      and a secret never committed (still live, never reviewed) could not be found by
+      construction. It also implements the `requiresEntropyCheck` flag that 11 patterns in
+      `patterns.js` had been declaring with nothing acting on it, so the generic
+      api_key/secret/password/connection-string patterns previously had no false-positive
+      control whatsoever. Specific-prefix patterns (`AKIA…`, `sk_live_…`) report
+      unconditionally; generic ones are filtered by Shannon entropy plus placeholder and
+      env-reference detection. `GitHistoryScanner` is unchanged and still covers the genuinely
+      historical case (committed, then deleted from the tree) that a working-tree scan can't see.
+    - **`TaintFlowAgent`** (`taint-flow-agent.js`) is the only agent here that isn't line-local.
+      `BaseAgent.scanFileWithPatterns()` tests each regex against one physical line, so every
+      other agent requires the taint source and the sink on the *same* line — which ordinary
+      code (`const t = req.query.t;` then a sink two lines later) simply isn't. It tracks
+      variables assigned from request data through assignment, concatenation, template literals
+      and destructuring into seven sink families (SQL, shell, filesystem, eval, outbound HTTP,
+      HTML response, redirect). Intra-procedural only, resets taint at function/handler
+      boundaries, clears taint through sanitizers/casts, and **only fires when the source is on
+      an earlier line than the sink** — so it's purely additive and never restates a same-line
+      finding another agent already reports. This took benchmark cross-line recall from 1/9 to
+      5/9. Behaviour is pinned by `benchmark/taint-cases.test.mjs`, half of whose cases assert
+      that clean code stays clean; that suite caught a real bug on its first run (naive `//`
+      comment-stripping truncated `https://…`, silently dropping an SSRF flow).
+        Three precision mechanisms were added after the hard fixture's negative controls showed
+      the agent flagging correctly-written code — the failure mode that matters most, since a
+      scanner that cries wolf on the exact patterns developers are told to write gets ignored.
+      (1) A per-sink **`safeWhen`** predicate suppresses a hit when the *call shape itself* is
+      safe regardless of taint: `PARAMETERIZED_QUERY` (a quoted statement literal followed by a
+      bindings argument — deliberately not matching a template literal, which is the bug) and
+      `ARGV_ARRAY_CALL` (execFile/spawn with an argv array, no shell). (2) Assignment through a
+      **literal ternary** or a bare comparison clears taint — `req.query.x === 'a' ? 'a' : 'b'`
+      collapses input to a fixed set, and a boolean carries no payload. (3) **`_applyGuard()`**
+      clears taint for variables validated by an early-return guard (`if (!/^[a-f0-9]{32}$/
+      .test(id)) return …`), since code below only runs for values that passed. Critically it
+      clears *only the variables named in the condition*: a guard on `parsed.hostname` says
+      nothing about a different variable fetched later, which is exactly the SSRF-allowlist-
+      bypass this engine must keep finding — pinned by a test asserting that case still fires.
+      Together these took hard-fixture false positives from 4 to 1 with no recall loss.
   - **Reasoning half**: real `claude -p` calls against `agents/scan.md` (`runLLMReasoningScan()`
     in `server.js`), run *concurrently* with the deterministic half, not before or after it.
     `scan.md`'s framing explicitly tells it a fixed-pattern engine is covering known categories
@@ -129,9 +181,25 @@ dots do.
     - Each module gets its **own scoped `claude -p` call** — the same "limit your review to only
       these files" prompt-level restriction the diff-scope flow already used (not a hard
       filesystem sandbox; `cwd`/`--allowedTools` are unchanged, the model is instructed and
-      trusted to stay in scope, same trust model as everywhere else in this app) — capped at
-      `REASONING_MODULE_BUDGET_USD` ($0.50) via the CLI's own `--max-budget-usd` flag, so one
-      module chasing a dead end can't blow an unbounded amount of spend. At most
+      trusted to stay in scope, same trust model as everywhere else in this app) — capped via
+      the CLI's own `--max-budget-usd` flag at a **size-scaled** figure (`moduleBudgetUsd()`:
+      `$0.75 + $0.12/file`, clamped to `$2.50`; the cross-cutting pass takes a flat `$2.00`,
+      since it samples across the whole tree rather than covering a fixed file list, so file
+      count isn't a meaningful input for it). This replaced a flat `$0.50` that measurement
+      showed was simply too low: a 9-file module exhausted it — and exhausted a first-attempt
+      scaled `$0.85` too — while an uncapped call over a comparable directory settled around
+      `$2.30` on its own. The instructive result is that the low cap **wasn't saving money**:
+      the post-fix scan completed with no truncation at `$2.24`, slightly *less* than the
+      `$2.31` truncated run, because the scan pays for the tokens either way and a cutoff just
+      discards the conclusion. Because raising per-module spend would have made worst-case cost
+      worse, a **per-scan ceiling** was added alongside it (`REASONING_SCAN_BUDGET_USD`, `$12`);
+      previously nothing bounded the total at all (worst case was `REASONING_MODULE_MAX` ×
+      the per-module cap). Once accumulated spend crosses it, remaining modules are skipped and
+      reported in a `scan-warning` rather than run, so coverage degrades to "partial, stated
+      plainly" instead of an open-ended bill. The cross-cutting pass is explicitly **exempt**
+      from that ceiling — it's appended last, so a naive "stop when the ceiling is hit" would
+      drop the single highest-value call first; it has its own cap, so letting it through
+      overshoots by a bounded amount at most. At most
       `REASONING_MODULE_CONCURRENCY` (3) run at once, via a small concurrency-limited queue
       inside `runLLMReasoningScan()` — keeps process count sane on a dev machine and avoids
       hammering rate limits on a repo with many top-level directories.
@@ -241,12 +309,55 @@ dots do.
       triage of deterministic findings via grep-based blast radius, self-consistency voting
       across repeated runs, stricter citation enforcement, real per-endpoint route enumeration, a
       rule-mining feedback loop into sast-engine) — phases not yet implemented.
-  - **Merge**: `runHybridReasoningScan()` awaits both (`Promise.all`), then deduplicates — a
-    reasoning-pass finding whose file+line sits within 2 lines of a deterministic finding in the
-    same file is dropped as a near-duplicate (`parseFileLine()` + a small proximity check);
-    anything without a resolvable line (most business-logic/attack-surface findings) always
-    survives, since there's nothing to compare it against. If one half errors out, the scan
-    still succeeds on the other half's results alone (a `scan-stderr` note flags the failure).
+  - **SCA half**: a dependency audit (`runDeterministicScaScan()`), the same engine slice the
+    standalone SCA Scan page's own flow uses (`runStandaloneScaScan()` — see the SCA Scan bullet
+    below for what the audit itself does) — folded in here too since it's fast, free of LLM
+    cost, and there's little reason a Reasoning Scan shouldn't always also check dependencies.
+    **A failed audit is now reported as a failure rather than as a clean result**
+    (`assertNoAuditError()` in `sast-engine/commands/deps.js`): `npm` exits non-zero for two
+    unrelated reasons — "vulnerabilities found" (expected) and "couldn't run the audit at all"
+    (a failure) — and writes JSON to stdout in *both* cases, so the original
+    `if (err.stdout)` check treated a broken audit as a successful one, handed the error payload
+    to the parser, found no `vulnerabilities` key, and returned an empty list with
+    `error: null`. Measured: a repo with no lockfile reported **0** dependency findings while
+    carrying **11** real advisories (2 critical). Anything that can't be positively identified
+    as a real report — an `error` key, unparseable JSON, or a payload missing the keys npm
+    always emits — now throws, so `runDepsAudit()`'s existing error path fires and the message
+    reaches the UI as a `scan-warning`. A directory with no manifest at all is still a clean
+    `pm: null` / no-error outcome, since "nothing to audit" is a legitimate result.
+    Runs concurrently with the other two, but signals its *own* completion the moment it
+    resolves (`scan-progress {engine:'sca', done:1, total:1}`) rather than waiting for
+    `Promise.all` below — it's typically the fastest of the three by far (one shell-out, no
+    per-file/per-module work), so the client's third engine bar reaches "Done" well before the
+    other two finish. Ignores scope entirely — a dependency audit always reads the whole
+    manifest/lockfile, "diff" scope or not.
+  - **Merge**: `runHybridReasoningScan()` awaits all three (`Promise.all`), then deduplicates
+    on three axes:
+    - *Reasoning vs. deterministic*: a reasoning-pass finding whose file+line sits within 2
+      lines of a deterministic finding in the same file is dropped (`parseFileLine()` + a small
+      proximity check); anything without a resolvable line (most business-logic/attack-surface
+      findings, and every SCA finding — package/version-keyed, not file+line-keyed) always
+      survives, since there's nothing to compare it against.
+    - *Reasoning vs. reasoning* (`isDuplicateOfReasoning()`): the reasoning half is several
+      independent `claude -p` calls (one per module, plus the cross-cutting pass) and nothing
+      stopped two of them reporting the same issue — measured on the benchmark, the same
+      unwired-auth gap came back 2-3x per scan and the same IDOR twice. Titles vary far too
+      much between calls for text comparison to catch this ("requireAuth … applied to zero
+      routes" vs. "Payment, order, and profile endpoints registered without requireAuth"), but
+      they land on the same line consistently, so location is the signal. Findings are sorted
+      most-severe-first before deduping, so when two calls disagree on severity for one issue —
+      also measured: `critical` in one run, `medium` in another — the surviving copy is the more
+      severe reading rather than whichever call happened to finish first.
+    - *Deterministic vs. itself* (`dedupeAdjacentSameRule()`): collapses a rule firing on
+      *consecutive* lines of one file, e.g. "no security headers configured" flagged once per
+      `app.use()` call (5 rows → 2). Adjacency is load-bearing, not incidental: three separate
+      SQL injections in one file are three real findings and must stay three, so distance is
+      what separates "one condition observed repeatedly" from "several distinct sites".
+    Together these took redundant rows from 23% to 16% of a run, where what remains is
+    legitimately distinct sites sharing a title. All three behaviours have unit tests covering
+    the measured duplicates plus explicit "must not collapse" guards. If one or two engines error out, the scan still succeeds on
+    whichever results did come back (a `scan-warning` note flags each failure) — only failing
+    outright if all three do.
 
   **The "Pattern match" bar used to permanently stall below 100%, found via a live repro
   scan.** `runDeterministicPatternScan()` originally seeded its `total` from
@@ -309,19 +420,24 @@ dots do.
   `agents/triage.md` stays deleted — Triage is still not a live agent stage anywhere in this
   app; see the Agent Triage bullet's "Pipeline shape" discussion below for what that changes
   about the Remediation Loop.
-- **SCA Scan** — Software Composition Analysis gets its own top-level page (structurally
-  similar to Reasoning Scan: target directory, branch/app, Start button, live cards, a
-  clock-icon timeline button — but **no scope toggle**, since a dependency audit always reads
-  the whole manifest/lockfile; there's no per-file "diff only" concept for it). Also
-  deterministic now: `runDeterministicScaScan()` in `server.js` calls sast-engine's
-  `runDepsAudit(targetPath)` (adapted from the open-source ship-safe project's deps command,
-  trimmed to the programmatic path only) — which shells out to whichever package manager's own audit tool is
-  present (`npm audit --json`, `yarn audit --json`, `pnpm audit --json`, `pip-audit`,
-  `bundle-audit`, auto-detected from lockfiles) and normalizes the result into findings. No
-  agent-progress loop needed here (one call, already fast) — if a finding is produced, its
-  narration line is sent the same synthetic-assistant-event way Reasoning Scan's are. SCA
-  findings still carry no synthetic triage run and never enter the Remediation Loop (see the
-  Agent Triage bullet below) — nothing about that changed.
+- **SCA Scan (page removed)** — this app used to have a dedicated top-level SCA Scan page
+  (target directory, branch/app, Start button, live cards, its own clock-icon timeline button,
+  no scope toggle since a dependency audit always reads the whole manifest/lockfile) driving a
+  standalone dependency-only check. It's gone — now that a dependency audit always runs as part
+  of every Hybrid Scan (see the Reasoning Scan bullet's "SCA half," above), a separate
+  dependency-only entry point was redundant. `runDeterministicScaScan(engine, scan, targetPath,
+  {send})` in `server.js` (still calling sast-engine's `runDepsAudit(targetPath)` — shells out to
+  whichever package manager's own audit tool is present, `npm audit --json`/`yarn audit --json`/
+  `pnpm audit --json`/`pip-audit`/`bundle-audit`, auto-detected from lockfiles) is now only ever
+  called as `runHybridReasoningScan()`'s third concurrent engine; the standalone wrapper that
+  used to drive it to completion on its own (`runStandaloneScaScan()`) was deleted along with
+  the page, since nothing called it anymore. SCA findings still carry no synthetic triage run
+  and never enter the Remediation Loop (see the Agent Triage bullet below) — nothing about that
+  changed. The `'sca'` nav item, `#view-sca`, its clock button, its nav badge, and the client-side
+  `startScaScan()`/DOM refs are all gone from `index.html` too; the Timeline drawer's separate
+  "SCA" filter pill was removed at the same time (see the Timeline bullet below) since there's no
+  longer a distinct SCA-kind scan record to filter to — every scan record's `scanType` is always
+  `'reasoning'` now (findings still individually carry `'sca'` vs `'reasoning'`, unaffected).
 - **Timeline** — every scan *and* every per-finding agent run, newest first, date-grouped,
   filterable by a `kind` tag (`scan` / `triage` / `threat_model` / `remediation`, color-coded
   via `AGENT_META` in `index.html`). This is **not a top-level nav destination** — it used to
@@ -329,27 +445,19 @@ dots do.
   competing with the per-page nav badges that already answer that question contextually.
   Instead it's a slide-in drawer (`#timeline-drawer` + `#timeline-drawer-backdrop`,
   `openTimelineDrawer()`/`closeTimelineDrawer()`) opened by a small clock-icon button
-  (`.clock-btn`) in the `view-header` of Reasoning Scan, SCA Scan, and Threat Model — each
-  button opens the *same* drawer and reuses the *same* list (`#timeline-list` — untouched
-  markup/JS, just relocated from a full page into the drawer), but pre-scopes it to that page's
-  own activity: Reasoning Scan passes `openTimelineDrawer('scan', 'reasoning')`, SCA Scan passes
-  `openTimelineDrawer('scan', 'sca')`, Threat Model passes `openTimelineDrawer('threat_model',
-  null)`. The second argument, `timelineScanTypeFilter`, only narrows entries when
-  `timelineFilter === 'scan'` (a scan-kind timeline entry now carries `scanType`, added to
-  `GET /api/timeline`'s scan-entry shape in `server.js` specifically to make this narrowing
-  possible). The filter pills (`#timeline-filters`, `renderTimelineFilters()`) are **All**,
-  **Reasoning Scan**, **SCA**, then one per agent kind (`agentsList`) — Reasoning Scan and SCA
-  are two distinct pills, not one shared "Scan" pill, specifically so SCA activity has its own
-  filter to click instead of being lumped in with reasoning scans (an earlier version had just
-  one combined "Scan" pill and no way to isolate SCA runs from the drawer's own filter row).
-  Both scan pills set `timelineFilter = 'scan'` and differ only in which `scanType` they set —
-  `makePill()`'s active-state check has to account for that (`timelineFilter === 'scan' &&
-  timelineScanTypeFilter === scanType`, not a plain key match like the agent-kind pills use).
-  Clicking any pill sets both fields explicitly, so a preset from a clock-icon button is fully
-  overridden by whichever pill is clicked next — there's no scanType leaking from initial state
-  into an unrelated pill selection. This preset-then-override design keeps the drawer
-  contextually useful without losing the ability to browse everything from any entry point.
-  The Dashboard's "View timeline" quick-action opens the same drawer with no preset
+  (`.clock-btn`) in the `view-header` of Hybrid Scan and Threat Model — each button opens the
+  *same* drawer and reuses the *same* list (`#timeline-list` — untouched markup/JS, just
+  relocated from a full page into the drawer), but pre-scopes it to that page's own activity:
+  Hybrid Scan passes `openTimelineDrawer('scan')`, Threat Model passes
+  `openTimelineDrawer('threat_model')`. The filter pills (`#timeline-filters`,
+  `renderTimelineFilters()`) are **All**, **Hybrid Scan**, then one per agent kind
+  (`agentsList`). There used to be a separate **SCA** pill alongside "Reasoning Scan" here (plus
+  a `timelineScanTypeFilter` mechanism narrowing which `scanType` the shared `'scan'` kind
+  matched) — removed once the standalone SCA Scan page went away: every scan record's
+  `scanType` is `'reasoning'` now, so a second pill narrowing to a `scanType` that can never
+  occur would just be a dead filter. One plain kind-based pill (`makePill('scan', 'Hybrid Scan',
+  ...)`, same pattern the agent-kind pills already used) covers every scan record. The
+  Dashboard's "View timeline" quick-action opens the same drawer with no preset
   (`openTimelineDrawer('all')`). The Escape key and clicking the backdrop both close it
   (folded into the same document-level `keydown`/`click` handlers the context menu and modals
   already used, rather than adding a second listener). Scan rows are expandable in place
@@ -363,7 +471,8 @@ dots do.
   (`timelineUnseenDone`, still a single global counter — matches the old badge's behavior of
   clearing on any drawer open, regardless of scope).
 - **Agent Triage** — a sortable table (`renderFindingsTable()`), not a Kanban board: findings
-  are split into type tabs (`findingsTypeFilter`: All / Reasoning / SCA, `#findings-type-tabs`,
+  are split into type tabs (`findingsTypeFilter`: `all`/`reasoning`/`sca` internally, labeled
+  All / Hybrid / SCA — `FINDINGS_TYPE_LABEL` — `#findings-type-tabs`,
   styled as a `.group-toggle` segmented control) because each type's useful columns differ —
   Reasoning shows a merged **Location** column (file path if it's a code-pattern finding,
   endpoint+method if it's an attack-surface one — a reasoning-scan finding can be either, or
@@ -380,8 +489,9 @@ dots do.
   `getBoundingClientRect()`, same pattern as the Finding Detail page's own three-dot menu button
   (see below). The Remediation Loop's advance/run-all controls used to live here too
   (`findingLoopActionsHtml()`) — removed; advancing the loop now happens entirely from the
-  finding's own detail page (the Triage/Fix/Verify boxes + "run all" button, see below), so this
-  column's only action is the agent menu, and the loop cell (below) is purely read-only.
+  finding's own detail page (the Triage/Remediate/Fix/Verify boxes + "run all" button, see
+  below), so this column's only action is the agent menu, and the loop cell (below) is purely
+  read-only.
   There's no row-selection checkbox column, and no per-row "quick remediate" wrench either — an
   earlier design had a wrench icon here running the advisory, read-only Remediation agent with
   one click; removed because a completed quick-remediate run never actually moved the
@@ -391,105 +501,130 @@ dots do.
   earlier design had these same checkboxes plus a page-header "Auto-remediate selected (N)" bulk
   button running the same read-only call across every checked row — also removed, for being a
   redundant second path once the wrench existed. Both of those advisory-preview entry points are
-  gone now; running Remediation happens from the finding's own detail page (the Triage/Fix/Verify
-  boxes + "run all stages" button, see the Finding Detail bullet above), not from this table at
-  all — both of those always write (see "Progressing the loop" below).
+  gone now; running Remediation happens from the finding's own detail page (the
+  Triage/Remediate/Fix/Verify boxes + "run all stages" button, see the Finding Detail bullet
+  above), not from this table at all.
 
   **The Remediation Loop column** (`findingLoopCellHtml()`, reasoning findings only — see
   below for SCA) is the main way this table communicates progress through the full pipeline —
-  Found → Triaged → Fixed → Verified, matching "Pipeline shape" below exactly. **Triaged is
-  always already "done" the moment a finding exists** — Triage is no longer a live agent stage
-  at all (`agents/triage.md` was deleted; see the Reasoning Scan bullet above and "Pipeline
-  shape" below): every finding gets a synthetic `triage` run pushed at creation time, either
-  from sast-engine's `VerifierAgent` output (scan-sourced) or a neutral placeholder (manually
-  added via "+ Add", or this app's own seed data). A small **status track** (`loopTrackHtml()`:
-  three tiny circular `.loop-seg` dots for Triaged / Fixed / Verified — 7px, the same small-dot
-  convention the sidebar's `.nav-badge` uses, not a wide bar — each gray/pending, amber/running
-  with a pulse, green/done, or red/attention) sits above a one-line status label —
-  `findingLoopCellHtml()` is a pure status readout now, no buttons live inside this column. The
-  column header reads just **"Loop"**, not "Remediation Loop" — table cells clip overflowing
-  text at the cell boundary in this app's browser rendering regardless of `overflow` CSS (a
-  quirk of `<th>`/`<td>` layout, not something `overflow:visible` can override), so the fuller
-  label didn't fit once the column was narrowed and just silently truncated to "REMEDIATION" —
-  shortening the label was simpler than widening the column back out. The column's `<th>`/`<td>`
-  carry `data-col="loop"` specifically so CSS can cap its rendered width (`width`/`max-width:
-  104px`) — `table.findings-table` otherwise uses the browser's default auto layout (no
-  `table-layout:fixed`), which would hand this column any left-over horizontal space in the row
-  even though three tiny dots and a short label never need it. "Found" isn't a fourth dot here —
-  a finding is always already "found" the moment it exists, so a node for it never carried real
-  information; an earlier 4-dot-track design included it anyway (see the redesign history below)
-  before being condensed to just the three stages that can actually change state.
+  Found → Triaged → Remediated → Fixed → Verified, matching "Pipeline shape" below exactly.
+  **Triaged is always already "done" the moment a finding exists** — Triage is no longer a live
+  agent stage at all (`agents/triage.md` was deleted; see the Reasoning Scan bullet above and
+  "Pipeline shape" below): every finding gets a synthetic `triage` run pushed at creation time,
+  either from sast-engine's `VerifierAgent` output (scan-sourced) or a neutral placeholder
+  (manually added via "+ Add", or this app's own seed data). **Remediated and Fixed are two
+  separate stages, not one** — this is the app's newest redesign (see the redesign history
+  below for what it replaced): Remediate is a read-only stage (agent `remediation`) that
+  proposes a fix — fix guidance, `corrected_code`, and, if the model is confident in an exact
+  edit, an `edit_plan` — without writing anything; Fix is a separate, later stage (a synthetic
+  `fix` agent, no `.md` file of its own — see the Architecture section below for why) that
+  deterministically applies whatever Remediate proposed, with no LLM call of its own. A small
+  **status track** (`loopTrackHtml()`: four tiny circular `.loop-seg` dots for Triaged /
+  Remediated / Fixed / Verified — 7px, the same small-dot convention the sidebar's `.nav-badge`
+  uses, not a wide bar — each gray/pending, amber/running with a pulse, green/done, or
+  red/attention) sits above a one-line status label — `findingLoopCellHtml()` is a pure status
+  readout now, no buttons live inside this column. The column header reads just **"Loop"**, not
+  "Remediation Loop" — table cells clip overflowing text at the cell boundary in this app's
+  browser rendering regardless of `overflow` CSS (a quirk of `<th>`/`<td>` layout, not something
+  `overflow:visible` can override), so the fuller label didn't fit once the column was narrowed
+  and just silently truncated to "REMEDIATION" — shortening the label was simpler than widening
+  the column back out. The column's `<th>`/`<td>` carry `data-col="loop"` specifically so CSS
+  can cap its rendered width (`width`/`max-width: 104px`) — `table.findings-table` otherwise
+  uses the browser's default auto layout (no `table-layout:fixed`), which would hand this
+  column any left-over horizontal space in the row even though four tiny dots and a short label
+  never need it. "Found" isn't a fifth dot here — a finding is always already "found" the moment
+  it exists, so a node for it never carried real information; an earlier 4-dot-track design
+  (Found/Fixed/Verified/Triage, back when Fixed was a single combined stage) included a Found
+  node anyway before being condensed to just the stages that can actually change state.
 
   This table used to also render advance ("→") and "run all stages" ("»") buttons in the row's
   own actions column (`findingLoopActionsHtml()`, `.loop-advance-btn`/`.loop-run-all-btn`) — that
   function and both button styles are gone. Advancing the loop now happens exclusively from the
-  finding's own detail page: three boxes (Triage/Fix/Verify) plus a "run all stages" button, in
-  the exact same visual language (state colors, running/done/attention) this table's status
-  track still uses (see the Finding Detail bullet above, and "Progressing the loop" below for how
-  clicking a box or the run-all button actually dispatches). This table's Loop column is now a
-  pure, unclickable status readout — its only row-level action is the "…" agent menu.
+  finding's own detail page: four boxes (Triage/Remediate/Fix/Verify) plus a "run all stages"
+  button, in the exact same visual language (state colors, running/done/attention) this table's
+  status track still uses (see the Finding Detail bullet above, and "Progressing the loop" below
+  for how clicking a box or the run-all button actually dispatches). This table's Loop column is
+  now a pure, unclickable status readout — its only row-level action is the "…" agent menu.
 
   State is derived by `findingLoopState()` from `findingStageRuns()`, which needs each stage's own latest run
   independently (not just the single overall latest) — a list-item finding (from `GET
   /api/findings`) carries that precomputed server-side as `.stageRuns` (`toListItem()` in
   `server.js`, via `latestRunByAgent()` scanning `finding.runs` for the last run of each agent
-  type), while a full cached finding (from `GET /api/findings/:id`, e.g. Finding Detail's context
-  menu) only has the raw `.runs` array — `findingStageRuns()` derives the same shape from that
-  when `.stageRuns` isn't present. Found is always "done" — the finding exists; Triaged/Fixed/
-  Verified only ever move because of their own `triage`/`remediation`/`verify` run specifically,
-  so Threat Model (a separate, optional deep-dive — see the context-menu bullet below) never
-  touches this column. Crucially, "Fixed" requires the latest `remediation` run's verdict to
-  carry a real `applied_diff`, not just a completed run with `corrected_code` filled in — even a
-  write-capable run whose proposed `edit_plan` failed validation or was left `null` because the
-  model wasn't confident enough to propose one (per `agents/remediation.md`'s apply-mode
-  guidance not to guess at an edit) —
-  showing "Fixed" and offering "Verify the fix" when nothing was actually written would be
-  actively misleading, not just imprecise. `findingLoopNextAction()` reduces that state to the
-  one thing the advance button would do next — `'triage'` | `'remediate'` | `'verify'` | `null`
-  (busy, or nothing left); triage issues (never run, or errored) would come first if they ever
-  occurred — nothing else should happen before a finding's been triaged — but in practice this
-  branch is now unreachable, since every finding already carries a triage run from creation time
-  (see above); it's kept only as a defensive fallback. A `verified === 'attention'` state maps
-  back to `'remediate'`, not another `'verify'`, since Verify already said the fix didn't hold
-  and the actionable next step is another fix attempt, not re-checking the same unfixed state.
-  The table's status label reads: triaged, not yet fixed → accent "Triaged"; any stage
-  `running` → a plain "Fixing…"/"Verifying…" hint; Remediation failed → red "Fix failed"; Verify
-  came back `still_vulnerable`/`partially_fixed`/`inconclusive` → red "Not fixed yet"; Verify
-  came back `verified_fixed` → green "Verified fixed" + a small `.loop-view-diff` link
-  (`onViewDiffClick()`, just calls `openFindingDetail()` — see below for why there's no popup to
-  open). None of these carry a button anymore — purely a status readout, click the row (or the
-  matching box on Finding Detail) to act on it. The equivalent logic on Finding Detail
+  type, including the synthetic `fix` agent now), while a full cached finding (from `GET
+  /api/findings/:id`, e.g. Finding Detail's context menu) only has the raw `.runs` array —
+  `findingStageRuns()` derives the same shape from that when `.stageRuns` isn't present. Found is
+  always "done" — the finding exists; Triaged/Remediated/Fixed/Verified only ever move because of
+  their own `triage`/`remediation`/`fix`/`verify` run specifically, so Threat Model (a separate,
+  optional deep-dive — see the context-menu bullet below) never touches this column. "Remediated"
+  is "done" the moment a `remediation` run completes at all, whether or not it proposed an
+  `edit_plan` — a proposal that declines to guess at an edit (per `agents/remediation.md`'s
+  guidance) is still a completed proposal. "Fixed" is different: it requires the latest `fix`
+  run's verdict to carry a real `applied_diff` — a completed `fix` run without one (the apply
+  step erroring, e.g. a stale plan that no longer matches the live file) reads as `attention`, not
+  `done`; showing "Fixed" and offering "Verify the fix" when nothing was actually written would
+  be actively misleading, not just imprecise. There's also a fourth possible state for "Fixed"
+  beyond the usual pending/running/attention/done: **`unavailable`** — Remediate finished but
+  proposed no `edit_plan` at all, so there's nothing for Fix to apply; the track renders this as
+  a plain pending-looking dot (there's no dedicated dot color for "not applicable," see
+  `loopTrackHtml()`) but the status label still calls it out explicitly (see below).
+  `findingLoopNextAction()` reduces that state to the one thing the advance button would do
+  next — `'triage'` | `'remediate'` | `'fix'` | `'verify'` | `null` (busy, or nothing left);
+  triage issues (never run, or errored) would come first if they ever occurred — nothing else
+  should happen before a finding's been triaged — but in practice this branch is now
+  unreachable, since every finding already carries a triage run from creation time (see above);
+  it's kept only as a defensive fallback. A `verified === 'attention'` state maps back to
+  `'remediate'`, not another `'verify'` or a retry of `'fix'`, since Verify already said the fix
+  didn't hold and the actionable next step is a fresh proposal, not re-checking the same unfixed
+  state; a `fixed === 'attention'` state maps back to `'remediate'` too, for the same
+  reason — the applied plan likely went stale against the live file, so retrying the exact same
+  apply would just fail again. `fixed === 'unavailable'` resolves `findingLoopNextAction()` to
+  `null` — there's nothing left to automate once Remediate has explicitly declined to propose an
+  edit. The table's status label reads: triaged, not yet a fix proposed → accent "Triaged";
+  a fix proposed, not yet applied → accent "Fix proposed"; Remediate declined to propose an edit
+  → plain "No fix proposed"; any stage `running` → a plain "Proposing fix…"/"Applying fix…"/
+  "Verifying…" hint; Remediate failed → red "Propose failed"; Fix failed to apply → red "Apply
+  failed"; Verify came back `still_vulnerable`/`partially_fixed`/`inconclusive` → red "Not fixed
+  yet"; Verify came back `verified_fixed` → green "Verified fixed" + a small `.loop-view-diff`
+  link (`onViewDiffClick()`, just calls `openFindingDetail()` — see below for why there's no
+  popup to open). None of these carry a button anymore — purely a status readout, click the row
+  (or the matching box on Finding Detail) to act on it. The equivalent logic on Finding Detail
   (`fdLoopBoxesHtml()`) disables whichever box is otherwise actionable when
   `findingSourcePath()` can't resolve a directory for the finding (no `sourceScanId` —
   manually-added findings have nowhere to write to); the "run all stages" button is *always*
-  gated on a known path there, since Remediation is unconditionally part of that chain, and both
-  disable themselves client-side the instant they're clicked (`e.currentTarget.disabled = true`)
-  so a fast double-click can't fire two real runs/pipelines against the same directory at once —
-  the next render (on that run's `done`/`error`) replaces the node anyway, so nothing needs to
-  re-enable it. A `status === 'closed'` finding (false positive/duplicate) shows neither track
-  nor boxes — the loop doesn't apply to something dismissed as not real. This column has gone through several
-  redesigns: a plain status *badge* plus a pencil icon requiring horizontal scroll to see, gated
-  by a page-level **Read-only** checkbox that silently changed what the same pencil did; a
-  one-click-does-everything "Fix & Verify" button with a 3-segment flat-bar stepper; a
-  dot-track-plus-single-advance-button version scoped to just Found → Fixed → Verified (Triage
-  excluded, reachable only from the row menu); a version that folded Triage into a 4-dot track
-  and reintroduced a "run everything" shortcut as its own dedicated button rather than a
-  row-menu item — a "Push loop ahead" menu item briefly existed for the same purpose and was
-  removed for reading as a near-duplicate of the bulk "Auto-remediate selected" button that
-  existed at the time (single-finding + real writes vs. bulk + advisory-only); a version that
-  condensed the 4-dot track into three tiny dots (dropping the redundant "Found" node, which
-  never carried information since a finding is always already found) and relocated the
+  gated on a known path there, since Remediate/Fix are unconditionally part of that chain, and
+  both disable themselves client-side the instant they're clicked
+  (`e.currentTarget.disabled = true`) so a fast double-click can't fire two real runs/pipelines
+  against the same directory at once — the next render (on that run's `done`/`error`) replaces
+  the node anyway, so nothing needs to re-enable it. A `status === 'closed'` finding (false
+  positive/duplicate) shows neither track nor boxes — the loop doesn't apply to something
+  dismissed as not real. This column has gone through several redesigns: a plain status *badge*
+  plus a pencil icon requiring horizontal scroll to see, gated by a page-level **Read-only**
+  checkbox that silently changed what the same pencil did; a one-click-does-everything "Fix &
+  Verify" button with a 3-segment flat-bar stepper; a dot-track-plus-single-advance-button
+  version scoped to just Found → Fixed → Verified (Triage excluded, reachable only from the row
+  menu); a version that folded Triage into a 4-dot track and reintroduced a "run everything"
+  shortcut as its own dedicated button rather than a row-menu item — a "Push loop ahead" menu
+  item briefly existed for the same purpose and was removed for reading as a near-duplicate of
+  the bulk "Auto-remediate selected" button that existed at the time (single-finding + real
+  writes vs. bulk + advisory-only); a version that condensed that 4-dot track (Found/Triage/
+  Fixed/Verified) into three tiny dots (dropping the redundant "Found" node) and relocated the
   advance/run-all buttons out of the loop cell entirely into the row's own actions column — an
-  intermediate pass first replaced the 4 dots with 3 wide flex-stretched rectangle bars before a
+  intermediate pass first replaced the dots with wide flex-stretched rectangle bars before a
   follow-up shrank them back down to tiny dots (the bars read as too heavy for a status readout,
   and stretched to fill whatever width the column's auto-layout happened to grant it — see
   above for why that width is now explicitly capped) — done at the same time the
-  wrench/quick-remediate button and the checkbox-driven bulk
-  button before it were both removed outright; and now this one, which removes the advance/
-  run-all buttons from this table entirely — they now live on the finding's own detail page as
-  three boxes (Triage/Fix/Verify) plus a "run all stages" button (see the Finding Detail bullet
-  above) — leaving this table's Loop cell a pure status readout and its only row-level action
-  the "…" agent menu.
+  wrench/quick-remediate button and the checkbox-driven bulk button before it were both removed
+  outright, and the advance/run-all buttons moved onto the finding's own detail page as three
+  boxes (Triage/Fix/Verify) plus a "run all stages" button; and now this one, which splits the
+  combined "Fix" stage into a read-only **Remediate** (propose) stage and a separate
+  write-capable **Fix** (apply) stage — a user request to make the pipeline show the proposed
+  fix before anything is written, rather than proposing and applying in the same click — growing
+  the track back out to four dots (Triaged/Remediated/Fixed/Verified) and the detail page's boxes
+  to four (Triage/Remediate/Fix/Verify). Fix itself makes no LLM call at all now — it
+  deterministically applies whatever `edit_plan` the most recent Remediate run proposed (see
+  "Progressing the loop" below) — so the split also means a wasted apply attempt against a
+  finding with no real fix (an architectural issue, or one Remediate correctly declined) no
+  longer costs an LLM call, only a Remediate call.
 
   **SCA findings don't get a Remediation Loop at all** — `findingLoopCellHtml()` special-cases
   `f.scanType === 'sca'` to just render the plain `'status'` cell (a taxonomy badge) instead,
@@ -507,77 +642,97 @@ dots do.
   custom agents exist beyond the four built-ins, or — in the common case where there are none —
   a single disabled "No agent actions apply — update the package instead" item.
   `renderFindingDetailActions()` mirrors this when deciding whether to disable its own menu
-  button, and skips rendering the Triage/Fix/Verify boxes entirely for an SCA finding (see
-  Finding Detail below) — there's no loop to show.
+  button, and skips rendering the Triage/Remediate/Fix/Verify boxes entirely for an SCA finding
+  (see Finding Detail below) — there's no loop to show.
 
   **Progressing the loop** — one entry point now, on the finding's own detail page (see Finding
-  Detail below for the Triage/Fix/Verify boxes and "run all stages" button that replaced the
-  table's old advance/run-all buttons) — run exactly what you asked for and nothing more, always
-  confirm before writing. Neither path ever runs Triage live anymore — a finding's triage run
-  already exists from the moment it was created (see the Reasoning Scan bullet above), so the
-  loop's real work starts at Remediation:
-  - **`onLoopAdvanceClick()`** (any of Finding Detail's three boxes — only one is ever clickable
+  Detail below for the Triage/Remediate/Fix/Verify boxes and "run all stages" button that
+  replaced the table's old advance/run-all buttons) — run exactly what you asked for and nothing
+  more, confirm before writing (Fix is the only stage that ever writes — Remediate is read-only
+  and needs no confirmation, unlike the old combined "Fix" stage this replaced). Neither path
+  ever runs Triage live anymore — a finding's triage run already exists from the moment it was
+  created (see the Reasoning Scan bullet above), so the loop's real work starts at Remediate:
+  - **`onLoopAdvanceClick()`** (any of Finding Detail's four boxes — only one is ever clickable
     at a time, since this is a strictly linear pipeline and `findingLoopNextAction()` always
     resolves to a single next stage regardless of which box is clicked) — looks up
-    `findingLoopNextAction()`; if it's `'verify'`, fires an ordinary read-only
-    `startStage(id, 'verify', ...)` (no confirmation needed — nothing is written); if it's
-    `'remediate'`, confirms once via `confirmApplyWrite()` (a native `confirm()` naming the
-    exact target directory and the clean-git-tree requirement — the friction point instead of a
-    hidden mode toggle) and then calls `startRemediateApply()`, which sends `{type:
-    'remediate_apply', runId, findingId, context, instruction, path}` — a single Remediation run
-    that does *not* auto-chain into Verify. (The `'triage'` case is still handled defensively —
-    see the Remediation Loop column bullet above — but shouldn't be reachable in practice.)
-    Advancing the loop this way is always a deliberate click per stage.
+    `findingLoopNextAction()`. If it's `'triage'` or `'verify'`, fires an ordinary read-only
+    `startStage(id, next, ...)` (no confirmation needed — nothing is written; the `'triage'`
+    case is still handled defensively — see the Remediation Loop column bullet above — but
+    shouldn't be reachable in practice). If it's `'remediate'`, calls `startRemediatePreview()`
+    directly with **no confirmation** — Remediate never writes, so there's nothing to gate —
+    which sends `{type: 'remediate_preview', runId, findingId, context, instruction, path}`; the
+    server runs Remediation read-only (`Read,Grep,Glob`, no apply) and stops. If it's `'fix'`,
+    confirms once via `confirmApplyWrite()` (a native `confirm()` naming the exact target
+    directory and the clean-git-tree requirement — the friction point instead of a hidden mode
+    toggle) and then calls `startRemediateFix()`, which sends `{type: 'remediate_fix', runId,
+    findingId, path}` — no `context`/`instruction` needed, since Fix doesn't call an LLM at all;
+    it deterministically applies whatever `edit_plan` the most recent `remediation` run proposed
+    (server-side, `handleRemediateFixMessage()` looks that run up from `finding.runs` itself,
+    fails with a clear error if there's no usable plan) and stops. Advancing the loop this way is
+    always a deliberate click per stage.
   - **`onLoopRunAllClick()`** (Finding Detail's "Run all stages" button) — always restarts the
-    remaining pipeline fresh (Remediation apply → Verify) rather than trying to resume from
+    remaining pipeline fresh (Remediate → Fix → Verify) rather than trying to resume from
     wherever the finding currently stands; simpler to reason about, and matches "run all stages"
     literally (there's no live Triage stage left to include). Confirms once via
-    `confirmRunAll()` (same git-clean-tree framing) and then calls `startRemediateAll()`, which
-    sends `{type: 'remediate_all', remediationRunId, verifyRunId, findingId, context,
-    instruction, path}` — two client-generated runIds for what the server turns into two real,
-    sequential agent runs. Only the first (Remediation) gets an optimistic "running" placeholder
-    at click time — Verify's placeholder arrives via the server's own `started` message once
-    that stage actually begins, since the chain doesn't yet know whether it'll even run
-    (Remediation erroring, or its plan failing to apply, stops the chain early — see below).
+    `confirmRunAll()` (same git-clean-tree framing, since Fix is unconditionally part of the
+    chain even though Remediate alone wouldn't need it) and then calls `startRemediateAll()`,
+    which sends `{type: 'remediate_all', remediationRunId, fixRunId, verifyRunId, findingId,
+    context, instruction, path}` — three client-generated runIds for what the server turns into
+    up to three real, sequential stages. Only the first (Remediate) gets an optimistic "running"
+    placeholder at click time — Fix's and Verify's placeholders arrive via the server's own
+    `started` message once each stage actually begins, since the chain doesn't yet know whether
+    they'll even run (Remediate proposing no usable `edit_plan`, or Fix failing to apply, both
+    stop the chain early — see below).
 
   Server-side, `checkCleanGitTarget()` (the **clean git working tree** gate — `git status
-  --porcelain`, refusing an uncommitted or non-git directory outright, so anything either flow
-  does is trivially revertible entirely outside this app — see "Security posture" below),
+  --porcelain`, refusing an uncommitted or non-git directory outright, so anything that writes
+  is trivially revertible entirely outside this app — see "Security posture" below),
   `spawnAgentStage()` (the spawn/relay/close logic, kept as its own function purely to keep the
   handlers below readable), and `applyRemediationPlan()` (validates and applies a Remediation
-  verdict's `edit_plan` — see below) back two handlers in `server.js`:
-  `handleRemediateApplyMessage()` runs one Remediation stage — **read-only**
-  (`--allowedTools 'Read,Grep,Glob'`, no `Edit`/`Write` — see "Security posture" for why that
-  changed), asking it to propose an `edit_plan` in its verdict instead of editing directly — then
-  calls `applyRemediationPlan(targetPath, verdict)`, which validates every proposed edit against
-  the real file (`sast-engine/remediation-apply.js`'s `validatePlan()` — the `find` string must
-  match exactly once, whitespace-tolerant fallback if not; protected paths like `.env`/
-  lockfiles/`node_modules` are refused outright) and only then writes it (`applyPlan()`),
-  captures `git diff` right after and attaches it to the run's verdict as `applied_diff` (real
-  evidence of what actually changed, independent of what the agent claims), and stops. If the
-  model proposed no `edit_plan` at all (a legitimate "this needs a human, not a guess" outcome
-  per `agents/remediation.md`'s guidance), nothing is written and the run stays a normal
-  "done" analysis-only result; if it proposed one that fails validation, the run is marked
-  `error` instead (surfaces as "Fix failed" in the loop, see above) so a bad plan doesn't sit
-  looking identical to "no fix needed yet." `handleRemediateAllMessage()` checks the git-clean
-  gate once up front, runs Remediation the same read-only/edit_plan way, applies it the same
-  way, and — only if the apply step didn't error — runs Verify the normal read-only way with
-  the Remediation verdict folded into its prompt. Both handlers push onto `finding.runs` and
-  relay via the *exact same* `started`/`event`/`done` message shapes the generic per-finding
-  `run` path already uses — the client needed no new message-type handling for run lifecycles
-  at all. There's no popup for the diff — `runCardHtml()` on the Finding Detail
-  page already renders any remediation run's `applied_diff` as its own colored diff block
+  verdict's `edit_plan` — see below) back three handlers in `server.js`, one per stage plus one
+  for the chained flow: `handleRemediatePreviewMessage()` (`remediate_preview`) runs one
+  Remediation stage — **read-only** (`--allowedTools 'Read,Grep,Glob'`, no `Edit`/`Write` — see
+  "Security posture" for why that changed), asking it to propose an `edit_plan` in its verdict if
+  it's confident in an exact edit — and stops there; nothing is ever written by this handler, so
+  it has no git-clean gate at all, only a plain "is this a real directory" check.
+  `handleRemediateFixMessage()` (`remediate_fix`) is the one write-capable handler and
+  deliberately makes **no `claude` call of its own** — it looks up the finding's most recent
+  `remediation` run, pulls its `edit_plan` (erroring with "No proposed fix to apply yet — run
+  Remediate first" if there isn't a usable one), checks the git-clean gate, then calls
+  `applyRemediationPlan(targetPath, { edit_plan: plan })`, which validates the proposed edit
+  against the real file (`sast-engine/remediation-apply.js`'s `validatePlan()` — the `find`
+  string must match exactly once, whitespace-tolerant fallback if not; protected paths like
+  `.env`/lockfiles/`node_modules` are refused outright) and only then writes it (`applyPlan()`),
+  captures `git diff` right after, and pushes a new run record under the synthetic `fix` agent
+  name with `{ verdict: 'applied' | 'not_applied', applied_diff }` as its verdict (real evidence
+  of what actually changed, independent of what Remediate claimed) — if the plan fails
+  validation, the run is marked `error` instead (surfaces as "Apply failed" in the loop, see
+  above) so a bad plan doesn't sit looking identical to "no fix needed yet."
+  `handleRemediateAllMessage()` checks the git-clean gate once up front (Fix, further down the
+  chain, is guaranteed to need it even though Remediate alone wouldn't), runs Remediate the same
+  read-only/`edit_plan` way, and — only if it proposed a usable plan — applies it the same
+  deterministic way `handleRemediateFixMessage()` does (inlined rather than calling that handler
+  directly, so the chain can push its own `fix`-agent run record under the client-supplied
+  `fixRunId`), and — only if the apply step actually wrote something — runs Verify the normal
+  read-only way with the applied `fix` verdict folded into its prompt. All three handlers push
+  onto `finding.runs` and relay via the *exact same* `started`/`event`/`done` message shapes the
+  generic per-finding `run` path already uses — the client needed no new message-type handling
+  for run lifecycles at all. There's no popup for the diff — `runCardHtml()` on the Finding
+  Detail page already renders any `fix` run's `applied_diff` as its own colored diff block
   (`diffLineHtml()`, hand-rolled `+`/`-`/`@@` line coloring, no external diff library) right
   alongside that run's other verdict fields, so "see what changed" is just "look at the finding,"
   not a separate screen — an earlier design auto-popped a modal titled "Fix applied" instead,
   removed for reading as messy/redundant with content the detail page already showed (and for a
   real accuracy bug: it auto-opened before a chained Verify run had even started, so its wording
-  risked implying a confirmation that hadn't happened yet). `applyWriteRunIds` tracks which
-  runIds belong to a git-gated flow so a precheck failure (not a git repo, dirty tree) — which
-  never gets a run pushed server-side, so it can't rely on the normal error-badge-on-a-run
-  treatment — can be surfaced via the client's `error` handler calling `alert()` on those runIds
-  directly (for the chained flow, the precheck error is tagged with the first stage's runId,
-  since that's the only one with a client-side placeholder before the server responds). Verify's
+  risked implying a confirmation that hadn't happened yet). `precheckRunIds` (renamed from
+  `applyWriteRunIds` when Remediate's read-only precheck joined the same tracking — a directory
+  that no longer exists can fail before any run record exists server-side even though nothing
+  would have been written) tracks which runIds belong to a flow with a server-side precheck, so
+  a precheck failure — which never gets a run pushed server-side, so it can't rely on the normal
+  error-badge-on-a-run treatment — can be surfaced via the client's `error` handler calling
+  `alert()` on those runIds directly (for the chained flow, the precheck error is tagged with the
+  first stage's runId, since that's the only one with a client-side placeholder before the
+  server responds). Verify's
   `still_vulnerable`/`partially_fixed` verdict sends the finding back to `in_review` exactly like
   a normal (non-write) Verify run would, and a Triage verdict of `confirmed`/`needs_review`
   behaves like any other Triage run — no separate status logic was needed, `deriveStatus()`'s
@@ -620,17 +775,27 @@ dots do.
 
   The page header's actions (`renderFindingDetailActions()`, `fdLoopBoxesHtml()`) used to be a
   single "Agent Runs ▾" dropdown covering everything, including Triage/Remediation/Verify with
-  custom instructions via the stage modal. That's gone — replaced by **three boxes, one per
-  fix-flow stage** (Triage / Fix / Verify, mirroring the Agent Triage table's loop-seg states:
-  pending/running/done/attention), plus a **"Run all stages"** button, plus a small **three-dot
-  menu button** for everything else. Only one box is ever clickable at a time — `findingLoopState()`
-  models a strictly linear pipeline, so `findingLoopNextAction()` always resolves to exactly one
-  next stage, and whichever single box comes back enabled dispatches the same
-  `onLoopAdvanceClick()` the Agent Triage table's old advance button used to call (see
-  "Progressing the loop" above) — there's no independent per-stage click logic to keep in sync
-  with it. The run-all button calls `onLoopRunAllClick()`, same as before. Both are skipped
-  entirely for an SCA finding (`fdLoopBoxesHtml()` returns `''` — no loop applies, see the Agent
-  Triage bullet above) and show a plain "Closed — remediation loop not applicable" note for a
+  custom instructions via the stage modal. That's gone — replaced by **four boxes, one per
+  fix-flow stage** (Triage / Remediate / Fix / Verify, mirroring the Agent Triage table's
+  loop-seg states: pending/running/done/attention, plus Fix's `unavailable` state when Remediate
+  proposed nothing to apply), plus a **"Run all stages"** button, plus a small **three-dot menu
+  button** for everything else. Each box always shows a short, fixed one-line caption describing
+  what that stage does ("Confirms it's real" / "Proposes a fix to review" / "Writes the fix to
+  your code" / "Re-checks the live code") below its label, in addition to its current status —
+  added because the boxes alone (icon + one-word status) didn't make it obvious what clicking one
+  would actually do. The header row itself is stacked below the title (`#view-finding-detail
+  .view-header { flex-direction: column; }`, an override of the base `.view-header`'s row
+  layout used by every other page) rather than sitting beside it — on a long title that wraps to
+  two lines, four boxes squeezed into whatever width was left of a row layout read as cramped;
+  giving the actions their own full-width row fixes that regardless of title length. Only one box
+  is ever clickable at a time — `findingLoopState()` models a strictly linear pipeline, so
+  `findingLoopNextAction()` always resolves to exactly one next stage, and whichever single box
+  comes back enabled dispatches the same `onLoopAdvanceClick()` the Agent Triage table's old
+  advance button used to call (see "Progressing the loop" above) — there's no independent
+  per-stage click logic to keep in sync with it. The run-all button calls `onLoopRunAllClick()`,
+  same as before. Both are skipped entirely for an SCA finding (`fdLoopBoxesHtml()` returns `''`
+  — no loop applies, see the Agent Triage bullet above) and show a plain "Closed — remediation
+  loop not applicable" note for a
   closed finding.
 
   The three-dot menu button (`#fd-agent-menu-btn`) opens the exact same dropdown menu right-
@@ -662,13 +827,15 @@ dots do.
   selected" checkbox flow — both since removed (see the actions-column paragraph above) for
   reading as dead-weight next to the loop's own advance button, since neither ever moved the
   loop itself to "Fixed." The status is still reachable today, though, without either of those:
-  a write-capable Remediation run whose model filled in `corrected_code` as guidance but declined
-  to propose an `edit_plan` (a legitimate "this needs a human, not a guess" outcome, see
-  `agents/remediation.md`) lands here too — `corrected_code` present, `applied_diff` absent, so
-  the Remediation Loop column correctly still reads "Triaged," not "Fixed," while the finding's
-  overall status still surfaces that useful guidance exists. Click into the finding for the full
-  guidance (root cause, fix guidance, `corrected_code`) via Finding Detail's normal Agent runs
-  section, same as any other verdict — there's no dedicated results screen for this.
+  a Remediate run whose model filled in `corrected_code` as guidance but declined to propose an
+  `edit_plan` (a legitimate "this needs a human, not a guess" outcome, see
+  `agents/remediation.md`) lands here too — `corrected_code` present, no `fix` run exists at all
+  since there was nothing for Fix to apply, so the Remediation Loop column reads "No fix
+  proposed" (the loop's `fixed === 'unavailable'` state — see the Agent Triage bullet above),
+  while the finding's overall status still surfaces that useful guidance exists via this badge.
+  Click into the finding for the full guidance (root cause, fix guidance, `corrected_code`) via
+  Finding Detail's normal Agent runs section, same as any other verdict — there's no dedicated
+  results screen for this.
 - **Threat Model** — a read-only, cross-finding view of every finding with a completed
   Threat Model run whose verdict is `confirmed` or `needs_review` (`latestThreatModelEntries()`
   — findings never threat-modeled just don't appear, no placeholder queue). Entirely derived
@@ -775,10 +942,14 @@ dots do.
   category-name text into a selector string), toggles `.selected` on every match, and scrolls
   the first match into view; clicking a risk card directly still just self-highlights.
 
-  Running rows also carry live stats — tool/file/token counts, elapsed time, and a
-  context-window fill bar — the same way scan cards do (`appThreatModelRuns`, a
-  `scanRuns`-style Map of tracking objects, and the same shared `trackRunToolActivity()`/
-  `trackRunTokens()`/`updateContextBar()` functions scan cards use). The tricky part: this
+  Running rows also carry live stats — tool/file/token counts and elapsed time — the same way
+  scan cards do (`appThreatModelRuns`, a `scanRuns`-style Map of tracking objects, and the same
+  shared `trackRunToolActivity()`/`trackRunTokens()` functions scan cards use). A context-window
+  fill bar used to sit alongside these (`CONTEXT_WINDOW_TOKENS`, `updateContextBar()`, one per
+  surface — scan cards, App Threat Model rows, Control Scan rows) but was removed as not
+  actually informative — a rough 200k-token constant this app has no way to verify against the
+  actual configured limit, rendered as a percentage that didn't tell you anything actionable.
+  `run.lastContextTokens` (what fed it) is gone too. The tricky part with these live rows: this
   view's `#tm-content` can be rebuilt from scratch at any moment a run is live (any timeline
   update while this view is open re-renders it, per `upsertTimelineEntry`), which would
   normally destroy the live row's DOM and orphan its cached element refs. `appThreatModelRowHtml()`
@@ -788,14 +959,7 @@ dots do.
   re-queries the fresh DOM and re-points the tracking object's refs at it, so the next
   stream-json event's direct DOM mutation (`handleAppThreatModelRawEvent()` — deliberately
   *not* routed through `upsertAppThreatModel()`, to avoid a full re-render on every single
-  event) lands on the currently-attached node. `CONTEXT_WINDOW_TOKENS` (200,000) is a rough
-  constant, not a queried value — the app has no way to read the actual configured context
-  limit from here, so the fill bar is an early "your scope might be too broad" signal, not a
-  precise meter. It's driven by the *latest* turn's `input_tokens` +
-  `cache_creation_input_tokens` + `cache_read_input_tokens` (what's actually loaded in context
-  right now), not the running `tokenCount` sum shown next to it (a different, cumulative
-  "total work done" metric) — summing every turn's input would double-count the growing
-  conversation history that gets resent each turn.
+  event) lands on the currently-attached node.
 - **Control Scan** — a top-level page for RMF/ISSO staff (renamed from "Controls Assist" —
   shorter, and reads more like a peer to "Reasoning Scan"/"SCA Scan" in the nav, since it's the
   same kind of whole-directory action just for a different purpose — now grouped with them
@@ -876,16 +1040,21 @@ dots do.
   `scanDetailCache`), stops and clears any live `scanRuns`/`appThreatModelRuns` tracking
   objects, clears both live-scan containers, and re-renders whichever view is currently open.
 
-**Pipeline shape**: `Scan → Agent Triage → Remediation → Verify` is the conceptual path, but
+**Pipeline shape**: `Scan → Agent Triage → Remediate → Fix → Verify` is the conceptual path, but
 **no agent ever runs automatically** — every run requires an explicit, reviewable action so
 there's always an audit trail before anything executes against a finding (an earlier version
-defaulted straight to Remediation on click, which read as auto-fixing without review — this
-was a deliberate correction). The Triage/Fix/Verify boxes and "run all stages" button on the
-finding's own detail page (see the Finding Detail bullet above) are the exception to "always
-opens a stage modal first" — each still requires an explicit click per finding/step, just skips
-the modal, because reviewing context ahead of a routine next-step click would slow down the
-exact workflow they exist to speed up (a native `confirm()` naming the target directory is
-still the gate before either one writes). Finding Detail's own three-dot menu button and the
+defaulted straight to a combined propose-and-apply Remediation on click, which read as
+auto-fixing without review — this was a deliberate correction, and splitting that combined stage
+into a read-only Remediate and a separate write-capable Fix, per the redesign described in the
+Agent Triage bullet above, pushed the same principle one step further: a human sees the proposed
+fix before anything is written, not just before the whole pipeline starts). The
+Triage/Remediate/Fix/Verify boxes and "run all stages" button on the finding's own detail page
+(see the Finding Detail bullet above) are the exception to "always opens a stage modal first" —
+each still requires an explicit click per finding/step, just skips the modal, because reviewing
+context ahead of a routine next-step click would slow down the exact workflow they exist to
+speed up (a native `confirm()` naming the target directory gates Fix specifically — the one
+stage that writes — not Remediate or Verify, both of which are read-only). Finding Detail's own
+three-dot menu button and the
 right-click context menu (or its visible three-dot equivalent) on an Agent Triage table row open
 the same dynamic per-agent menu (one "Run <Agent>…" item per entry in `agentsList`, minus the
 fix-flow agents now that the boxes cover them — see the Finding Detail bullet above) as
@@ -950,10 +1119,11 @@ Reasoning Scan, enter a directory path on this machine under "New scan" and clic
 scan" — watch its live card right there, then check Agent Triage once it completes (or open
 the timeline drawer via the clock icon and expand the row there). Click a finding's row in the
 Agent Triage table (or a timeline agent-run row) to open its full-page detail view. From there,
-click one of the Triage/Fix/Verify boxes in the page header to run just the next real step — a
-write-capable fix, then a Verify check once that's done, one click each — needs a finding that
-came from a scan, the boxes are disabled otherwise; or click "Run all stages" to chain the
-remaining steps under one confirmation. For anything else (Threat Model, custom agents), click
+click one of the Triage/Remediate/Fix/Verify boxes in the page header to run just the next real
+step — Remediate proposes a fix (no confirmation, nothing written), Fix writes it (one
+confirmation), then a Verify check once that's done, one click each — needs a finding that came
+from a scan, the boxes are disabled otherwise; or click "Run all stages" to chain the remaining
+steps under one confirmation. For anything else (Threat Model, custom agents), click
 the small three-dot menu button next to those (or right-click a table row for the same menu) to
 pick an agent, review the context/instructions in the small stage modal, and explicitly start
 it; nothing runs without that step. Watch the page itself update — no separate screen. The
@@ -977,10 +1147,60 @@ server.js          Express + ws. In-memory findings store (seeded with sample da
                     relay scan-events in the same shape (one real, one synthetic to match
                     it) so the client needed no changes to keep showing live progress from
                     either.
+benchmark/          Scanner regression suite. TWO fixtures: `fixture/` is a deliberately
+                    vulnerable Express app carrying 22 documented vulnerabilities, and
+                    `fixture-hard/` is a larger commerce API carrying 39 seeded across three
+                    difficulty tiers (easy = single-line classic pattern, medium = needs
+                    intra-file dataflow or config semantics, hard = needs cross-file reasoning,
+                    business-logic understanding, or semantic nuance: second-order SQLi,
+                    prototype pollution, TOCTOU, zip slip, JWT confusion, coupon stacking,
+                    IDOR, SSRF-allowlist-bypass-via-redirect).
+                      `ground-truth.json` / `ground-truth-hard.json` record each vulnerability's
+                    file, CWE, class, tier and whether source and sink are line-local. The hard
+                    fixture locates each entry by a unique `anchor` substring rather than a
+                    hardcoded line number, resolved by `resolve-anchors.mjs`, which throws if an
+                    anchor matches zero or more than one line — editing the fixture cannot
+                    silently desynchronize the expected line numbers.
+                      `fixture-hard` additionally carries 16 NEGATIVE CONTROLS: safe code that
+                    superficially resembles a vulnerable pattern (parameterized query, execFile
+                    with an argv array, timingSafeEqual, resolve+prefix path check, a merge
+                    helper that blocks __proto__, documented placeholder credentials). A finding
+                    landing on one AND claiming that class counts as a false positive. Recall
+                    without this number is half a measurement — a scanner that flags everything
+                    scores 100%. Controls may carry `exceptRules` for rules making a narrower
+                    correct claim about the same code (a "placeholder left in code" rule is not
+                    mistaking a placeholder for a live credential).
+                      Harnesses: `score.mjs` (deterministic engine, `--hard`/`--all`/`--deps`/
+                    `--json`, recall split by tier and by line-local vs cross-line, plus the
+                    negative-control tally); `run-hybrid.mjs` (drives the app's real WebSocket
+                    scan flow headlessly, recording findings, narration, real dollar cost and
+                    scan-warnings per run — exercising the same path the browser uses, so a
+                    regression in message handling shows up too); `analyze-runs.mjs` (the three
+                    demo-critical axes: run-to-run CONSISTENCY split between the deterministic
+                    and reasoning halves, citation-level HALLUCINATION checking for every
+                    LLM-sourced finding, and COST per run / per vulnerability / per 1k lines);
+                    `compare.mjs` + `score-codeql.mjs` (map a CodeQL SARIF through the identical
+                    scorer for an apples-to-apples industry baseline, and print the four-way
+                    capability diff). `taint-cases.test.mjs` (15 cases) and `dedup.test.mjs`
+                    (7 cases) pin behaviour, with roughly half of each asserting that clean code
+                    stays clean.
+                      Scoring is deliberately **class-aware** — a finding only counts if it
+                    matches the seeded vulnerability's CWE or keywords, not merely its line,
+                    because an early version credited an unrelated "Returning Full Database
+                    Object" rule as catching a path traversal on the same line, which inflates
+                    recall with findings that wouldn't tell a user what's wrong. The same trap
+                    recurred on the hard fixture (a "Missing Security Headers" rule scored as
+                    catching an authorization gap purely via the word "missing") and was fixed
+                    the same way, by tightening that entry's keywords rather than loosening the
+                    rule.
+                      `.sast-engineignore` at the repo root excludes this directory from the
+                    app's own self-scans, so the fixtures' fake secrets never show up as real
+                    findings. Run it after any engine change — it turns "this feels better"
+                    into a number. See `SCAN_STRESS_TEST.md` for the measured before/after.
 sast-engine/        Deterministic security-scanning engine, adapted (MIT license, see
                     `sast-engine/LICENSE`) from the open-source `ship-safe` project and now
                     fully self-contained in this repo, trimmed to just what this app uses:
-                    `agents/` (29 regex/heuristic pattern agents plus ReconAgent and
+                    `agents/` (31 regex/heuristic pattern agents plus ReconAgent and
                     VerifierAgent, orchestrated by `orchestrator.js`), `commands/deps.js`
                     (wraps the project's own package-manager audit tool for SCA Scan), and
                     `remediation-apply.js` (validates and applies a Remediation verdict's
@@ -997,11 +1217,11 @@ public/index.html   The whole app: global nav (theme toggle slider + Settings en
                     button), an Agent Triage table split into Reasoning/SCA type tabs with
                     click-to-sort columns, a per-scan filter popover, a per-row "…" agent-menu
                     button, a Remediation Loop column (reasoning findings only, a pure read-only
-                    3-segment status track — no buttons in this table anymore; advancing the
+                    4-segment status track — no buttons in this table anymore; advancing the
                     loop happens on the finding's own detail page instead), a full-page Finding
                     Detail view per finding (meta grid, syntax-highlighted code block, Triage/
-                    Fix/Verify boxes + a "run all stages" button + a three-dot agent menu, and
-                    an Agent runs history), a Threat Model
+                    Remediate/Fix/Verify boxes + a "run all stages" button + a three-dot agent
+                    menu, and an Agent runs history), a Threat Model
                     page (per-finding OWASP
                     x severity heat map plus a "New app threat model" form and its own
                     accordion-style App-level Threat Models list, also heat-mapped, plus a
@@ -1018,7 +1238,16 @@ agents/*.md         Agent system prompts (passed via --append-system-prompt). Pl
                     was deleted when Triage moved to a synthetic verdict assigned at
                     finding-creation time; `scan.md` itself was deleted and then revived
                     once Reasoning Scan became a hybrid of sast-engine + a real reasoning
-                    pass — see the Reasoning Scan bullet above). New
+                    pass — see the Reasoning Scan bullet above). `fix` is a second synthetic
+                    agent name alongside `triage` — its runs carry `agent: 'fix'` on
+                    `finding.runs` (see the Agent Triage bullet's Remediation Loop
+                    description) but there is no `agents/fix.md`: the Fix stage makes no
+                    `claude` call at all, it deterministically applies whatever `edit_plan`
+                    the real `remediation.md` agent already proposed (see "Security
+                    posture" below) — `remediation.md` itself is unchanged by the split,
+                    since it already described exactly this "propose an edit_plan, a
+                    separate deterministic step applies it" contract before the split
+                    existed. New
                     *per-finding* agent = new .md file, no server changes needed beyond it
                     existing on disk (see "not yet built" below on hardcoded assumptions
                     elsewhere) — unless it needs live-codebase access like Verify does, in
@@ -1102,35 +1331,46 @@ a fenced ` ```json ` block, records the verdict against the finding's run histor
 **Request flow (scans)**: client sends `{type: "scan", runId, path, scanType, scope,
 baseBranch, branch, app}` → server validates `path` exists and is a directory (and, for
 `scope: "diff"`, that `baseBranch` diffs cleanly via `git diff --name-only`) → dispatches to
-`runHybridReasoningScan()` or `runDeterministicScaScan()` (`server.js`) depending on `scanType`.
-SCA: `runDepsAudit(path)` shells out to whichever package manager's own audit tool is present —
-**no `claude -p` involved**. Reasoning: `runHybridReasoningScan()` kicks off two things
-concurrently (`Promise.all`) and waits for both — `runDeterministicPatternScan()`
-(`buildOrchestratorAsync(path)` + `orchestrator.runAll(path, { onlyFiles, onAgentDone })`, no
-`claude -p`, relays each completed pattern-agent's findings via `onAgentDone` as a synthetic
-`{type: "scan-event", ...}` shaped like an assistant-text stream-json block) and
-`runLLMReasoningScan()` (real `claude -p` calls against `agents/scan.md`, `cwd` set to the
-target path, `--allowedTools "Read,Grep,Glob"` — one call per module on a "full" scope scan,
-one call total on a "diff" scope scan, see the Reasoning Scan bullet above for the module
-partitioning/budget-cap/concurrency details — relaying each module's actual stream-json events
-the same way any other per-finding stage does). Both send the same `{type: "scan-event", runId,
-scanId, event}` shape regardless of which one (or which module) produced it, so the client's
-live-card parser needs no changes — see the Reasoning Scan bullet above. Once both resolve, the server dedupes (drops a
-reasoning-pass finding whose file+line is within 2 lines of a deterministic one in the same
-file) and builds a Finding per surviving result (`findingFromSastEngine()` for the deterministic
-half, `findingFromLLMScan()` for the reasoning half — each attaches its own kind of synthetic
-`triage` run, see "Findings store" above) and sends `{type: "scan-done", runId, scanId,
-findings: [...]}`. `scan-started`/`scan-event`/`scan-stderr`/`scan-error`/`scan-done` remain
-deliberately distinct type names from the generic per-finding message types, same
-collision-avoidance reasoning as before (`scanRunIndex` is still a separate `runId`-keyed
-lookup from `runIndex`/`children`). The reasoning half's `claude` child process *is* registered
-in `children` (keyed by the scan's own `runId`, same as any other per-run agent) so `cancel` can
-kill it mid-run — the deterministic half never spawns a child, so `scanRunIndex` alone is enough to
-track an in-flight deterministic scan and let `cancel` mark it `status: 'cancelled'` so its
-`onAgentDone` callback stops relaying events and its completion handler skips creating
-findings. This suppresses all visible effects but doesn't abort the underlying
-`orchestrator.runAll()` promise early — the 29 agents keep running to completion in the
-background either way (they're regex passes over files, not long-running child processes, so
+`runHybridReasoningScan()` or `runStandaloneScaScan()` (`server.js`) depending on `scanType`.
+SCA (`scanType: 'sca'`, the standalone SCA Scan page): `runStandaloneScaScan()` loads
+sast-engine once, calls `runDeterministicScaScan()` — `runDepsAudit(path)` shells out to
+whichever package manager's own audit tool is present — **no `claude -p` involved** — and drives
+it straight to `finish()`/`fail()`. Reasoning (`scanType: 'reasoning'`, the default):
+`runHybridReasoningScan()` kicks off three things concurrently (`Promise.all`) and waits for all
+three — `runDeterministicPatternScan()` (`buildOrchestratorAsync(path)` +
+`orchestrator.runAll(path, { onlyFiles, onAgentDone })`, no `claude -p`, relays each completed
+pattern-agent's findings via `onAgentDone` as a synthetic `{type: "scan-event", ...}` shaped like
+an assistant-text stream-json block), `runLLMReasoningScan()` (real `claude -p` calls against
+`agents/scan.md`, `cwd` set to the target path, `--allowedTools "Read,Grep,Glob"` — one call per
+module on a "full" scope scan, one call total on a "diff" scope scan, see the Reasoning Scan
+bullet above for the module partitioning/budget-cap/concurrency details — relaying each module's
+actual stream-json events the same way any other per-finding stage does), and
+`runDeterministicScaScan()` (the same engine slice the standalone SCA Scan page uses, see
+above — no `claude -p`, ignores `scope`/`diffFiles` entirely since a dependency audit always
+reads the whole manifest). All three send the same `{type: "scan-event", runId, scanId, event}`
+shape regardless of which one (or which module) produced it, so the client's live-card parser
+needs no changes — see the Reasoning Scan bullet above; SCA additionally sends its own
+`{type: "scan-progress", engine: 'sca', done: 1, total: 1}` the moment it resolves, independent
+of the other two, since it's typically the fastest of the three by far. Once all three resolve,
+the server dedupes (drops a reasoning-pass finding whose file+line is within 2 lines of a
+deterministic one in the same file — SCA findings have no file+line to collide with either
+engine's, so they're never deduped against anything) and builds a Finding per surviving result
+(`findingFromSastEngine()` for the deterministic engine, `findingFromLLMScan()` for the
+reasoning engine — each attaches its own kind of synthetic `triage` run, see "Findings store"
+above — `findingFromDepVuln()` for the SCA engine, which attaches none) and sends
+`{type: "scan-done", runId, scanId, findings: [...]}`.
+`scan-started`/`scan-event`/`scan-stderr`/`scan-error`/`scan-done` remain deliberately distinct
+type names from the generic per-finding message types, same collision-avoidance reasoning as
+before (`scanRunIndex` is still a separate `runId`-keyed lookup from `runIndex`/`children`). The
+reasoning engine's `claude` child process *is* registered in `children` (keyed by the scan's own
+`runId`, same as any other per-run agent) so `cancel` can kill it mid-run — the deterministic
+and SCA engines never spawn a child, so `scanRunIndex` alone is enough to track an in-flight
+deterministic/SCA scan and let `cancel` mark it `status: 'cancelled'` so its `onAgentDone`
+callback (deterministic) or in-flight `.then()` (SCA) stops relaying events/progress and the
+completion handler skips creating findings. This suppresses all visible effects but doesn't
+abort the underlying `orchestrator.runAll()`/`runDepsAudit()` promise early — the 29 agents (or
+the audit subprocess) keep running to completion in the background either way (they're regex
+passes over files or a single quick shell-out, not long-running child processes, so
 in practice this finishes quickly regardless).
 
 **Request flow (app-level threat models)**: client sends `{type: "app_threat_model", runId,
@@ -1344,27 +1584,35 @@ single-user tool trusted by its one user," not with exposing this app beyond loc
 add auth-free network exposure without revisiting this.
 
 **No agent in this app gets `Edit`/`Write` tools anymore** — this changed from the app's
-earlier design, where the write-capable Remediation stage was explicitly the one exception.
-Remediation's apply mode (`remediate_apply`, fired one step at a time by the loop cell's advance
-button, or chained via `remediate_all`) now runs fully read-only (`Read,Grep,Glob`) and instead
-proposes an `edit_plan` in its verdict — a structured list of exact `find`/`replace` strings
-(see `agents/remediation.md`'s output contract). `applyRemediationPlan()` in `server.js` is what
-actually reaches disk: it calls `sast-engine/remediation-apply.js`'s `validatePlan()` (the
-`find` string must match the real file exactly once — or via a whitespace-tolerant fallback —
-and the path must not be a protected one like `.env`/lockfiles/`node_modules`) before
-`applyPlan()` writes anything, so a proposed edit that doesn't cleanly match the live file (it
-drifted, or the model hallucinated it) is rejected rather than corrupting the file or falling
-back to a fuzzier match. This is a strictly higher-trust posture than giving the model direct
-tool access: the model can *describe* a change but never *execute* one against the filesystem
-itself. The one remaining guardrail carried over from before: `checkCleanGitTarget()` refuses to
-run unless `git status --porcelain` against the target directory comes back both git-tracked
-and clean, so every edit that does land is trivially inspectable (`git diff`, surfaced back to
-the user automatically) and revertible (`git checkout`) entirely outside this app — that check
-happens once, before the stage starts, and doesn't prevent a validated multi-file plan from
-touching more of the tree than the one file the finding named, the same way nothing stops
-Remediation from proposing an incorrect fix. Treat this as the highest-trust action in the app:
-same "local single-user tool" posture as the rest of it, just with real consequences if the
-target directory isn't what the user thinks it is.
+earlier design, where the write-capable Remediation stage was explicitly the one exception, and
+changed again with the Remediate/Fix split: **no agent call ever reaches disk at all now, not
+even indirectly** — Remediate (`remediate_preview`, fired from the loop cell's Remediate box)
+always runs fully read-only (`Read,Grep,Glob`) and proposes an `edit_plan` in its verdict — a
+structured list of exact `find`/`replace` strings (see `agents/remediation.md`'s output
+contract) — but never triggers an apply itself. Fix (`remediate_fix`, fired one step at a time
+by the loop cell's Fix box, or chained via `remediate_all`) is the one write-capable step, and
+it makes **no `claude` call at all** — it's a plain deterministic function
+(`applyRemediationPlan()` in `server.js`) that reads whatever `edit_plan` the most recent
+Remediate run already proposed and applies *that*. `applyRemediationPlan()` calls
+`sast-engine/remediation-apply.js`'s `validatePlan()` (the `find` string must match the real
+file exactly once — or via a whitespace-tolerant fallback — and the path must not be a protected
+one like `.env`/lockfiles/`node_modules`) before `applyPlan()` writes anything, so a proposed
+edit that doesn't cleanly match the live file (it drifted since Remediate ran, or the model
+hallucinated it) is rejected rather than corrupting the file or falling back to a fuzzier match.
+This is a strictly higher-trust posture than giving the model direct tool access, now with an
+extra layer beyond what "the model can describe but never execute" already gave: the one
+function that touches disk isn't even reached from inside a `claude` invocation — it's a
+separate, later step a human explicitly triggers after reading what got proposed. The one
+remaining guardrail carried over from before: `checkCleanGitTarget()` refuses to let Fix run
+unless `git status --porcelain` against the target directory comes back both git-tracked and
+clean, so every edit that does land is trivially inspectable (`git diff`, surfaced back to the
+user automatically) and revertible (`git checkout`) entirely outside this app — that check
+happens once, before Fix starts (or, for the chained flow, once up front before Remediate even
+runs), and doesn't prevent a validated multi-file plan from touching more of the tree than the
+one file the finding named, the same way nothing stops Remediate from proposing an incorrect
+fix. Treat Fix as the highest-trust action in the app: same "local single-user tool" posture as
+the rest of it, just with real consequences if the target directory isn't what the user thinks
+it is.
 
 **Not yet built**: disk persistence (both the findings store and the scans store are
 in-memory and reset on restart — there's no SQLite/JSON-file layer yet), CSV *ingestion*

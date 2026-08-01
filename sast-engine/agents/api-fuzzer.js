@@ -164,6 +164,33 @@ const PATTERNS = [
     fix: 'Add helmet: app.use(helmet()) for automatic security headers',
   },
 
+  {
+    rule: 'API_ERROR_STACK_EXPOSED',
+    title: 'API: Stack Trace Returned to the Client',
+    // `res.status(500).json(...)` is the overwhelmingly common shape, so the
+    // optional status() link in the chain is what makes this rule fire at all.
+    regex: /\bres(?:ponse)?\s*\.\s*(?:status\s*\([^)]*\)\s*\.\s*)?(?:json|send|render)\s*\([^)]*\b(?:err|error|e|ex)\s*\.\s*stack\b/g,
+    severity: 'medium',
+    cwe: 'CWE-209',
+    owasp: 'A05:2021',
+    confidence: 'high',
+    description: 'The error handler returns a stack trace in the response body, disclosing file paths, dependency versions and internal structure to anyone who can trigger an error.',
+    fix: 'Log the stack server-side and return only a generic message plus a correlation id.',
+  },
+
+  // ── CORS ───────────────────────────────────────────────────────────────────
+  {
+    rule: 'API_CORS_ORIGIN_REFLECTED',
+    title: 'API: CORS Origin Reflected From the Request',
+    regex: /Access-Control-Allow-Origin["']?\s*,\s*(?:req|request)\s*\.\s*(?:headers\s*(?:\.\s*origin|\[\s*["']origin)|get\s*\(\s*["']origin)/gi,
+    severity: 'high',
+    cwe: 'CWE-942',
+    owasp: 'A05:2021',
+    confidence: 'high',
+    description: 'The Allow-Origin header is echoed back from the request, so every origin is trusted. Combined with Allow-Credentials this lets any site read authenticated responses.',
+    fix: 'Match the incoming origin against an explicit allowlist and emit only that value, or drop credentials support.',
+  },
+
   // ── Sensitive Data in URL ──────────────────────────────────────────────────
   {
     rule: 'API_KEY_IN_URL',

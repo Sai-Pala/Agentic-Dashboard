@@ -84,6 +84,24 @@ const SANITIZATION_PATTERNS = [
   /blacklist/i,
 ];
 
+/**
+ * Early-return validation guards.
+ *
+ * Deliberately narrower than SANITIZATION_PATTERNS: these require an *anchored*
+ * format check or an allowlist membership test that bails out, which constrains
+ * the value to a known-safe shape. A bare `.test(` or `.replace(` would match far
+ * too much — the existing sanitization list already errs that way — so this list
+ * only recognizes guards strong enough to actually justify standing down.
+ */
+const VALIDATION_GUARD_PATTERNS = [
+  // if (!/^...$/.test(x)) return|throw
+  /if\s*\(\s*![^)]*\/\^[^/]*\$\/[a-z]*\s*\.\s*test\s*\([^)]*\)\s*\)\s*(?:\{\s*)?(?:return|throw|next\s*\()/,
+  // if (!ALLOWED.includes(x)) return|throw
+  /if\s*\(\s*!\s*[A-Za-z_$][\w$.]*\s*\.\s*(?:includes|has|indexOf)\s*\([^)]*\)[^)]*\)\s*(?:\{\s*)?(?:return|throw|next\s*\()/,
+  // if (!validator.isUUID(x)) return|throw  /  Joi, zod, yup equivalents
+  /if\s*\(\s*!\s*(?:validator\s*\.|Joi\s*\.|z\s*\.|yup\s*\.)[^)]*\)\s*(?:\{\s*)?(?:return|throw|next\s*\()/,
+];
+
 /** Error handling wrappers — findings inside these are less exploitable */
 const ERROR_HANDLING_PATTERNS = [
   /}\s*catch\s*\(/,
@@ -179,6 +197,9 @@ export class VerifierAgent {
     // ── Check 2: Is there sanitization/validation upstream? ───────
     const hasSanitization = SANITIZATION_PATTERNS.some(p => p.test(beforeText));
 
+    // ── Check 2b: Is there a hard validation guard upstream? ──────
+    const hasValidationGuard = VALIDATION_GUARD_PATTERNS.some(p => p.test(beforeText));
+
     // ── Check 3: Is the value static/hardcoded? ───────────────────
     const isStatic = this._isStaticValue(findingLine, matched);
 
@@ -200,6 +221,17 @@ export class VerifierAgent {
       return {
         verified: false,
         note: 'Value appears to be static/hardcoded, not user-controlled',
+      };
+    }
+
+    // Checked before the generic sanitization list so the note names the actual
+    // reason. An anchored format check or allowlist guard that returns early is
+    // much stronger evidence than the loose ".replace( appears somewhere above"
+    // signal, and deserves to be reported as such rather than lumped in with it.
+    if (hasValidationGuard) {
+      return {
+        verified: false,
+        note: 'An anchored format check or allowlist guard rejects invalid values upstream, before this line runs',
       };
     }
 
