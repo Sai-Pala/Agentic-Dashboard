@@ -91,21 +91,67 @@ function detectPackageManager(rootPath) {
 // =============================================================================
 
 /**
+ * Throw if the audit output is an error report rather than a real result.
+ *
+ * npm exits non-zero for two completely different reasons — "vulnerabilities
+ * were found" (expected) and "I could not run the audit at all" (a failure) —
+ * and writes JSON to stdout in BOTH cases. Treating any non-empty stdout as
+ * success therefore turns a broken audit into a confident zero-vulnerability
+ * report: the error payload has no `vulnerabilities` key, so the parser finds
+ * nothing and returns an empty list. A repo with no lockfile (`ENOLOCK`) hit
+ * exactly this and reported "no dependency issues" while carrying 11 real
+ * advisories, 2 of them critical.
+ *
+ * A dependency audit that silently succeeds-with-nothing is worse than one that
+ * fails loudly, so anything we cannot positively identify as a result is an
+ * error here.
+ */
+function assertNoAuditError(stdout, pm) {
+  if (!stdout || !stdout.trim()) {
+    throw new Error(`${pm.name} audit produced no output`);
+  }
+  // npm/pnpm report failures as {"error": {"code": "...", "summary": "..."}}
+  if (pm.type === 'npm-v2') {
+    let data;
+    try {
+      data = JSON.parse(stdout);
+    } catch {
+      throw new Error(`${pm.name} audit returned output that is not valid JSON`);
+    }
+    if (data && data.error) {
+      const code = data.error.code ? `${data.error.code}: ` : '';
+      const summary = data.error.summary || 'audit could not be run';
+      // npm puts the remedy ("Try creating one first with: npm i --package-lock-only")
+      // in `detail`, after which it appends its own internal error — keep only the
+      // first line, which is the part a user can act on.
+      const hint = String(data.error.detail || '').split('\n')[0].trim();
+      throw new Error(`${code}${summary}${hint ? ` ${hint}` : ''}`);
+    }
+    // A valid npm report always carries one of these keys, even with zero vulns.
+    if (!('vulnerabilities' in data) && !('advisories' in data) && !('metadata' in data)) {
+      throw new Error(`${pm.name} audit returned an unrecognized report format`);
+    }
+  }
+}
+
+/**
  * Run the package manager audit and return normalized vulnerability list.
- * Catches exit code 1 (vulnerabilities found) which is NOT a real error.
+ * Exit code 1 means "vulnerabilities found" and is NOT a real error — but a
+ * non-zero exit with an error payload is (see assertNoAuditError).
  */
 function runAudit(pm, cwd) {
   let stdout;
   try {
     stdout = execSync(pm.auditCommand, { cwd, stdio: ['pipe', 'pipe', 'pipe'] }).toString();
   } catch (err) {
-    // npm/yarn/pnpm exit with code 1 when vulns found — that's expected
     if (err.stdout) {
       stdout = err.stdout.toString();
     } else {
       throw err;
     }
   }
+
+  assertNoAuditError(stdout, pm);
 
   switch (pm.type) {
     case 'npm-v2': return parseNpmAudit(stdout);

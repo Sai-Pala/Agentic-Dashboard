@@ -35,7 +35,26 @@ const SCAN_SCOPES = ['full', 'diff'];
 // before the usual dedup-against-deterministic-findings step. A "diff" scope scan skips
 // partitioning entirely — the changed-file list from git is already a tight, pre-bounded scope,
 // so it stays exactly one call, same as before.
-const REASONING_MODULE_BUDGET_USD = 0.5; // per-module hard cap — tune here; no UI exposed for this yet
+// Per-module budget, scaled by how much code the module actually covers. A flat cap was the
+// first design and measurably too low at the small end: a 10-file, ~200-line module
+// exhausted a flat $0.50 and reported "coverage may be incomplete" on every run, which is both
+// a real coverage loss and the kind of thing that undermines a scan's credibility. Scaling by
+// file count gives a small module enough room to actually finish while still bounding a large
+// one. Budget is base + per-file, clamped — see moduleBudgetUsd().
+// Calibrated against observed spend rather than guessed: a 9-file module exhausted both a flat
+// $0.50 and a scaled $0.85 before finishing, and an uncapped reasoning call over a comparable
+// directory settled around $2.30 on its own. So ~$1-2 is what a thorough pass over a small
+// module actually costs, and anything under that buys a truncated review rather than a cheaper
+// one — the scan still pays for the tokens it spent, it just throws away the conclusion.
+const REASONING_MODULE_BUDGET_BASE_USD = 0.75;
+const REASONING_MODULE_BUDGET_PER_FILE_USD = 0.12;
+const REASONING_MODULE_BUDGET_MAX_USD = 2.5;
+// Ceiling on the reasoning half of a single scan. Without this, worst-case spend is
+// REASONING_MODULE_MAX modules × the per-module cap (plus the cross-cutting pass) with nothing
+// bounding the total — raising the per-module cap alone would have made that worse. Once
+// accumulated spend crosses this, remaining modules are skipped and reported rather than run,
+// so a scan degrades to "partial coverage, stated plainly" instead of an open-ended bill.
+const REASONING_SCAN_BUDGET_USD = 12.0;
 const REASONING_MODULE_CONCURRENCY = 3; // how many module-scoped claude -p processes run at once
 // Target file count per module. A group over this gets recursively split by subdirectory
 // (partitionReasoningModules()); groups under this get merged back together (by actual size, not
@@ -49,7 +68,22 @@ const REASONING_MODULE_MAX = 24; // hard cap on total modules after merging — 
 // defined in one module (auth middleware, a validator) never actually applied where it should be
 // in another. Slightly higher budget than a single module since it has to sample across the
 // whole tree rather than deep-dive one area. See runLLMReasoningScan()'s crosscut branch.
-const REASONING_CROSSCUT_BUDGET_USD = 0.75;
+// Measured, not guessed: at $2.00 this pass was observed truncating mid-analysis on
+// even a small tree, each time discarding a partially-built picture of the app's
+// wiring. Since it is the only call that sees the whole tree, truncating it costs
+// exactly the findings no other call can produce — so it gets the largest per-call
+// budget in the design rather than the smallest.
+const REASONING_CROSSCUT_BUDGET_USD = 3.5;
+
+// Dollar cap for one module's claude -p call. The cross-cutting pass gets its own flat figure
+// (it samples across the whole tree rather than covering a fixed file list, so file count isn't
+// a meaningful input for it).
+function moduleBudgetUsd(mod) {
+  if (mod.crosscut) return REASONING_CROSSCUT_BUDGET_USD;
+  const fileCount = Array.isArray(mod.paths) ? mod.paths.length : REASONING_MODULE_MAX_FILES;
+  const scaled = REASONING_MODULE_BUDGET_BASE_USD + fileCount * REASONING_MODULE_BUDGET_PER_FILE_USD;
+  return Math.min(REASONING_MODULE_BUDGET_MAX_USD, Math.round(scaled * 100) / 100);
+}
 // Shipped with the app and load-bearing for other hardcoded UI (the scan flow,
 // the Dashboard's pipeline health panel) — editable, but not deletable via the
 // Agents screen.
@@ -253,6 +287,7 @@ function toListItem(finding) {
     stageRuns: {
       triage: latestRunByAgent(runs, 'triage'),
       remediation: latestRunByAgent(runs, 'remediation'),
+      fix: latestRunByAgent(runs, 'fix'),
       verify: latestRunByAgent(runs, 'verify'),
     },
     sourceScanId: finding.sourceScanId || null,
@@ -897,8 +932,13 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (msg.type === 'remediate_apply') {
-      handleRemediateApplyMessage(msg, { children, send });
+    if (msg.type === 'remediate_preview') {
+      handleRemediatePreviewMessage(msg, { children, send });
+      return;
+    }
+
+    if (msg.type === 'remediate_fix') {
+      handleRemediateFixMessage(msg, { children, send });
       return;
     }
 
@@ -1177,8 +1217,9 @@ async function applyRemediationPlan(targetPath, verdict) {
 }
 
 // Spawns a real per-finding agent stage against a specific cwd (used by
-// handleRemediateApplyMessage below, kept separate from that function just to keep it
-// readable). Pushes/updates the run record and relays started/event/stderr/done exactly like
+// handleRemediatePreviewMessage/handleRemediateAllMessage below, kept separate from those
+// functions just to keep them readable). Pushes/updates the run record and relays
+// started/event/stderr/done exactly like
 // the generic per-finding `run` path, registered in the same `runIndex`/`children` maps, so
 // cancellation and the client's existing run-rendering code both work unmodified.
 function spawnAgentStage({ runId, findingId, finding, agentName, systemPrompt, userPrompt, allowedTools, cwd, instruction, children, send }) {
@@ -1255,14 +1296,14 @@ function spawnAgentStage({ runId, findingId, finding, agentName, systemPrompt, u
   });
 }
 
-// Writes a real fix to the finding's actual target directory (git-clean gated) and stops — no
-// automatic Verify chain. This is what the Agent Triage loop cell's single "advance" button
-// fires when the next step in Found -> Fixed -> Verified is "Fixed"; the human clicks the
-// advance button again once ready to run Verify as its own separate step. Remediation itself
-// runs read-only (Read,Grep,Glob) and proposes an `edit_plan` in its verdict rather than
-// editing directly — applyRemediationPlan() is what actually touches disk, after validating
-// the plan against the real file (see CLAUDE.md's Security posture).
-function handleRemediateApplyMessage(msg, { children, send }) {
+// Runs Remediation read-only against the finding's real target directory and stops — no apply,
+// no automatic chain into Fix. This is the "Remediate" stage: a human-reviewable proposal
+// (fix guidance, corrected_code, and — if the model is confident in an exact edit — an
+// `edit_plan`) with nothing written to disk. The Fix stage below is a separate, later step that
+// actually applies whatever this run proposed — splitting "propose" from "write" means a human
+// always sees the suggested fix before anything touches their files (see CLAUDE.md's
+// Remediation Loop). Remediation itself never gets Edit/Write tools (Read,Grep,Glob only).
+function handleRemediatePreviewMessage(msg, { children, send }) {
   const findingId = msg.findingId ? String(msg.findingId) : null;
   const runId = String(msg.runId || '').trim();
   const context = String(msg.context || '');
@@ -1283,13 +1324,16 @@ function handleRemediateApplyMessage(msg, { children, send }) {
     return;
   }
   if (!targetPath) {
-    send({ type: 'error', runId, findingId, message: 'A target directory is required to apply a fix.' });
+    send({ type: 'error', runId, findingId, message: 'A target directory is required to propose a fix.' });
     return;
   }
-
-  const gate = checkCleanGitTarget(targetPath);
-  if (!gate.ok) {
-    send({ type: 'error', runId, findingId, message: gate.message });
+  try {
+    if (!fs.statSync(targetPath).isDirectory()) {
+      send({ type: 'error', runId, findingId, message: `Not a directory: ${targetPath}` });
+      return;
+    }
+  } catch (err) {
+    send({ type: 'error', runId, findingId, message: `Path not found: ${targetPath}` });
     return;
   }
 
@@ -1307,50 +1351,103 @@ function handleRemediateApplyMessage(msg, { children, send }) {
   }
 
   (async () => {
-    const userPrompt = `${instruction}\n\nFinding context:\n${context}\n\nApply mode: propose the fix as an \`edit_plan\` in your verdict (see your instructions) — you do not have Edit/Write access; a separate deterministic step will validate and apply your plan against the real file.`;
+    const userPrompt = `${instruction}\n\nFinding context:\n${context}\n\nApply mode: propose the fix as an \`edit_plan\` in your verdict (see your instructions) if you're confident in an exact edit — you do not have Edit/Write access. A human reviews your proposal before a separate Fix step applies it.`;
     const rem = await spawnAgentStage({
       runId, findingId, finding, agentName: 'remediation',
       systemPrompt: remediationPrompt, userPrompt, allowedTools: 'Read,Grep,Glob',
       cwd: targetPath, instruction, children, send,
     });
-
-    if (!rem.cancelled && rem.code === 0 && rem.verdict) {
-      const result = await applyRemediationPlan(targetPath, rem.verdict);
-      rem.verdict.applied_diff = result.diff;
-      const remRunRecord = finding.runs.find((r) => r.runId === runId);
-      if (remRunRecord) {
-        remRunRecord.verdict = rem.verdict;
-        if (result.error) {
-          remRunRecord.status = 'error';
-          rem.code = 1;
-          send({ type: 'stderr', runId, findingId, data: result.error });
-        }
-      }
-    }
     finding.status = deriveStatus(finding);
     send({ type: 'done', runId, findingId, code: rem.code, verdict: rem.verdict, fullText: '' });
   })();
 }
 
-// Chains Remediation (write) -> Verify for the loop cell's "run all stages" button. This used
-// to run Triage first too, but Triage is no longer a live agent stage (see CLAUDE.md) — every
-// finding reaching this handler already carries a triage verdict from when it was created
-// (sast-engine's VerifierAgent for scan-sourced findings, or a neutral placeholder for manual
-// ones), and buildBaseContext() on the client already folds that prior verdict into `context`
-// below, so Remediation sees it without a fresh live call.
+// Applies the most recent Remediate proposal's `edit_plan` to the finding's real target
+// directory — this is the "Fix" stage. Deliberately makes no `claude` call at all: the plan was
+// already produced by Remediate, so this step is purely deterministic (validate the plan
+// against the live file, write it, capture a diff — see applyRemediationPlan()). Fails loudly
+// if there's no usable proposal to apply yet, rather than silently generating a fresh one — Fix
+// is meant to write exactly what a human just reviewed in the Remediate box, not something new.
+function handleRemediateFixMessage(msg, { children, send }) {
+  const findingId = msg.findingId ? String(msg.findingId) : null;
+  const runId = String(msg.runId || '').trim();
+  const targetPath = String(msg.path || '').trim();
+
+  if (!RUN_ID_RE.test(runId)) {
+    send({ type: 'error', message: 'Invalid or missing run id.' });
+    return;
+  }
+  if (children.has(runId)) {
+    send({ type: 'error', runId, findingId, message: 'This run is already active.' });
+    return;
+  }
+  const finding = findingId ? findings.get(findingId) : null;
+  if (!finding) {
+    send({ type: 'error', runId, findingId, message: 'Unknown finding.' });
+    return;
+  }
+  if (!targetPath) {
+    send({ type: 'error', runId, findingId, message: 'A target directory is required to apply a fix.' });
+    return;
+  }
+
+  const remRun = [...finding.runs].reverse().find((r) => r.agent === 'remediation');
+  const plan = remRun && remRun.verdict && remRun.verdict.edit_plan;
+  if (!plan || !Array.isArray(plan.files) || !plan.files.length) {
+    send({ type: 'error', runId, findingId, message: 'No proposed fix to apply yet — run Remediate first.' });
+    return;
+  }
+
+  const gate = checkCleanGitTarget(targetPath);
+  if (!gate.ok) {
+    send({ type: 'error', runId, findingId, message: gate.message });
+    return;
+  }
+
+  const runRecord = {
+    runId, agent: 'fix', instruction: '', context: '',
+    status: 'running', verdict: null, fullText: '',
+    startedAt: Date.now(), finishedAt: null,
+  };
+  finding.runs.push(runRecord);
+  runIndex.set(runId, { findingId: finding.id, run: runRecord });
+  send({ type: 'started', runId, findingId, agent: 'fix' });
+
+  (async () => {
+    const result = await applyRemediationPlan(targetPath, { edit_plan: plan });
+    const verdict = { verdict: result.applied ? 'applied' : 'not_applied', applied_diff: result.diff };
+    runRecord.status = result.error ? 'error' : 'done';
+    runRecord.verdict = verdict;
+    runRecord.finishedAt = Date.now();
+    runIndex.delete(runId);
+    if (result.error) send({ type: 'stderr', runId, findingId, data: result.error });
+    finding.status = deriveStatus(finding);
+    send({ type: 'done', runId, findingId, code: result.error ? 1 : 0, verdict, fullText: '' });
+  })();
+}
+
+// Chains Remediate (propose) -> Fix (apply, no LLM call) -> Verify for the loop's "run all
+// stages" button. This used to run Triage first too, but Triage is no longer a live agent stage
+// (see CLAUDE.md) — every finding reaching this handler already carries a triage verdict from
+// when it was created, and buildBaseContext() on the client already folds that prior verdict
+// into `context` below, so Remediate sees it without a fresh live call. The git-clean gate is
+// checked once up front (Fix, further down the chain, is the step that will actually write) so
+// the whole chain fails fast rather than spending an LLM call proposing a fix it then can't
+// apply.
 function handleRemediateAllMessage(msg, { children, send }) {
   const findingId = msg.findingId ? String(msg.findingId) : null;
   const remediationRunId = String(msg.remediationRunId || '').trim();
+  const fixRunId = String(msg.fixRunId || '').trim();
   const verifyRunId = String(msg.verifyRunId || '').trim();
   const context = String(msg.context || '');
   const instruction = String(msg.instruction || '');
   const targetPath = String(msg.path || '').trim();
 
-  if (!RUN_ID_RE.test(remediationRunId) || !RUN_ID_RE.test(verifyRunId)) {
+  if (!RUN_ID_RE.test(remediationRunId) || !RUN_ID_RE.test(fixRunId) || !RUN_ID_RE.test(verifyRunId)) {
     send({ type: 'error', message: 'Invalid or missing run id(s).' });
     return;
   }
-  if (children.has(remediationRunId) || children.has(verifyRunId)) {
+  if (children.has(remediationRunId) || children.has(fixRunId) || children.has(verifyRunId)) {
     send({ type: 'error', runId: remediationRunId, findingId, message: 'This run is already active.' });
     return;
   }
@@ -1387,36 +1484,42 @@ function handleRemediateAllMessage(msg, { children, send }) {
   }
 
   (async () => {
-    const remediationUserPrompt = `${instruction}\n\nFinding context:\n${context}\n\nApply mode: propose the fix as an \`edit_plan\` in your verdict (see your instructions) — you do not have Edit/Write access; a separate deterministic step will validate and apply your plan against the real file.`;
+    const remediationUserPrompt = `${instruction}\n\nFinding context:\n${context}\n\nApply mode: propose the fix as an \`edit_plan\` in your verdict (see your instructions) if you're confident in an exact edit — you do not have Edit/Write access; the next stage applies it automatically.`;
     const rem = await spawnAgentStage({
       runId: remediationRunId, findingId, finding, agentName: 'remediation',
       systemPrompt: remediationPrompt, userPrompt: remediationUserPrompt,
       allowedTools: 'Read,Grep,Glob', cwd: targetPath, instruction, children, send,
     });
-
-    if (rem.cancelled || rem.code !== 0 || !rem.verdict) {
-      finding.status = deriveStatus(finding);
-      send({ type: 'done', runId: remediationRunId, findingId, code: rem.code, verdict: rem.verdict, fullText: '' });
-      return;
-    }
-
-    const result = await applyRemediationPlan(targetPath, rem.verdict);
-    rem.verdict.applied_diff = result.diff;
-    const remRunRecord = finding.runs.find((r) => r.runId === remediationRunId);
-    if (remRunRecord) {
-      remRunRecord.verdict = rem.verdict;
-      if (result.error) {
-        remRunRecord.status = 'error';
-        rem.code = 1;
-        send({ type: 'stderr', runId: remediationRunId, findingId, data: result.error });
-      }
-    }
     finding.status = deriveStatus(finding);
     send({ type: 'done', runId: remediationRunId, findingId, code: rem.code, verdict: rem.verdict, fullText: '' });
 
-    if (result.error) return; // apply failed — don't chain into Verify against an unapplied fix
+    const plan = rem.verdict && rem.verdict.edit_plan;
+    if (rem.cancelled || rem.code !== 0 || !plan || !Array.isArray(plan.files) || !plan.files.length) {
+      return; // nothing confident enough to apply — chain stops after the proposal
+    }
 
-    const verifyUserPrompt = `${instruction}\n\nFinding context:\n${context}\n\nThe Remediation agent just ran against this exact directory and reported:\n${JSON.stringify(rem.verdict, null, 2)}\n\nConfirm whether the fix it describes actually landed and resolves the finding.`;
+    const fixRunRecord = {
+      runId: fixRunId, agent: 'fix', instruction: '', context: '',
+      status: 'running', verdict: null, fullText: '',
+      startedAt: Date.now(), finishedAt: null,
+    };
+    finding.runs.push(fixRunRecord);
+    runIndex.set(fixRunId, { findingId: finding.id, run: fixRunRecord });
+    send({ type: 'started', runId: fixRunId, findingId, agent: 'fix' });
+
+    const result = await applyRemediationPlan(targetPath, { edit_plan: plan });
+    const fixVerdict = { verdict: result.applied ? 'applied' : 'not_applied', applied_diff: result.diff };
+    fixRunRecord.status = result.error ? 'error' : 'done';
+    fixRunRecord.verdict = fixVerdict;
+    fixRunRecord.finishedAt = Date.now();
+    runIndex.delete(fixRunId);
+    if (result.error) send({ type: 'stderr', runId: fixRunId, findingId, data: result.error });
+    finding.status = deriveStatus(finding);
+    send({ type: 'done', runId: fixRunId, findingId, code: result.error ? 1 : 0, verdict: fixVerdict, fullText: '' });
+
+    if (result.error || !result.applied) return; // apply failed or nothing written — don't chain into Verify
+
+    const verifyUserPrompt = `${instruction}\n\nFinding context:\n${context}\n\nThe Remediation agent proposed this fix and it was just applied to this exact directory:\n${JSON.stringify(fixVerdict, null, 2)}\n\nConfirm whether the fix actually landed and resolves the finding.`;
     const ver = await spawnAgentStage({
       runId: verifyRunId, findingId, finding, agentName: 'verify',
       systemPrompt: verifyPrompt, userPrompt: verifyUserPrompt,
@@ -1531,23 +1634,32 @@ function handleScanMessage(msg, { children, send }) {
     scanRunIndex.delete(runId);
   };
 
-  if (scanType === 'sca') {
-    runDeterministicScaScan(scan, targetPath, { send, finish, fail });
-  } else {
-    runHybridReasoningScan(scan, targetPath, diffFiles, { children, send, finish, fail });
-  }
+  // scanType is always 'reasoning' now that there's no standalone SCA Scan page/flow to send
+  // 'sca' — the dependency audit runs as part of this same hybrid scan instead (see
+  // runHybridReasoningScan()'s SCA engine, below).
+  runHybridReasoningScan(scan, targetPath, diffFiles, { children, send, finish, fail });
 }
 
-// Reasoning Scan runs two independent engines against the same directory and merges their
-// results (see CLAUDE.md's Reasoning Scan bullet for the reasoning behind this):
+// Hybrid Scan (UI label; internal scanType/function names still say "reasoning" — see CLAUDE.md)
+// runs three independent engines against the same directory and merges their results (see
+// CLAUDE.md's Reasoning Scan bullet for the reasoning behind this):
 //   - sast-engine's 29 deterministic pattern agents + VerifierAgent — fast, consistent
 //     coverage of known vulnerability categories, no LLM involved.
 //   - a real `claude -p` reasoning pass over agents/scan.md — covers business-logic/
 //     authorization/attack-surface reasoning a fixed rule set structurally can't do, and
 //     assigns its own findings a full triage verdict in the same pass (there's no separate
 //     live Triage stage to hand off to).
-// Both run concurrently; whichever finishes first still has to wait for the other before
-// findings are created, since a finding from one pass might duplicate one from the other.
+//   - a dependency audit (npm/pip/etc. audit, via sast-engine's runDepsAudit) — there used to be
+//     a standalone SCA Scan page/flow driving this same engine on its own; that page is gone
+//     (every scan is a hybrid scan now, there's no dependency-only option left), so this is the
+//     only place it runs from. Folded in here since it's fast and free of LLM cost — little
+//     reason not to always check dependencies alongside the other two. Unlike them, it ignores
+//     scope entirely — a dependency audit always reads the whole manifest/lockfile, "diff" scope
+//     or not.
+// All three run concurrently; whichever finishes first still has to wait for the others before
+// findings are created, since a finding from one pass might duplicate one from another (only
+// the deterministic/reasoning pair can actually overlap — SCA findings have no file+line to
+// collide with either).
 async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, send, finish, fail }) {
   let engine;
   try {
@@ -1557,22 +1669,42 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
     return;
   }
 
-  const [detResult, llmResult] = await Promise.all([
+  // SCA is the fastest of the three by far (one shell-out, no per-file/per-module work) — signal
+  // its own completion the moment it resolves rather than waiting for Promise.all below, so the
+  // client's SCA bar doesn't just sit at "Starting…" until the whole scan finishes.
+  const scaPromise = runDeterministicScaScan(engine, scan, targetPath, { send }).then((result) => {
+    if (scan.status !== 'cancelled') {
+      send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'sca', done: 1, total: 1 });
+    }
+    return result;
+  });
+
+  const [detResult, llmResult, scaResult] = await Promise.all([
     runDeterministicPatternScan(engine, scan, targetPath, diffFiles, { send }),
     runLLMReasoningScan(scan, targetPath, diffFiles, { children, send }),
+    scaPromise,
   ]);
 
   if (scan.status === 'cancelled') return;
 
-  if (detResult.error && llmResult.error) {
-    fail(`Deterministic scan: ${detResult.error} — Reasoning pass: ${llmResult.error}`);
+  if (detResult.error && llmResult.error && scaResult.error) {
+    fail(`Deterministic scan: ${detResult.error} — Reasoning pass: ${llmResult.error} — Dependency audit: ${scaResult.error}`);
     return;
   }
-  if (detResult.error) send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Deterministic scan failed (reasoning pass still succeeded): ${detResult.error}` });
-  if (llmResult.error) send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Reasoning pass failed (deterministic scan still succeeded): ${llmResult.error}` });
+  if (detResult.error) send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Deterministic pattern scan failed (other engines still succeeded): ${detResult.error}` });
+  if (llmResult.error) send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Reasoning pass failed (other engines still succeeded): ${llmResult.error}` });
+  if (scaResult.error) send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Dependency audit failed (other engines still succeeded): ${scaResult.error}` });
 
   const created = [];
-  for (const f of detResult.findings) {
+  // Collapse a deterministic rule that fired repeatedly on consecutive lines of one file. A
+  // whole-file condition like "no security headers configured" is checked per line, so it
+  // reported once per app.use() call — five rows for one issue. Deliberately only merges
+  // *adjacent* hits of the *same rule in the same file*: three separate SQL injections in one
+  // file are three real findings and must stay three, so distance is what distinguishes "one
+  // condition observed repeatedly" from "several distinct sites".
+  const collapsedDet = [];
+  for (const f of dedupeAdjacentSameRule(detResult.findings)) {
+    collapsedDet.push(f);
     const finding = findingFromSastEngine(f, scan, targetPath);
     findings.set(finding.id, finding);
     scan.findingIds.push(finding.id);
@@ -1583,7 +1715,7 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   // deterministic finding in the same file — same underlying issue, no need to show it twice.
   // Findings with no resolvable line (e.g. a cross-file business-logic finding) always survive,
   // since there's nothing meaningful to compare them against.
-  const detLocations = detResult.findings
+  const detLocations = collapsedDet
     .map((f) => ({ file: f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : null, line: f.line }))
     .filter((l) => l.file);
   const isDuplicateOfDeterministic = (rf) => {
@@ -1592,12 +1724,33 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
     return detLocations.some((d) => d.file === loc.file && d.line != null && Math.abs(d.line - loc.line) <= 2);
   };
 
-  for (const rf of llmResult.findings) {
+  // The reasoning half is several independent claude -p calls — one per module plus the
+  // cross-cutting pass — and nothing stopped two of them reporting the same issue. In practice
+  // the same unwired-auth gap comes back 2-3x per scan under differently-worded titles, and the
+  // same IDOR twice. Titles vary too much between calls for text comparison to
+  // catch it ("requireAuth ... applied to zero routes" vs. "Payment, order, and profile
+  // endpoints registered without requireAuth"), but they consistently land on the same line, so
+  // location is the reliable signal. Sorted most-severe-first so that when two calls disagree on
+  // severity for the same issue — also measured: critical in one run, medium in another — the
+  // surviving copy is the more severe reading rather than whichever call happened to finish first.
+  const keptLlm = [];
+  for (const rf of [...llmResult.findings].sort((a, b) => severityRank(a.severity) - severityRank(b.severity))) {
     const title = String(rf.title || '').trim();
     const description = String(rf.description || '').trim();
     if (!title || !description) continue; // skip malformed entries rather than fail the whole scan
     if (isDuplicateOfDeterministic(rf)) continue;
+    if (isDuplicateOfReasoning(rf, keptLlm)) continue;
+    keptLlm.push(rf);
     const finding = findingFromLLMScan(rf, scan);
+    findings.set(finding.id, finding);
+    scan.findingIds.push(finding.id);
+    created.push(toListItem(finding));
+  }
+
+  // SCA findings are package/version-keyed, not file+line-keyed — nothing for the dedup check
+  // above to compare them against, so every one survives unconditionally.
+  for (const v of scaResult.findings) {
+    const finding = findingFromDepVuln(v, scan);
     findings.set(finding.id, finding);
     scan.findingIds.push(finding.id);
     created.push(toListItem(finding));
@@ -1807,9 +1960,10 @@ function buildCoverageSummary(engine) {
 // Diff scope stays exactly one call over the pre-bounded changed-file list, same as before this
 // scan was module-scoped — there's nothing to partition when the scope is already tight. Full
 // scope partitions the directory (partitionReasoningModules()) and runs one scoped call per
-// module, at most REASONING_MODULE_CONCURRENCY at a time, each capped at REASONING_MODULE_BUDGET_USD
-// via --max-budget-usd so a single module can't blow an unbounded amount of spend chasing a
-// dead end. Each module's child process is registered under its own synthetic
+// module, at most REASONING_MODULE_CONCURRENCY at a time, each capped via --max-budget-usd at a
+// size-scaled figure (moduleBudgetUsd()) so a single module can't blow an unbounded amount of
+// spend chasing a dead end, with REASONING_SCAN_BUDGET_USD bounding the whole reasoning half on
+// top of that. Each module's child process is registered under its own synthetic
 // `${scan.runId}::mod${i}` key in `children` (tracked on scan.moduleRunIds) so the WS 'cancel'
 // handler can kill every in-flight module, not just one child, for this scan.
 async function runLLMReasoningScan(scan, targetPath, diffFiles, { children, send }) {
@@ -1855,7 +2009,7 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, { children, send
   const runOneModule = (mod, index) => new Promise((resolve) => {
     if (scan.status === 'cancelled') { resolve(); return; }
 
-    const budgetUsd = mod.crosscut ? REASONING_CROSSCUT_BUDGET_USD : REASONING_MODULE_BUDGET_USD;
+    const budgetUsd = moduleBudgetUsd(mod);
     const promptParts = [
       'Scan this directory for real, concrete security vulnerabilities in the code, and reason ' +
       'about externally-reachable endpoints and attack surface the way an attacker interacting ' +
@@ -1979,15 +2133,31 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, { children, send
   // count sane on a dev machine and avoiding hammering rate limits on a repo with many
   // top-level directories.
   let nextIndex = 0;
+  let skippedForBudget = 0;
   const worker = async () => {
     while (nextIndex < modules.length && scan.status !== 'cancelled') {
       const i = nextIndex++;
-      await runOneModule(modules[i], i);
+      const mod = modules[i];
+      // The cross-cutting pass is never skipped for budget. It's appended last, so a plain
+      // "stop once the ceiling is hit" would drop it first — and it's the one call that can see
+      // wiring gaps no module-scoped call structurally can (measured: it confirmed an unwired
+      // auth middleware that module calls could only guess at). It has its own cap, so letting
+      // it through overshoots the ceiling by a bounded amount at most.
+      if (scan.budgetEnabled && !mod.crosscut && totalCostUsd >= REASONING_SCAN_BUDGET_USD) {
+        skippedForBudget++;
+        done++;
+        send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'reasoning', done, total, costUsd: totalCostUsd });
+        continue;
+      }
+      await runOneModule(mod, i);
     }
   };
   await Promise.all(Array.from({ length: Math.min(REASONING_MODULE_CONCURRENCY, modules.length) }, worker));
 
   if (scan.status === 'cancelled') return { findings: [], error: null, costUsd: totalCostUsd };
+  if (skippedForBudget) {
+    send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Reasoning pass reached its $${REASONING_SCAN_BUDGET_USD} per-scan budget — ${skippedForBudget} of ${total} module${skippedForBudget === 1 ? '' : 's'} were skipped and not reviewed. Turn off the budget cap, or scan a narrower directory, for full coverage.` });
+  }
   if (moduleErrors.length === modules.length) {
     return { findings: [], error: moduleErrors.join(' | '), costUsd: totalCostUsd };
   }
@@ -1995,6 +2165,54 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, { children, send
     send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `${moduleErrors.length}/${modules.length} reasoning calls had issues: ${moduleErrors.join(' | ')}` });
   }
   return { findings: allFindings, error: null, costUsd: totalCostUsd };
+}
+
+const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, moderate: 2, low: 3, informational: 4 };
+function severityRank(sev) {
+  const r = SEVERITY_RANK[String(sev || '').toLowerCase()];
+  return r == null ? 5 : r;
+}
+
+// How far apart two hits of the same rule in the same file can be and still be treated as one
+// condition rather than two distinct sites. Small on purpose — see the call site.
+const ADJACENT_RULE_LINES = 3;
+
+/**
+ * Collapse runs of the same rule firing on nearby lines of the same file down to their first
+ * occurrence. Findings are grouped by file+rule, sorted by line, and a new group is started
+ * whenever the gap to the previous line exceeds ADJACENT_RULE_LINES — so a file-wide condition
+ * flagged on four consecutive lines becomes one finding, while the same rule firing at line 12
+ * and line 200 stays two.
+ */
+function dedupeAdjacentSameRule(findings) {
+  const groups = new Map();
+  for (const f of findings) {
+    const key = `${f.file}::${f.rule}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(f);
+  }
+  const kept = new Set();
+  for (const group of groups.values()) {
+    const sorted = [...group].sort((a, b) => (a.line || 0) - (b.line || 0));
+    let lastLine = null;
+    for (const f of sorted) {
+      const line = f.line || 0;
+      if (lastLine == null || line - lastLine > ADJACENT_RULE_LINES) kept.add(f);
+      lastLine = line;
+    }
+  }
+  // Preserve the engine's own severity ordering rather than the grouping order.
+  return findings.filter((f) => kept.has(f));
+}
+
+/** Whether a reasoning finding restates one already kept from another reasoning call. */
+function isDuplicateOfReasoning(rf, kept) {
+  const loc = parseFileLine(rf.file);
+  if (!loc.file || loc.line == null) return false;
+  return kept.some((k) => {
+    const kl = parseFileLine(k.file);
+    return kl.file === loc.file && kl.line != null && Math.abs(kl.line - loc.line) <= 2;
+  });
 }
 
 // Splits agents/scan.md's "path:line" file convention into parts for the dedup comparison in
@@ -2011,33 +2229,27 @@ function parseFileLine(fileStr) {
 // sast-engine's runDepsAudit (wraps the project's own package-manager audit tool — npm/yarn/
 // pnpm/pip-audit/bundler-audit). No agent-progress loop needed — this one call is already
 // fast. See CLAUDE.md's SCA Scan bullet.
-async function runDeterministicScaScan(scan, targetPath, { send, finish, fail }) {
-  let engine;
-  try {
-    engine = await loadSastEngine();
-  } catch (err) {
-    fail(`Failed to load scan engine: ${err.message}`);
-    return;
-  }
-
+// Runs sast-engine's dependency audit and returns { findings, error } — raw vuln objects, not
+// yet Finding records — rather than calling finish()/fail() directly, since runHybridReasoningScan()
+// (SCA as its third concurrent engine, see below) needs every engine's results together before
+// creating findings, same reason runDeterministicPatternScan() does. There used to be a second
+// caller here too — a standalone SCA Scan page/flow that drove this same engine to completion on
+// its own, for a fast dependency-only check with no pattern-matching or reasoning involved. That
+// page is gone (SCA now always runs as part of a hybrid scan, never on its own), so this is the
+// only caller left. `engine` is passed in already loaded so a hybrid scan only loads sast-engine
+// once, same pattern the other two engine functions use.
+async function runDeterministicScaScan(engine, scan, targetPath, { send }) {
   let result;
   try {
     result = await engine.runDepsAudit(targetPath);
   } catch (err) {
-    fail(`Dependency audit failed: ${err.message}`);
-    return;
+    return { findings: [], error: `Dependency audit failed: ${err.message}` };
   }
 
-  if (scan.status === 'cancelled') return;
+  if (scan.status === 'cancelled') return { findings: [], error: null };
 
-  if (!result.pm) {
-    finish([]); // no supported manifest found — a clean, valid "nothing to report" outcome
-    return;
-  }
-  if (result.error) {
-    fail(result.error);
-    return;
-  }
+  if (!result.pm) return { findings: [], error: null }; // no supported manifest found — a clean, valid "nothing to report" outcome
+  if (result.error) return { findings: [], error: result.error };
 
   if (result.vulns.length) {
     const lines = result.vulns.map((v) => `[${normalizeSeverity(v.severity)}] \`${v.name}@${v.range}\` — ${v.title}`);
@@ -2049,14 +2261,7 @@ async function runDeterministicScaScan(scan, targetPath, { send, finish, fail })
     });
   }
 
-  const created = [];
-  for (const v of result.vulns) {
-    const finding = findingFromDepVuln(v, scan);
-    findings.set(finding.id, finding);
-    scan.findingIds.push(finding.id);
-    created.push(toListItem(finding));
-  }
-  finish(created);
+  return { findings: result.vulns, error: null };
 }
 
 function handleAppThreatModelMessage(msg, { children, send }) {

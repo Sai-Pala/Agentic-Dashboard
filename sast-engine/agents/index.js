@@ -42,6 +42,8 @@ import { TrustBoundaryAgent } from './trust-boundary-agent.js';
 import { SlopSquatAgent } from './slopsquat-agent.js';
 import { ClickFixAgent } from './clickfix-agent.js';
 import { InstallGuardAgent } from './install-guard-agent.js';
+import { SecretsAgent } from './secrets-agent.js';
+import { TaintFlowAgent } from './taint-flow-agent.js';
 import { loadPlugins } from '../utils/plugin-loader.js';
 
 const BUILT_IN_AGENTS = () => [
@@ -74,6 +76,8 @@ const BUILT_IN_AGENTS = () => [
   new SlopSquatAgent(),
   new ClickFixAgent(),
   new InstallGuardAgent(),
+  new SecretsAgent(),
+  new TaintFlowAgent(),
 ];
 
 export const BUILT_IN_AGENT_COUNT = BUILT_IN_AGENTS().length;

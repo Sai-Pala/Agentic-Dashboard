@@ -210,6 +210,20 @@ const PATTERNS = [
     fix: 'Use .text() for plain text or sanitize HTML with DOMPurify before .html()',
   },
   {
+    rule: 'XSS_REFLECTED_RESPONSE',
+    title: 'Reflected XSS in HTTP Response',
+    // res.send(`<div>Hello ${req.query.name}</div>`) — user input interpolated straight into an
+    // HTML response body. Same-line, but no existing pattern covered response sinks, so this
+    // fell between XSS rules (which target DOM sinks) and the injection rules (which target
+    // SQL/shell). Requires both an HTML-looking template and a request-derived value.
+    regex: /\bres(?:ponse)?\s*\.\s*(?:send|write|end)\s*\(\s*`[^`]*<[^`]*\$\{[^}]*(?:req|request|ctx)\s*\.\s*(?:query|body|params|headers)/g,
+    severity: 'high',
+    cwe: 'CWE-79',
+    owasp: 'A03:2021',
+    description: 'User input is interpolated directly into an HTML response body, allowing reflected XSS.',
+    fix: 'Escape the value before interpolating it, or return JSON and render it client-side with textContent.',
+  },
+  {
     rule: 'XSS_V_HTML',
     title: 'XSS via Vue v-html Directive',
     regex: /v-html\s*=\s*["']/g,
@@ -224,7 +238,11 @@ const PATTERNS = [
   {
     rule: 'PATH_TRAVERSAL_FS',
     title: 'Path Traversal in File Operations',
-    regex: /(?:readFile|readFileSync|createReadStream|writeFile|writeFileSync|unlink|unlinkSync|stat|statSync)\s*\(\s*(?:req\.|request\.|ctx\.|params|query|`[^`]*\$\{)/g,
+    // Matches user input anywhere in the argument list, not only as its first token. The
+    // original form required the argument to *start* with req./query/etc., so the extremely
+    // common `readFileSync('./uploads/' + req.query.file)` — a real traversal, entirely on one
+    // line — did not match because the argument starts with a string literal.
+    regex: /(?:readFile|readFileSync|createReadStream|writeFile|writeFileSync|unlink|unlinkSync|stat|statSync|sendFile)\s*\([^)]*(?:(?:req|request|ctx)\s*\.\s*(?:query|body|params|headers)|`[^`]*\$\{)/g,
     severity: 'critical',
     cwe: 'CWE-22',
     owasp: 'A01:2021',
@@ -377,12 +395,44 @@ const PATTERNS = [
     description: 'Merging user input into objects can pollute Object.prototype. Validate input keys.',
     fix: 'Validate keys against an allowlist, or use Object.create(null) as target',
   },
+  {
+    rule: 'PROTOTYPE_POLLUTION_MERGE_SINK',
+    title: 'Request Data Merged by a Project Merge Helper',
+    // The rule above only knows Object.assign and lodash. Most real prototype
+    // pollution goes through a hand-rolled deepMerge/extend/setPath helper, and
+    // whether that helper guards __proto__ cannot be judged from the call site —
+    // so the call site is where the reachable risk is worth reporting.
+    regex: /\b(?:deep_?[Mm]erge|merge[A-Z]\w*|\w*[Mm]erge(?:Deep|Options|Config|Settings)?|extend|deepExtend|deepAssign|setPath|deepSet)\s*\(\s*[^,()]+,\s*(?:req|request|ctx)\s*\.\s*(?:body|query|params)/g,
+    severity: 'high',
+    cwe: 'CWE-1321',
+    owasp: 'A03:2021',
+    confidence: 'medium',
+    description: 'Untrusted request data is passed straight into a deep-merge helper. If that helper walks nested keys without blocking __proto__/constructor, an attacker can add properties to Object.prototype and affect unrelated code paths.',
+    fix: 'Block __proto__/constructor/prototype keys inside the merge helper, or validate the incoming keys against an allowlist before merging.',
+  },
+  {
+    rule: 'PATH_SANITIZER_INCOMPLETE',
+    title: 'Path Traversal Sanitizer Removes ../ in a Single Pass',
+    // A one-shot replace is not idempotent: "....//" contains no "../" until the
+    // inner one is removed, at which point the outer characters close up into a
+    // fresh "../" that never gets re-examined. CWE-182.
+    regex: /\.\s*replace\s*\(\s*(?:\/(?:\\\.\\\.|\.\.)(?:\\\/|\/)?\/g?|['"]\.\.[/\\]?['"])\s*,\s*['"]['"]\s*\)/g,
+    severity: 'high',
+    cwe: 'CWE-22',
+    owasp: 'A01:2021',
+    confidence: 'high',
+    description: 'Stripping "../" once is bypassable: the input "....//" leaves a working "../" behind after the substitution, so the value still escapes the intended directory.',
+    fix: 'Do not sanitize by substitution. Resolve the path (path.resolve) and reject it unless it still starts with the intended base directory.',
+  },
 
   // ── XXE ────────────────────────────────────────────────────────────────────
   {
     rule: 'XXE_PARSER',
     title: 'XML External Entity (XXE) Injection',
-    regex: /(?:xml2js|libxmljs|DOMParser|parseString|parseXML)\s*(?:\.\w+\s*)?\(/g,
+    // The negative lookahead is what makes this rule worth trusting: a parser
+    // call that explicitly turns entity expansion off is the documented fix, and
+    // flagging it anyway trains people to ignore the rule.
+    regex: /(?:xml2js|libxmljs|DOMParser|parseString|parseXML)\s*(?:\.\w+\s*)?\((?![^)]*\b(?:noent|noEnt|resolveEntities|expandEntities|externalEntities)\s*:\s*(?:false|0)\b)/g,
     severity: 'high',
     cwe: 'CWE-611',
     owasp: 'A05:2017',

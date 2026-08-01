@@ -249,6 +249,63 @@ const PATTERNS = [
     fix: 'Use AES-256-GCM: createCipheriv("aes-256-gcm", key, iv)',
   },
   {
+    rule: 'WEAK_RANDOM_SECURITY_VALUE',
+    title: 'Insecure Randomness for a Security Value',
+    // Math.random() is a fast non-cryptographic PRNG with a predictable internal
+    // state — fine for jitter or sampling, disastrous for anything an attacker
+    // benefits from guessing.
+    //
+    // Two shapes, both single-line because the pattern agents scan one physical
+    // line at a time: assignment to a security-named variable, and the
+    // `Math.random().toString(36)` idiom, which exists almost exclusively to
+    // mint an identifier or token and is the form that actually appears in the
+    // wild (the security-relevant name is usually on the enclosing function).
+    regex: /\b(?:token|secret|key|nonce|salt|otp|code|password|passwd|sessionId|session_id|resetToken|reset_token|apiKey|api_key|uuid|guid)\w*\s*[:=][^;\n]{0,80}Math\s*\.\s*random\s*\(|Math\s*\.\s*random\s*\(\s*\)\s*\.\s*toString\s*\(\s*(?:36|16|32)\s*\)/g,
+    severity: 'high',
+    cwe: 'CWE-338',
+    owasp: 'A02:2021',
+    description: 'Math.random() is not cryptographically secure — its output is predictable from observed values, so any token built from it can be forged.',
+    fix: 'Use crypto.randomBytes(32).toString("hex") (Node) or crypto.getRandomValues() (browser).',
+  },
+  {
+    rule: 'STATIC_CRYPTO_IV',
+    title: 'Static or Hardcoded Initialization Vector',
+    // A fixed IV makes CBC/GCM deterministic: identical plaintexts produce
+    // identical ciphertexts, and for GCM it is outright catastrophic (nonce
+    // reuse leaks the authentication key).
+    regex: /(?:^|[^\w.])(?:IV|iv|initVector|init_vector|nonce)\w*\s*=\s*(?:Buffer\s*\.\s*from\s*\(\s*['"][^'"]+['"]|['"][^'"]{8,}['"]|new\s+Uint8Array\s*\(\s*\[)/g,
+    severity: 'high',
+    cwe: 'CWE-329',
+    owasp: 'A02:2021',
+    description: 'The initialization vector is a constant, so encryption is deterministic. A fresh random IV is required per encryption operation.',
+    fix: 'Generate per-call: const iv = crypto.randomBytes(16), and store it alongside the ciphertext.',
+  },
+  {
+    rule: 'TIMING_UNSAFE_SECRET_COMPARE',
+    title: 'Timing-Unsafe Comparison of a Secret',
+    // Short-circuiting string equality leaks how many leading bytes matched,
+    // which is enough to recover a token byte by byte over repeated requests.
+    regex: /\b\w*(?:token|secret|signature|hmac|digest|password|passwd|apiKey|api_key|hash)\w*\s*(?:===|==|!==|!=)\s*\w*(?:token|secret|signature|hmac|digest|password|passwd|apiKey|api_key|hash|supplied|expected|provided|stored|actual)\w*/gi,
+    severity: 'medium',
+    cwe: 'CWE-208',
+    owasp: 'A02:2021',
+    description: 'Comparing a secret with === returns as soon as bytes differ, leaking match length through response timing.',
+    fix: 'Use crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)) after checking lengths match.',
+  },
+  {
+    rule: 'JWT_NO_ALGORITHM_PINNING',
+    title: 'JWT Verified Without Pinning the Algorithm',
+    // Without an explicit algorithms list the library accepts whatever the
+    // token's own header claims — the root of the HS256/RS256 confusion attack,
+    // where a token signed with the public key as an HMAC secret verifies.
+    regex: /\bjwt\s*\.\s*verify\s*\(\s*[^,)]+,\s*[^,)]+\s*\)/g,
+    severity: 'high',
+    cwe: 'CWE-347',
+    owasp: 'A02:2021',
+    description: 'jwt.verify() was called with no options object, so the algorithm is taken from the attacker-supplied token header and no audience/issuer is enforced.',
+    fix: 'Pass { algorithms: ["HS256"], audience, issuer } explicitly as the third argument.',
+  },
+  {
     rule: 'HARDCODED_CRYPTO_KEY',
     title: 'Hardcoded Encryption Key',
     regex: /createCipher(?:iv)?\s*\([^,]+,\s*['"][^'"]+['"]/g,

@@ -18,18 +18,21 @@
 <style>
   :root {
     color-scheme: dark;
-    --bg: #000000;
-    --panel: #0b0b0b;
-    --panel-2: #151515;
-    --panel-3: #1f1f1f;
-    --border: #2b2b2b;
-    --border-soft: #191919;
-    --text: #f5f5f3;
-    --text-dim: #aeada8;
-    --muted: #6d6c68;
-    --accent: #3b82f6;
+    /* Linear-derived surface stack — void (canvas) -> carbon -> obsidian -> graphite (borders) */
+    --bg: #08090a;
+    --panel: #0f1011;
+    --panel-2: #161718;
+    --panel-3: #23252a;
+    --border: #23252a;
+    --border-soft: #1a1b1d;
+    --text: #ffffff;
+    --text-dim: #d0d6e0;
+    --muted: #8a8f98;
+    /* The one chromatic accent in the whole system — reserved for the single primary action
+       per view (and the one always-actionable Fix-flow box); never used decoratively. */
+    --accent: #3366ff;
     --accent-contrast: #ffffff;
-    --accent-soft: rgba(59, 130, 246, .16);
+    --accent-soft: rgba(51, 102, 255, .16);
     --ok: #4ade80;
     --ok-soft: rgba(74, 222, 128, .14);
     --warn: #fbbf24;
@@ -38,44 +41,44 @@
     --err-soft: rgba(248, 113, 113, .14);
     --crit: #ff3b30;
     --crit-soft: rgba(255, 59, 48, .18);
-    --scan: #38bdf8;
-    --scan-soft: rgba(56, 189, 248, .14);
-    --path: #38bdf8;
-    --path-soft: rgba(56, 189, 248, .12);
-    --triage: #a78bfa;
-    --triage-soft: rgba(167, 139, 250, .14);
-    --threat: #fb923c;
-    --threat-soft: rgba(251, 146, 60, .14);
-    --remediation: #2dd4bf;
-    --remediation-soft: rgba(45, 212, 191, .14);
+    --path: var(--text-dim);
+    --path-soft: var(--panel-3);
+    /* Three-and-a-bit radius vocabulary: xs for micro chrome, sm for badges, md for
+       buttons/inputs/compact cards, lg for larger panels, pill for tags/toggles. */
+    --radius-xs: 2px;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 12px;
+    --radius-pill: 9999px;
     --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
     font-family: var(--font);
   }
   :root[data-theme="light"] {
     color-scheme: light;
-    --bg: #faf9f5;
-    --panel: #ffffff;
-    --panel-2: #f3f1ea;
-    --panel-3: #ebe8df;
-    --border: #e4e1d6;
-    --border-soft: #eeece3;
-    --text: #21201c;
-    --text-dim: #4d4a42;
-    --muted: #8a8574;
-    --accent: #bd5b3a;
+    --bg: #ffffff;
+    --panel: #f6f6f7;
+    --panel-2: #eeeef0;
+    --panel-3: #e4e4e7;
+    --border: #e0e0e3;
+    --border-soft: #ececee;
+    --text: #08090a;
+    --text-dim: #3f4147;
+    --muted: #71757d;
+    --accent: #3366ff;
     --accent-contrast: #ffffff;
-    --accent-soft: rgba(189, 91, 58, .1);
-    --path: #0369a1;
-    --path-soft: rgba(3, 105, 161, .1);
-    --scan: #0369a1;
-    --scan-soft: rgba(3, 105, 161, .1);
-    --triage: #7c3aed;
-    --triage-soft: rgba(124, 58, 237, .1);
-    --threat: #c2610c;
-    --threat-soft: rgba(194, 97, 12, .1);
-    --remediation: #0f9c8f;
-    --remediation-soft: rgba(15, 156, 143, .1);
+    --accent-soft: rgba(51, 102, 255, .12);
+    /* Dark-theme severity/status colors (#4ade80/#fbbf24/#f87171/#ff3b30) are tuned for a black
+       canvas and fail contrast badly as text on white — darkened here for legibility; the
+       *-soft tint tokens are left pointing at the dark-theme rgba values (inherited, not
+       redefined below) since those are translucent backgrounds, not text, and read fine either
+       way as a pale wash behind the darker text/icon color. */
+    --ok: #15803d;
+    --warn: #a16207;
+    --err: #dc2626;
+    --crit: #991b1b;
+    --path: var(--text-dim);
+    --path-soft: var(--panel-3);
   }
   * { box-sizing: border-box; }
   body {
@@ -86,7 +89,10 @@
     height: 100vh;
     overflow: hidden;
     font-size: 13px;
+    font-weight: 400;
+    letter-spacing: -0.011em;
     -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv01" 1, "ss03" 1, "zero" 1;
   }
   .icon { width: 14px; height: 14px; flex-shrink: 0; display: inline-block; vertical-align: -2.5px; }
   .icon-lg { width: 17px; height: 17px; vertical-align: -3.5px; }
@@ -107,11 +113,11 @@
   }
   #nav-collapse-btn:hover { color: var(--text); border-color: var(--text-dim); box-shadow: none; }
   #nav-collapse-btn .icon { width: 12px; height: 12px; }
-  .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: .02em; padding: 6px 8px 20px; color: var(--text-dim); }
+  .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; letter-spacing: -.011em; padding: 6px 8px 20px; color: var(--text-dim); }
   .nav-brand .icon { color: var(--accent); }
   #global-nav.collapsed .nav-brand { justify-content: center; padding: 6px 0 20px; }
   .nav-item {
-    display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md);
     background: none; color: var(--muted); font-weight: 500; font-size: 12.5px; text-align: left;
     width: 100%; margin-bottom: 1px; border: none; position: relative;
   }
@@ -124,8 +130,8 @@
     margin-left: auto; min-width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
   }
   .nav-badge.alert {
-    width: auto; height: auto; min-width: 16px; padding: 1px 5px; border-radius: 20px;
-    font-size: 10px; font-weight: 700; text-align: center; line-height: 1.4;
+    width: auto; height: auto; min-width: 16px; padding: 1px 5px; border-radius: var(--radius-sm);
+    font-size: 10px; font-weight: 600; text-align: center; line-height: 1.4;
     font-variant-numeric: tabular-nums; background: var(--err-soft); color: var(--err);
   }
   .nav-badge.running { background: var(--warn); box-shadow: 0 0 8px 1px var(--warn); animation: pulse 1.2s infinite ease-in-out; }
@@ -138,7 +144,7 @@
   .nav-theme-row { justify-content: space-between; cursor: default; }
   .theme-switch {
     position: relative; width: 34px; height: 19px; min-width: 34px; padding: 0; margin: 0;
-    border: 1px solid var(--border); border-radius: 999px; background: var(--panel-3); cursor: pointer;
+    border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--panel-3); cursor: pointer;
     flex-shrink: 0; transition: background .15s, border-color .15s;
   }
   .theme-switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
@@ -148,14 +154,13 @@
     transition: transform .15s ease; box-shadow: 0 1px 2px rgba(0,0,0,.3);
   }
   .theme-switch[aria-checked="true"] .theme-switch-knob { transform: translateX(15px); }
-  .theme-switch-knob .icon { width: 10px; height: 10px; color: var(--text-dim); }
   .nav-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 8px; }
   #nav-collapse-icon { transition: transform .15s ease; }
   #global-nav.collapsed #nav-collapse-icon { transform: rotate(180deg); }
   #global-nav.collapsed #status { width: 9px; height: 9px; padding: 0; border-radius: 50%; font-size: 0; margin: 0 auto; }
 
   #status {
-    font-size: 10.5px; padding: 4px 8px; border-radius: 20px; border: 1px solid var(--border);
+    font-size: 10.5px; padding: 4px 8px; border-radius: var(--radius-pill); border: 1px solid var(--border);
     color: var(--muted); text-align: center; text-transform: uppercase; letter-spacing: .04em; font-weight: 600;
   }
   #status.connected { color: var(--ok); border-color: var(--border); background: var(--ok-soft); box-shadow: 0 0 10px -3px var(--ok); }
@@ -167,25 +172,25 @@
     padding: 18px 26px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
     display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
   }
-  .view-header h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+  .view-header h1 { margin: 0; font-size: 17px; font-weight: 500; letter-spacing: -.011em; font-family: var(--mono); }
   .view-subtitle { color: var(--muted); font-size: 12px; margin-top: 4px; }
   .view-subtitle.viewing-label { color: var(--accent); font-weight: 600; }
   .view-body { flex: 1; overflow-y: auto; padding: 20px 26px; }
-  .view-header-actions { display: flex; align-items: center; gap: 14px; }
+  .view-header-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
 
   .icon-btn {
     display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
-    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-dim);
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-dim);
     cursor: pointer; box-shadow: none; padding: 0; font-size: 13px;
   }
   .icon-btn:hover:not(:disabled) { background: var(--panel-3); filter: none; box-shadow: none; }
 
   /* ---------- per-page timeline clock button + drawer (Timeline is not a top-level nav item —
-     each of Reasoning Scans/SCA/Threat Model opens the same drawer, pre-scoped to its own kind,
-     via this small clock icon) ---------- */
+     both Hybrid Scan and Threat Model open the same drawer, pre-scoped to its own kind, via
+     this small clock icon) ---------- */
   .clock-btn {
     position: relative; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px;
-    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-dim);
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-dim);
     cursor: pointer; box-shadow: none; padding: 0;
   }
   .clock-btn:hover:not(:disabled) { background: var(--panel-3); filter: none; box-shadow: none; }
@@ -207,51 +212,51 @@
     padding: 16px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
     display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
   }
-  .timeline-drawer-header h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .timeline-drawer-header h2 { margin: 0; font-size: 15px; font-weight: 500; font-family: var(--mono); }
   .timeline-drawer-subtitle { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
   .timeline-drawer-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
 
   label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
   select, textarea, input {
     width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
-    border-radius: 8px; padding: 7px 9px; font-size: 13px; font-family: inherit;
+    border-radius: var(--radius-md); padding: 7px 9px; font-size: 13px; font-family: inherit;
   }
-  select:focus, textarea:focus, input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  select:focus, textarea:focus, input:focus { outline: none; border-color: var(--text-dim); }
   textarea { resize: vertical; font-family: var(--mono); font-size: 12px; }
   button {
-    background: var(--accent); color: var(--accent-contrast); border: none; border-radius: 8px;
+    background: var(--accent); color: var(--accent-contrast); border: 1px solid var(--accent); border-radius: var(--radius-md);
     padding: 8px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer;
-    box-shadow: 0 0 0 rgba(255,122,82,0); transition: box-shadow .15s ease, filter .15s ease;
+    box-shadow: none; transition: opacity .12s ease, background .12s ease;
   }
-  button:hover:not(:disabled) { filter: brightness(1.08); box-shadow: 0 0 16px -4px var(--accent); }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  button.secondary { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border); }
-  button.secondary:hover:not(:disabled) { filter: none; background: var(--panel-3); color: var(--text); box-shadow: none; }
+  button:hover:not(:disabled) { filter: none; opacity: .82; box-shadow: none; }
+  button:active:not(:disabled) { opacity: .68; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.secondary { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+  button.secondary:hover:not(:disabled) { filter: none; background: var(--panel-2); color: var(--text); box-shadow: none; opacity: 1; border-color: var(--text-dim); }
   .hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
 
   /* ---------- highlighted path / directory text ---------- */
   .path-text {
     font-family: var(--mono); color: var(--path); background: var(--path-soft);
-    padding: 1px 6px; border-radius: 5px; font-size: 11.5px; word-break: break-all;
+    padding: 1px 6px; border-radius: var(--radius-sm); font-size: 11.5px; word-break: break-all;
   }
   input.path-input { font-family: var(--mono); color: var(--path); }
   input.path-input::placeholder { font-family: var(--font); color: var(--muted); }
-  input.path-input:focus { border-color: var(--path); box-shadow: 0 0 0 3px var(--path-soft); }
 
   /* ---------- dashboard ---------- */
   .briefing {
-    border: 1px solid var(--border); border-left: 2px solid var(--accent); border-radius: 10px;
+    border: 1px solid var(--border); border-left: 2px solid var(--accent); border-radius: var(--radius-lg);
     background: var(--panel); padding: 11px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 18px; color: var(--text-dim);
   }
-  .briefing .briefing-tag { color: var(--accent); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 4px; }
+  .briefing .briefing-tag { color: var(--accent); font-weight: 600; font-size: 11px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 4px; }
 
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
-  .stat-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; }
+  .stat-tile { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 13px 14px; }
   .stat-tile .stat-icon {
-    color: var(--muted); margin-bottom: 10px; width: 30px; height: 30px; border-radius: 8px;
+    color: var(--muted); margin-bottom: 10px; width: 30px; height: 30px; border-radius: var(--radius-md);
     display: flex; align-items: center; justify-content: center; background: var(--panel-3);
   }
-  .stat-tile .stat-value { font-size: 26px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .stat-tile .stat-value { font-size: 26px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; font-family: var(--mono); }
   .stat-tile .stat-label { font-size: 11px; color: var(--muted); margin-top: 6px; }
   .stat-tile .stat-sub { font-size: 11px; margin-top: 3px; color: var(--muted); }
   .stat-tile.accent-warn .stat-icon { color: var(--warn); background: var(--warn-soft); }
@@ -261,8 +266,8 @@
   .stat-tile.accent-accent .stat-icon { color: var(--accent); background: var(--accent-soft); }
   .stat-tile.accent-accent .stat-sub { color: var(--accent); }
 
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; font-family: var(--mono); padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
 
   .placeholder-panel {
     display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
@@ -280,7 +285,7 @@
     background: var(--err-soft); color: var(--err); border: 1px solid rgba(248, 113, 113, .35);
     box-shadow: none; flex-shrink: 0; white-space: nowrap;
   }
-  .danger-btn:hover:not(:disabled) { background: var(--err); color: #2a0a0a; filter: none; box-shadow: 0 0 16px -4px var(--err); }
+  .danger-btn:hover:not(:disabled) { background: var(--err); color: #2a0a0a; filter: none; box-shadow: none; }
 
   .agent-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); }
   .agent-row:last-child { border-bottom: none; }
@@ -295,12 +300,12 @@
   .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 20px; }
   .quick-action-btn {
     display: flex; align-items: center; gap: 12px; text-align: left; background: var(--panel);
-    border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; box-shadow: none;
+    border: 1px solid var(--border); border-radius: var(--radius-md); padding: 13px 14px; box-shadow: none;
     color: var(--text); font-weight: 400;
   }
   .quick-action-btn:hover { border-color: var(--accent); background: var(--panel-2); filter: none; box-shadow: none; }
   .quick-action-btn .qa-icon {
-    width: 34px; height: 34px; border-radius: 8px; background: var(--panel-3); color: var(--accent);
+    width: 34px; height: 34px; border-radius: var(--radius-md); background: var(--panel-3); color: var(--accent);
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
   .quick-action-btn .qa-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -312,17 +317,17 @@
   .filter-pills { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
   .filter-pill {
     background: var(--panel); color: var(--muted); border: 1px solid var(--border);
-    border-radius: 20px; padding: 5px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+    border-radius: var(--radius-pill); padding: 5px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer;
     display: flex; align-items: center; gap: 6px;
   }
   .filter-pill:hover { color: var(--text-dim); }
   .filter-pill .fp-dot { width: 6px; height: 6px; border-radius: 50%; }
   .filter-pill.active { background: var(--panel-2); color: var(--text); border-color: var(--accent); }
 
-  .timeline-date { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; margin: 20px 0 8px; }
+  .timeline-date { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin: 20px 0 8px; font-family: var(--mono); }
   .timeline-date:first-child { margin-top: 0; }
   .timeline-row {
-    display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px;
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md);
     border-left: 2px solid var(--border); background: var(--panel); margin-bottom: 5px; cursor: pointer;
   }
   .timeline-row .tl-icon { margin-top: 2px; color: var(--muted); }
@@ -331,70 +336,67 @@
   .tl-top .badge { margin-left: auto; }
   .tl-title { font-size: 12.5px; font-weight: 600; }
   .tl-summary { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
-  .tl-time { font-size: 10.5px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  .tl-time { font-size: 10.5px; color: var(--muted); white-space: nowrap; flex-shrink: 0; font-family: var(--mono); }
   #timeline-empty { color: var(--muted); font-size: 12.5px; padding: 40px 0; text-align: center; }
 
   /* ---------- scan kickoff (lives on the Dashboard) ---------- */
-  .scan-form { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 12px; }
-  .scan-form-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
-  .scan-start-btn {
-    background: var(--ok-soft); color: var(--ok);
-    border: 1px solid rgba(74, 222, 128, .35); box-shadow: none;
-  }
-  .scan-start-btn:hover:not(:disabled) { background: var(--ok); color: #06210f; filter: none; box-shadow: 0 0 16px -4px var(--ok); }
-  .atm-start-btn { background: rgba(244, 114, 182, .14); color: #f472b6; border: 1px solid rgba(244, 114, 182, .35); }
-  .atm-start-btn:hover:not(:disabled) { background: #f472b6; color: #3a0a20; filter: none; box-shadow: 0 0 16px -4px #f472b6; }
+  .scan-form { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .scan-form-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; font-family: var(--mono); }
+  /* .scan-start-btn / .atm-start-btn carry no color override of their own anymore — every
+     "start" action (scan, app threat model, control scan) uses the same solid monochrome
+     accent as any other primary button; there's no reason a kickoff action gets its own hue. */
   .scan-field-row { display: flex; gap: 10px; }
   .label-optional { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .7; }
   .scan-section { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .scan-agents-caption { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; flex-shrink: 0; }
   #scan-note-toggle-btn { margin-left: auto; font-size: 11px; }
 
-  .scan-scope-row { gap: 10px; }
+  .scan-scope-row { gap: 10px; flex-wrap: nowrap; }
 
-  /* Single column, full width — a Reasoning Scan card now shows two engine progress bars
-     (deterministic + reasoning) side by side, which needs more horizontal room than the old
-     2-column grid gave it. SCA Scan's #sca-live-container has no matching rule and already
-     stacks full-width by default (single engine, nothing to widen for). */
+  /* Single column, full width — a Hybrid Scan card shows three engine progress bars
+     (deterministic + reasoning + SCA) side by side, which needs more horizontal room than an
+     older 2-column grid gave it. */
   #scan-live-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
   .scan-engine-bars { display: flex; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); }
   .scan-engine-bar { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-  .scan-engine-bar-label { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+  .scan-engine-bar-label { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
   .scan-engine-bar-label .engine-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-  .scan-engine-bar-track { height: 5px; border-radius: 4px; background: var(--panel-3); overflow: hidden; }
-  .scan-engine-bar-fill { height: 100%; border-radius: 4px; transition: width .3s ease; }
+  .scan-engine-bar-track { height: 5px; border-radius: var(--radius-xs); background: var(--panel-3); overflow: hidden; }
+  .scan-engine-bar-fill { height: 100%; border-radius: var(--radius-xs); transition: width .3s ease; }
   .scan-engine-bar-fill.done { opacity: .55; }
   .scan-engine-bar-stat { font-size: 11px; color: var(--muted); }
   .stage-agent .path-text { font-size: 12.5px; }
   .scan-meta-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); }
-  .scan-type-chip { display: inline-flex; align-items: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
-  .scan-type-chip.scope-chip { background: var(--panel-3); color: var(--muted); }
-  /* Which of Reasoning Scan's two engines found this finding — see findingSourceTagHtml(). */
-  .finding-source-tag { display: inline-flex; align-items: center; margin-left: 7px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 20px; white-space: nowrap; vertical-align: middle; }
+  .scan-type-chip {
+    display: inline-flex; align-items: center; font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .03em; padding: 2px 8px; border-radius: var(--radius-sm); white-space: nowrap;
+    background: var(--panel-3); color: var(--text-dim);
+  }
+  .scan-type-chip.scope-chip { color: var(--muted); }
+  /* Which of Hybrid Scan's engines found this finding — see findingSourceTagHtml(). */
+  .finding-source-tag {
+    display: inline-flex; align-items: center; margin-left: 7px; font-size: 9.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: var(--radius-sm);
+    white-space: nowrap; vertical-align: middle; background: var(--panel-3); color: var(--text-dim);
+  }
   .scan-meta-text { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
-  .scan-stats { display: flex; align-items: center; gap: 14px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+  .scan-stats { display: flex; align-items: center; gap: 14px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; font-family: var(--mono); }
   .scan-stats .stat b { color: var(--text-dim); font-weight: 600; }
   .scan-status-stat { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
-  .context-bar-wrap { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; border-bottom: 1px solid var(--border-soft); }
-  .context-bar { flex: 1; height: 5px; background: var(--panel-3); border-radius: 3px; overflow: hidden; }
-  .context-bar-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width .3s ease, background-color .3s ease; }
-  .context-bar-fill.warn { background: var(--warn); }
-  .context-bar-fill.danger { background: var(--err); }
-  .context-bar-label { font-size: 10px; color: var(--muted); flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .scan-error-msg { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11.5px; color: var(--err); }
   /* Non-fatal: a partial engine/module failure the scan still recovered from (e.g. one
      reasoning module hit its budget cap, or the deterministic half errored but the reasoning
      half still produced results) — amber, not red, and never stops the scan or its timer. */
   .scan-warning-msg { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11.5px; color: var(--warn); white-space: pre-line; }
   .scan-sev-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); min-height: 15px; }
-  .sev-chip { font-size: 10.5px; font-weight: 700; text-transform: capitalize; padding: 2px 8px; border-radius: 20px; }
+  .sev-chip { font-size: 10.5px; font-weight: 600; text-transform: capitalize; padding: 2px 8px; border-radius: var(--radius-sm); }
   .scan-live-findings { padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
   .scan-live-findings:not(:empty) { border-bottom: 1px solid var(--border-soft); }
   .scan-live-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; font-size: 11.5px; line-height: 1.4; }
   .scan-live-row .sev-dot { margin-top: 4px; flex-shrink: 0; }
   .scan-live-row .scan-live-text { color: var(--text-dim); min-width: 0; }
   .scan-results { padding: 6px; display: flex; flex-direction: column; gap: 3px; border-bottom: 1px solid var(--border-soft); max-height: 220px; overflow-y: auto; }
-  .scan-result-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+  .scan-result-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px; border-radius: var(--radius-md); cursor: pointer; }
   .scan-result-row:hover { background: var(--panel-3); }
   .scan-result-row .sev-dot { margin-top: 4px; }
   .scan-result-main { min-width: 0; flex: 1; }
@@ -404,7 +406,7 @@
   .scan-actions button { font-size: 11.5px; padding: 5px 10px; }
 
   /* ---------- timeline scan rows (expandable inline) ---------- */
-  .tl-kind { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+  .tl-kind { display: block; font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
   .timeline-row.expandable { flex-direction: column; align-items: stretch; cursor: pointer; }
   .timeline-row-body { border-top: 1px solid var(--border-soft); margin: 8px -12px -10px; padding: 8px 12px 2px; }
 
@@ -412,7 +414,7 @@
   #settings-env { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 
   /* ---------- findings row bits (reused by scan-result rows too) ---------- */
-  .finding-row { display: flex; align-items: flex-start; gap: 8px; padding: 9px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; border-left: 2px solid transparent; }
+  .finding-row { display: flex; align-items: flex-start; gap: 8px; padding: 9px 8px; border-radius: var(--radius-md); cursor: pointer; border: 1px solid transparent; border-left: 2px solid transparent; }
   .finding-row:hover { background: var(--panel); }
   .sev-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
   .sev-dot.critical { background: var(--crit); }
@@ -429,7 +431,7 @@
   .findings-scan-filter-wrap label { font-size: 11px; color: var(--muted); font-weight: 600; }
   .scan-filter-dropdown { position: relative; }
   .scan-filter-btn {
-    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-md);
     padding: 6px 10px; font-size: 12px; font-family: inherit; cursor: pointer; white-space: nowrap;
     max-width: 320px; overflow: hidden; text-overflow: ellipsis; display: block;
   }
@@ -437,27 +439,27 @@
   .scan-filter-menu {
     position: absolute; top: calc(100% + 6px); left: 0; min-width: 300px; max-width: 420px;
     max-height: 320px; overflow-y: auto; background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; box-shadow: 0 12px 28px -10px rgba(0,0,0,.5); z-index: 40; padding: 6px;
+    border-radius: var(--radius-md); box-shadow: 0 12px 28px -10px rgba(0,0,0,.5); z-index: 40; padding: 6px;
   }
   .scan-filter-item {
-    display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 6px;
+    display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--radius-xs);
     padding: 8px 9px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis;
   }
   .scan-filter-item:hover { background: var(--panel-2); }
   .scan-filter-item.active { background: var(--pill-bg, rgba(167,139,250,.14)); color: var(--accent); font-weight: 600; }
-  .group-toggle { display: flex; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
-  .group-toggle-btn { background: none; color: var(--muted); border: none; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; box-shadow: none; }
+  .group-toggle { display: flex; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 2px; gap: 2px; }
+  .group-toggle-btn { background: none; color: var(--muted); border: none; border-radius: var(--radius-xs); padding: 6px 12px; font-size: 11.5px; font-weight: 600; box-shadow: none; }
   .group-toggle-btn:hover:not(:disabled) { filter: none; box-shadow: none; color: var(--text-dim); }
   .group-toggle-btn.active { background: var(--panel-2); color: var(--text); }
   .group-toggle-btn .gt-count { opacity: .6; margin-left: 3px; font-variant-numeric: tabular-nums; }
 
   #findings-view-body { display: flex; flex-direction: column; min-height: 0; gap: 12px; }
-  .findings-table-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: auto; flex: 1; }
+  .findings-table-wrap { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: auto; flex: 1; }
   table.findings-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .findings-table thead th {
     position: sticky; top: 0; background: var(--panel); text-align: left; font-size: 10.5px;
-    text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600;
     padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; user-select: none;
   }
   .findings-table thead th.sortable { cursor: pointer; }
@@ -495,7 +497,7 @@
   .loop-seg.attention { background: var(--err); }
   .loop-status-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .loop-status-text { font-size: 11px; color: var(--muted); }
-  .loop-status-text.accent { color: var(--remediation); }
+  .loop-status-text.accent { color: var(--text-dim); font-weight: 600; }
   .loop-status-text.ok { color: var(--ok); font-weight: 600; }
   .loop-status-text.attention { color: var(--err); }
   .loop-view-diff { display: inline-flex; align-items: center; gap: 3px; background: none; border: none; padding: 0; color: var(--ok); font-size: 11px; font-weight: 600; cursor: pointer; }
@@ -504,7 +506,7 @@
 
   /* ---------- diff modal (a write-capable Remediation run's git diff, the one place this app shows the result
      of an agent actually writing to the user's real files) ---------- */
-  .diff-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 0; max-height: 50vh; overflow-y: auto; }
+  .diff-block { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 0; max-height: 50vh; overflow-y: auto; }
   .diff-line { padding: 0 14px; }
   .diff-line.add { background: var(--ok-soft); color: var(--ok); }
   .diff-line.del { background: var(--err-soft); color: var(--err); }
@@ -513,21 +515,28 @@
 
   /* ---------- finding detail (full page) ---------- */
   #fd-back-btn { font-size: 11px; margin-bottom: 6px; padding: 0; }
+  /* The Triage/Remediate/Fix/Verify boxes used to sit to the right of the title in a single row
+     — on a long title that wraps to two lines, the boxes had to squeeze into whatever width was
+     left, reading as cramped. Stacking the actions into their own full-width row below the
+     title gives them room to lay out as a proper stepper regardless of title length. */
+  #view-finding-detail .view-header { flex-direction: column; align-items: stretch; }
+  #fd-header-actions { width: 100%; }
   /* Triage/Fix/Verify boxes + "run all" button, replacing the old "Agent Runs ▾" dropdown's
      fix-flow entries — each box is independently clickable when its stage is actionable, states
      mirror the Agent Triage table's loop-seg colors (pending/running/done/attention). */
-  .fd-loop-boxes { display: flex; gap: 8px; flex-wrap: wrap; }
+  .fd-loop-boxes { display: flex; gap: 6px; flex-wrap: wrap; }
   .fd-loop-box {
-    display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px;
-    border: 1px solid var(--border); background: var(--panel); min-width: 118px; text-align: left;
+    display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: var(--radius-md);
+    border: 1px solid var(--border); background: var(--panel); min-width: 0; text-align: left;
     cursor: default; color: inherit; font-family: inherit;
   }
-  .fd-loop-box .icon { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
+  .fd-loop-box .icon { width: 13px; height: 13px; flex-shrink: 0; color: var(--muted); }
   .fd-loop-box-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-  .fd-loop-box-label { font-size: 11px; font-weight: 700; color: var(--text); }
-  .fd-loop-box-status { font-size: 10.5px; color: var(--muted); }
+  .fd-loop-box-label { font-size: 10.5px; font-weight: 600; color: var(--text); }
+  .fd-loop-box-caption { font-size: 9px; color: var(--muted); line-height: 1.25; }
+  .fd-loop-box-status { font-size: 9.5px; color: var(--muted); margin-top: 0; }
   .fd-loop-box.clickable { cursor: pointer; }
-  .fd-loop-box.clickable:hover { border-color: var(--remediation); background: var(--remediation-soft); }
+  .fd-loop-box.clickable:hover { border-color: var(--accent); background: var(--accent-soft); }
   .fd-loop-box:disabled { opacity: .55; }
   .fd-loop-box.state-running .icon { color: var(--warn); }
   .fd-loop-box.state-running .fd-loop-box-status { color: var(--warn); }
@@ -536,58 +545,63 @@
   .fd-loop-box.state-attention .icon { color: var(--err); }
   .fd-loop-box.state-attention .fd-loop-box-status { color: var(--err); font-weight: 600; }
   .fd-loop-runall-btn {
-    display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 10px;
-    border: 1px solid var(--remediation); background: transparent; color: var(--remediation);
+    display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: var(--radius-md);
+    border: 1px solid var(--accent); background: transparent; color: var(--accent);
     font-size: 11.5px; font-weight: 600; cursor: pointer;
   }
   .fd-loop-runall-btn .icon { width: 13px; height: 13px; }
-  .fd-loop-runall-btn:hover:not(:disabled) { background: var(--remediation-soft); }
+  .fd-loop-runall-btn:hover:not(:disabled) { background: var(--accent-soft); }
   .fd-loop-runall-btn:disabled { opacity: .35; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
   .fd-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
   .fd-scan-source { font-size: 11.5px; color: var(--muted); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .fd-scan-source .link-btn { font-size: 11.5px; }
   .fd-scan-source .mono { font-family: var(--mono); color: var(--text-dim); }
   .fd-meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 18px; }
-  .fd-meta-item { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
-  .fd-meta-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; margin-bottom: 3px; }
+  .fd-meta-item { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 9px 12px; }
+  .fd-meta-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; margin-bottom: 3px; }
   .fd-meta-value { font-size: 12.5px; color: var(--text-dim); word-break: break-word; }
   .fd-meta-value.mono { font-family: var(--mono); font-size: 11.5px; }
   .fd-section { margin-bottom: 22px; }
-  .fd-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+  .fd-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; font-family: var(--mono); margin-bottom: 8px; }
   .fd-prose { font-size: 13px; line-height: 1.6; color: var(--text-dim); white-space: pre-wrap; }
   .fd-code-wrap { position: relative; }
-  .code-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 0; }
+  .code-block { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 14px; font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 0; }
   .fd-copy-btn { position: absolute; top: 8px; right: 8px; font-size: 10.5px; padding: 4px 9px; }
   .tok-keyword { color: var(--accent); font-weight: 600; }
   .tok-string { color: var(--ok); }
   .tok-comment { color: var(--muted); font-style: italic; }
   .tok-number { color: var(--warn); }
   .fd-runs-empty { color: var(--muted); font-size: 12px; }
-  .fd-run-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .fd-run-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 10px; }
   .fd-run-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
   .fd-run-agent { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
-  .fd-run-time { font-size: 10.5px; color: var(--muted); margin-left: auto; }
+  .fd-run-time { font-size: 10.5px; color: var(--muted); margin-left: auto; font-family: var(--mono); }
   .fd-view-tm-btn { margin-top: 8px; }
   .fd-verdict-grid { display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
   .fd-verdict-item { display: flex; flex-direction: column; gap: 2px; }
-  .fd-verdict-item b { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; }
-  .fd-verdict-item span { color: var(--text-dim); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .fd-verdict-item b { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .fd-verdict-item .fd-verdict-value { color: var(--text-dim); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
   .fd-verdict-reasoning { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+  .fd-verdict-reasoning code, .fd-verdict-value code { background: var(--panel-3); padding: 1px 5px; border-radius: var(--radius-xs); font-family: var(--mono); font-size: 11px; white-space: normal; word-break: break-word; }
+  .fd-verdict-reasoning strong, .fd-verdict-value strong { font-weight: 600; color: var(--text); }
+  .fd-verdict-list { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 5px; }
+  .fd-verdict-list li { line-height: 1.5; }
+  .fd-verdict-codeblock { font-size: 11.5px; padding: 9px 12px; line-height: 1.6; }
 
   /* ---------- live console (per-run raw reasoning stream, opt-in via a small toggle button;
      shown only for runs with a live tracking object this browser session — see CLAUDE.md) ---------- */
-  .console-toggle-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; padding: 0; flex-shrink: 0; }
+  .console-toggle-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: transparent; color: var(--muted); cursor: pointer; padding: 0; flex-shrink: 0; }
   .console-toggle-btn:hover { color: var(--text); border-color: var(--muted); }
   .console-toggle-btn .icon { width: 13px; height: 13px; }
   .console-toggle-btn.active { color: var(--accent); border-color: var(--accent); }
-  .console-panel { margin-top: 8px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--ok); max-height: 220px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+  .console-panel { margin-top: 8px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--ok); max-height: 220px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
   .console-panel:empty::before { content: 'Waiting for model output…'; opacity: .6; font-style: italic; color: var(--muted); }
 
   /* ---------- app-level (whole-directory) threat models ---------- */
   .atm-section { margin-bottom: 20px; }
-  .atm-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+  .atm-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; font-family: var(--mono); margin-bottom: 8px; }
   .atm-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-  .atm-row { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
+  .atm-row { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 9px 12px; }
   .atm-row:hover { border-color: var(--text-dim); }
   .atm-row.expanded { border-color: var(--accent); }
   .atm-row-summary { display: flex; align-items: center; gap: 10px; cursor: pointer; }
@@ -596,24 +610,23 @@
   .atm-row-title { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .atm-row-sub { font-size: 10.5px; color: var(--muted); }
   .atm-row .atm-live-stats { padding: 6px 0 0; border-bottom: none; gap: 10px; }
-  .atm-row .atm-context-wrap { padding: 6px 0 0; border-bottom: none; }
   .atm-row-body { margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--border-soft); cursor: default; }
   .atm-detail-item { font-size: 12.5px; color: var(--text-dim); margin-bottom: 8px; line-height: 1.5; }
   .atm-detail-item b { color: var(--text); font-weight: 600; }
-  .atm-risk-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+  .atm-risk-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
   .atm-risk-card.selected { border-color: var(--accent); }
   .atm-risk-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .atm-recs { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-dim); line-height: 1.7; }
 
   /* ---------- controls assist (NIST 800-53 control identification for SSP drafting) ---------- */
   .ca-family-group { margin-bottom: 16px; }
-  .ca-family-header { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
-  .ca-control-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .ca-family-header { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; font-family: var(--mono); margin-bottom: 8px; }
+  .ca-control-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 8px; }
   .ca-control-top { font-size: 12.5px; margin-bottom: 2px; }
   .ca-control-top b { color: var(--text); }
 
   /* ---------- threat model (category x severity heat map + attack-path report) ---------- */
-  .tm-diagram-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; overflow-x: auto; }
+  .tm-diagram-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 16px; overflow-x: auto; }
   /* Category (row) x severity (column) grid, replacing an earlier tree/org-chart diagram which
      itself replaced a radial hub-and-spoke — both were "where does this finding sit visually,"
      which this heat map answers more directly for triage: darker cell = more findings of that
@@ -634,11 +647,11 @@
   .tm-heat-row-cells { display: flex; gap: 4px; }
   .tm-heat-col-label {
     width: 76px; flex-shrink: 0; text-align: center; font-size: 9.5px; text-transform: uppercase;
-    letter-spacing: .03em; font-weight: 700; color: var(--muted); padding: 4px 0;
+    letter-spacing: .03em; font-weight: 600; color: var(--muted); padding: 4px 0;
   }
   .tm-heat-cell {
-    width: 76px; flex-shrink: 0; min-height: 34px; border-radius: 6px; border: 1px solid var(--border);
-    background: var(--panel-2); color: var(--text-dim); font-size: 12px; font-weight: 700;
+    width: 76px; flex-shrink: 0; min-height: 34px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text-dim); font-size: 12px; font-weight: 600;
     font-family: inherit; cursor: default;
   }
   .tm-heat-cell.has-findings { cursor: pointer; color: #08110a; }
@@ -652,13 +665,13 @@
 
   .tm-cell-findings { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
   .tm-cell-finding-item {
-    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 20px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-pill);
     padding: 5px 12px; font-size: 11.5px; font-family: inherit; cursor: pointer; white-space: nowrap;
   }
   .tm-cell-finding-item:hover { background: var(--panel-3); }
   .tm-cell-finding-item.active { border-color: var(--accent); color: var(--accent); background: var(--pill-bg, rgba(167,139,250,.14)); }
 
-  .tm-detail-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .tm-detail-panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
   .tm-detail-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .tm-run-select-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .tm-run-select-wrap label { font-size: 11px; color: var(--muted); font-weight: 600; }
@@ -668,14 +681,14 @@
   .tm-flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
   .tm-flow-box {
     flex: 1 1 160px; min-width: 160px; background: var(--panel-2); border: 1px solid var(--border);
-    border-top: 3px solid var(--box-color, var(--border)); border-radius: 8px; padding: 10px 12px;
+    border-top: 3px solid var(--box-color, var(--border)); border-radius: var(--radius-md); padding: 10px 12px;
   }
-  .tm-flow-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; margin-bottom: 5px; }
+  .tm-flow-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; margin-bottom: 5px; }
   .tm-flow-text { font-size: 12px; line-height: 1.5; color: var(--text-dim); }
   .tm-flow-arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 16px; flex: 0 0 auto; padding: 0 2px; }
   .tm-view-finding-btn { margin-top: 14px; }
 
-  .stage-card { width: 100%; flex-shrink: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .stage-card { width: 100%; flex-shrink: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; flex-direction: column; overflow: hidden; }
   .stage-card.status-error { border-color: var(--err); }
   .stage-card.status-done { border-color: var(--border); }
 
@@ -691,28 +704,29 @@
   .status-text.done { color: var(--ok); }
   .status-text.error, .status-text.cancelled { color: var(--err); }
 
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
   .badge.confirmed, .badge.high, .badge.p0 { background: var(--err-soft); color: var(--err); }
   .badge.critical { background: var(--crit-soft); color: var(--crit); }
   .badge.needs_review, .badge.medium, .badge.p1, .badge.in_review { background: var(--warn-soft); color: var(--warn); }
   .badge.false_positive, .badge.low, .badge.p2, .badge.p3, .badge.informational, .badge.duplicate, .badge.remediation_ready { background: var(--ok-soft); color: var(--ok); }
-  .badge.remediation_generated { background: var(--accent-soft); color: var(--accent); }
-  .badge.verified_fixed { background: var(--ok-soft); color: var(--ok); font-weight: 700; }
+  .badge.remediation_generated { background: rgba(109,108,104,.18); color: var(--muted); }
+  .badge.verified_fixed, .badge.applied { background: var(--ok-soft); color: var(--ok); font-weight: 600; }
+  .badge.not_applied { background: var(--warn-soft); color: var(--warn); }
   .badge.new { background: rgba(109,108,104,.18); color: var(--muted); }
   .badge.closed { background: rgba(109,108,104,.18); color: var(--muted); }
-  .badge.whole-app { background: rgba(96,165,250,.16); color: #60a5fa; margin-left: 4px; }
+  .badge.whole-app { background: rgba(109,108,104,.18); color: var(--muted); margin-left: 4px; }
   .badge.app_addressed, .badge.implemented { background: var(--ok-soft); color: var(--ok); }
   .badge.partially_addressed, .badge.partially_implemented, .badge.planned { background: var(--warn-soft); color: var(--warn); }
   .badge.inherited, .badge.not_applicable { background: rgba(109,108,104,.18); color: var(--muted); }
 
-  #context-menu { position: fixed; z-index: 70; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 4px; box-shadow: 0 8px 20px rgba(0,0,0,.35); min-width: 240px; }
-  #context-menu button { display: block; width: 100%; text-align: left; background: none; color: var(--text-dim); border: none; padding: 8px 10px; font-size: 12px; font-weight: 400; border-radius: 6px; }
+  #context-menu { position: fixed; z-index: 70; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; box-shadow: 0 8px 20px rgba(0,0,0,.35); min-width: 240px; }
+  #context-menu button { display: block; width: 100%; text-align: left; background: none; color: var(--text-dim); border: none; padding: 8px 10px; font-size: 12px; font-weight: 400; border-radius: var(--radius-xs); }
   #context-menu button:hover:not(:disabled) { background: var(--panel-3); color: var(--text); }
   #context-menu button:disabled { color: var(--muted); opacity: .5; }
 
   .modal-overlay { position: fixed; inset: 0; background: rgba(4,5,7,.6); z-index: 60; display: flex; align-items: center; justify-content: center; }
-  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: 480px; max-width: 90vw; padding: 18px; display: flex; flex-direction: column; gap: 10px; max-height: 88vh; overflow-y: auto; }
-  .modal h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); width: 480px; max-width: 90vw; padding: 18px; display: flex; flex-direction: column; gap: 10px; max-height: 88vh; overflow-y: auto; }
+  .modal h3 { margin: 0 0 4px; font-size: 14px; font-weight: 500; font-family: var(--mono); }
   .modal textarea { min-height: 70px; }
   #stage-modal-context { min-height: 120px; }
   #finding-modal-description { min-height: 140px; }
@@ -734,13 +748,8 @@
   </button>
   <button class="nav-item" data-view="scans">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/></svg>
-    <span>Reasoning Scan</span>
+    <span>Hybrid Scan</span>
     <span class="nav-badge" id="nav-badge-scans" hidden></span>
-  </button>
-  <button class="nav-item" data-view="sca">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.2 12 4l8.5 4.2v7.6L12 20 3.5 15.8V8.2Z"/><path d="M3.5 8.2 12 12l8.5-3.8"/><path d="M12 12v8"/></svg>
-    <span>SCA Scan</span>
-    <span class="nav-badge" id="nav-badge-sca" hidden></span>
   </button>
   <button class="nav-item" data-view="controls-assist">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M9.5 3.5h5a1 1 0 0 1 1 1V6h-7V4.5a1 1 0 0 1 1-1Z"/><path d="m9.5 11 1.5 1.5L14 9M9.5 15.5h5"/></svg>
@@ -767,10 +776,7 @@
     <div class="nav-item nav-theme-row">
       <span id="nav-theme-label">Dark theme</span>
       <button class="theme-switch" id="nav-theme-btn" type="button" role="switch" aria-checked="true" title="Toggle theme">
-        <span class="theme-switch-knob">
-          <svg class="icon" id="nav-theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
-          <svg class="icon" id="nav-theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>
-        </span>
+        <span class="theme-switch-knob"></span>
       </button>
     </div>
     <button class="nav-item" data-view="settings">
@@ -796,7 +802,7 @@
         <span class="qa-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 12 18 8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/></svg></span>
         <span class="qa-text">
           <span class="qa-title">Start a scan</span>
-          <span class="qa-sub">Kick off a reasoning or custom scan against a directory</span>
+          <span class="qa-sub">Kick off a hybrid scan against a directory</span>
         </span>
         <span class="qa-arrow">→</span>
       </button>
@@ -821,8 +827,8 @@
 <div id="view-scans" class="view" hidden>
   <div class="view-header">
     <div>
-      <h1>Reasoning Scan</h1>
-      <div class="view-subtitle">Kick off a reasoning scan and watch it run live</div>
+      <h1>Hybrid Scan</h1>
+      <div class="view-subtitle">Kick off a hybrid scan (pattern matching, LLM reasoning, and a dependency audit) and watch it run live</div>
     </div>
     <div class="view-header-actions">
       <div class="scan-section scan-scope-row" style="margin:0;">
@@ -835,7 +841,7 @@
           <input id="scan-base-branch-input" class="path-input" placeholder="Base branch to diff against, e.g. main" />
         </div>
       </div>
-      <button class="clock-btn" id="scans-clock-btn" type="button" title="View Reasoning Scan timeline">
+      <button class="clock-btn" id="scans-clock-btn" type="button" title="View Hybrid Scan timeline">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
         <span class="clock-btn-dot" id="scans-clock-dot" hidden></span>
       </button>
@@ -844,7 +850,7 @@
   <div class="view-body">
     <div class="scan-form">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-        <div class="scan-form-title">New reasoning scan</div>
+        <div class="scan-form-title">New hybrid scan</div>
         <div style="display:flex; align-items:center; gap:6px;">
           <span class="scan-agents-caption">Budget cap</span>
           <div class="group-toggle" id="scan-budget-toggle">
@@ -874,45 +880,6 @@
       <button id="scan-start-btn" class="scan-start-btn" style="width:100%;">Start scan</button>
     </div>
     <div id="scan-live-container"></div>
-  </div>
-</div>
-
-<div id="view-sca" class="view" hidden>
-  <div class="view-header">
-    <div>
-      <h1>SCA Scan</h1>
-      <div class="view-subtitle">Software Composition Analysis — dependency manifests & lockfiles, checked separately from code reasoning</div>
-    </div>
-    <div class="view-header-actions">
-      <button class="clock-btn" id="sca-clock-btn" type="button" title="View SCA Scan timeline">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
-        <span class="clock-btn-dot" id="sca-clock-dot" hidden></span>
-      </button>
-    </div>
-  </div>
-  <div class="view-body">
-    <div class="scan-form">
-      <div class="scan-form-title">New SCA scan</div>
-
-      <div>
-        <label for="sca-path-input">Target directory</label>
-        <input id="sca-path-input" class="path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
-      </div>
-
-      <div class="scan-field-row">
-        <div style="flex:1; min-width:0;">
-          <label for="sca-branch-input">Branch <span class="label-optional">optional</span></label>
-          <input id="sca-branch-input" class="path-input" placeholder="e.g. main" />
-        </div>
-        <div style="flex:1; min-width:0;">
-          <label for="sca-app-input">App / service <span class="label-optional">optional</span></label>
-          <input id="sca-app-input" placeholder="e.g. Payments API" />
-        </div>
-      </div>
-
-      <button id="sca-start-btn" class="scan-start-btn" style="width:100%;">Start SCA scan</button>
-    </div>
-    <div id="sca-live-container"></div>
   </div>
 </div>
 
@@ -1140,7 +1107,7 @@
       <div style="flex:1; min-width:0;">
         <label for="finding-modal-scantype">Type</label>
         <select id="finding-modal-scantype">
-          <option value="reasoning" selected>Reasoning Scan</option>
+          <option value="reasoning" selected>Hybrid Scan</option>
           <option value="sca">SCA</option>
         </select>
       </div>
@@ -1244,17 +1211,20 @@ function icon(name, cls) {
 // verdict now, not a live agent stage, see CLAUDE.md), so GET /api/agents can never return it;
 // including it here permanently capped knownAgentsAvailableCount() at 3/4 on a healthy install.
 const KNOWN_AGENTS = ['threat_model', 'remediation', 'verify'];
+// Kind is differentiated by icon + label text only, not hue — color in this app is reserved
+// for real signal (severity, running/done/error state), not decorative category-tagging.
 const AGENT_META = {
-  scan: { label: 'Scan', icon: 'radar', color: '#38bdf8', role: 'Reads a directory and creates findings' },
-  triage: { label: 'Triage', icon: 'search', color: '#a78bfa', role: 'First pass: real finding or noise, how urgent' },
-  threat_model: { label: 'Threat Model', icon: 'target', color: '#fb923c', role: 'Exploit path, preconditions, blast radius' },
-  remediation: { label: 'Remediation', icon: 'wrench', color: '#2dd4bf', role: 'Concrete fix guidance' },
-  verify: { label: 'Verify', icon: 'checkCircle', color: '#4ade80', role: 'Re-checks the live code to confirm a fix actually landed' },
-  app_threat_model: { label: 'App Threat Model', icon: 'shield', color: '#f472b6', role: 'Whole-app architecture-level threat model' },
-  controls_assist: { label: 'Control Scan', icon: 'clipboard', color: '#60a5fa', role: 'Whole-app NIST 800-53 control identification for SSP drafting' },
+  scan: { label: 'Scan', icon: 'radar', color: 'var(--text-dim)', role: 'Reads a directory and creates findings' },
+  triage: { label: 'Triage', icon: 'search', color: 'var(--text-dim)', role: 'First pass: real finding or noise, how urgent' },
+  threat_model: { label: 'Threat Model', icon: 'target', color: 'var(--text-dim)', role: 'Exploit path, preconditions, blast radius' },
+  remediation: { label: 'Remediate', icon: 'wrench', color: 'var(--text-dim)', role: 'Proposes a fix for review — writes nothing' },
+  fix: { label: 'Fix', icon: 'edit', color: 'var(--text-dim)', role: 'Writes the proposed fix directly to your code' },
+  verify: { label: 'Verify', icon: 'checkCircle', color: 'var(--text-dim)', role: 'Re-checks the live code to confirm a fix actually landed' },
+  app_threat_model: { label: 'App Threat Model', icon: 'shield', color: 'var(--text-dim)', role: 'Whole-app architecture-level threat model' },
+  controls_assist: { label: 'Control Scan', icon: 'clipboard', color: 'var(--text-dim)', role: 'Whole-app NIST 800-53 control identification for SSP drafting' },
 };
 function agentMeta(name) {
-  return AGENT_META[name] || { label: name, icon: 'gear', color: '#8f8a7b', role: '' };
+  return AGENT_META[name] || { label: name, icon: 'gear', color: 'var(--muted)', role: '' };
 }
 // Health-check count: how many of the 3 built-in pipeline agents' files are present.
 // Distinct from agentsList.length, which also includes any custom agents.
@@ -1266,11 +1236,15 @@ function knownAgentsAvailableCount() {
 
 // 'reasoning' replaced the old separate 'sast'/'dast' entries — both were just this same LLM
 // reading source and reasoning about it, so calling them distinct scanner categories was
-// misleading. SCA stays distinct since it's a genuinely different task (manifests/lockfiles
-// vs. code patterns), and lives on its own page (#view-sca).
+// misleading. SCA stays distinct on a per-FINDING basis — Agent Triage's type tabs/columns and
+// this chip still tell a dependency finding apart from a code finding — even though there's no
+// longer a separate SCA Scan page to kick one off from; a dependency audit now always runs
+// alongside pattern-matching and reasoning as part of a single Hybrid Scan (see the Reasoning
+// Scan bullet in CLAUDE.md), so every scan RECORD's own scanType is always 'reasoning' now —
+// only individual findings still carry 'sca'.
 const SCAN_TYPE_META = {
-  reasoning: { label: 'Reasoning Scan', icon: 'search', color: '#a78bfa', caption: 'LLM reasoning pass over source — vulnerability patterns and attack surface, no live target is hit' },
-  sca: { label: 'SCA', icon: 'package', color: '#fb923c', caption: 'Dependency manifests & lockfiles for known-vulnerable packages' },
+  reasoning: { label: 'Hybrid Scan', icon: 'search', color: 'var(--text-dim)', caption: 'LLM reasoning pass over source — vulnerability patterns and attack surface, no live target is hit' },
+  sca: { label: 'SCA', icon: 'package', color: 'var(--text-dim)', caption: 'Dependency manifests & lockfiles for known-vulnerable packages' },
 };
 
 // ---------- dom refs ----------
@@ -1307,15 +1281,7 @@ const caInstructionInput = document.getElementById('ca-instruction-input');
 const caStartBtn = document.getElementById('ca-start-btn');
 const caContentEl = document.getElementById('ca-content');
 
-const scaPathInput = document.getElementById('sca-path-input');
-const scaBranchInput = document.getElementById('sca-branch-input');
-const scaAppInput = document.getElementById('sca-app-input');
-const scaStartBtn = document.getElementById('sca-start-btn');
-const scaLiveContainer = document.getElementById('sca-live-container');
-
 const scanType = 'reasoning';
-// SCA Scan has no scope toggle — a dependency audit always reads the whole manifest/lockfile,
-// there's no per-file "diff only" concept for it (see server.js's handleScanMessage).
 let scanScope = 'full';
 // Whether reasoning-half calls (modules + the cross-cutting pass, see runLLMReasoningScan() in
 // server.js) get a --max-budget-usd cap at all. Defaults on (the safe default — every reasoning
@@ -1360,7 +1326,6 @@ const stageConsoles = new Map(); // runId -> live console tracking object for pe
 let timelineEntries = [];        // flattened run history, newest first
 let timelineLoaded = false;
 let timelineFilter = 'all';
-let timelineScanTypeFilter = null;  // null | 'reasoning' | 'sca' — narrows a 'scan' kind filter further, set only by a page's clock-icon preset
 let timelineUnseenDone = 0;      // completions since the user last looked at the timeline drawer
 let timelineDrawerOpen = false;
 
@@ -1386,13 +1351,6 @@ function escapeHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
-}
-
-function hexToRgba(hex, alpha) {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
-  if (!m) return `rgba(110,110,110,${alpha})`;
-  const n = parseInt(m[1], 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 function formatRelativeTime(ts) {
@@ -1470,8 +1428,8 @@ function startAppThreatModel() {
   const startTime = Date.now();
 
   const run = {
-    runId, toolCount: 0, fileCount: 0, tokenCount: 0, lastContextTokens: 0, startTime,
-    toolsEl: null, filesEl: null, tokensEl: null, elapsedEl: null, contextBarFillEl: null, contextBarLabelEl: null,
+    runId, toolCount: 0, fileCount: 0, tokenCount: 0, startTime,
+    toolsEl: null, filesEl: null, tokensEl: null, elapsedEl: null,
     elapsedTimer: null,
   };
   appThreatModelRuns.set(runId, run);
@@ -1496,8 +1454,8 @@ function startControlsAssist() {
   const startTime = Date.now();
 
   const run = {
-    runId, toolCount: 0, fileCount: 0, tokenCount: 0, lastContextTokens: 0, startTime,
-    toolsEl: null, filesEl: null, tokensEl: null, elapsedEl: null, contextBarFillEl: null, contextBarLabelEl: null,
+    runId, toolCount: 0, fileCount: 0, tokenCount: 0, startTime,
+    toolsEl: null, filesEl: null, tokensEl: null, elapsedEl: null,
     elapsedTimer: null,
   };
   controlAssistRuns.set(runId, run);
@@ -1553,7 +1511,6 @@ function showView(view, opts = {}) {
   currentView = view;
   document.getElementById('view-dashboard').hidden = view !== 'dashboard';
   document.getElementById('view-scans').hidden = view !== 'scans';
-  document.getElementById('view-sca').hidden = view !== 'sca';
   document.getElementById('view-settings').hidden = view !== 'settings';
   document.getElementById('view-findings').hidden = view !== 'findings';
   document.getElementById('view-finding-detail').hidden = view !== 'finding-detail';
@@ -1658,8 +1615,8 @@ function renderNavStatus() {
   renderNavBadges();
 }
 
-// ---------- timeline (a slide-in drawer, opened from a clock-icon button on Reasoning Scans,
-// SCA, and Threat Model — not a top-level nav destination) ----------
+// ---------- timeline (a slide-in drawer, opened from a clock-icon button on Hybrid Scan and
+// Threat Model — not a top-level nav destination) ----------
 
 async function loadTimeline() {
   const res = await fetch('/api/timeline');
@@ -1670,12 +1627,10 @@ async function loadTimeline() {
 
 document.getElementById('timeline-refresh').addEventListener('click', loadTimeline);
 
-// presetKind/presetScanType: how a clock-icon button scopes the drawer on open (e.g. the SCA
-// page's button passes ('scan', 'sca') so it opens already narrowed to SCA scans) — the pills
-// inside the drawer still let the user broaden or switch away from that preset afterward.
-function openTimelineDrawer(presetKind, presetScanType) {
+// presetKind: how a clock-icon button scopes the drawer on open — the pills inside the drawer
+// still let the user broaden or switch away from that preset afterward.
+function openTimelineDrawer(presetKind) {
   if (presetKind !== undefined) timelineFilter = presetKind;
-  timelineScanTypeFilter = presetScanType !== undefined ? presetScanType : null;
   timelineDrawerOpen = true;
   document.getElementById('timeline-drawer-backdrop').hidden = false;
   document.getElementById('timeline-drawer').hidden = false;
@@ -1694,38 +1649,34 @@ function closeTimelineDrawer() {
 
 document.getElementById('timeline-drawer-close').addEventListener('click', closeTimelineDrawer);
 document.getElementById('timeline-drawer-backdrop').addEventListener('click', closeTimelineDrawer);
-document.getElementById('scans-clock-btn').addEventListener('click', () => openTimelineDrawer('scan', 'reasoning'));
-document.getElementById('sca-clock-btn').addEventListener('click', () => openTimelineDrawer('scan', 'sca'));
-document.getElementById('tm-clock-btn').addEventListener('click', () => openTimelineDrawer('threat_model', null));
+document.getElementById('scans-clock-btn').addEventListener('click', () => openTimelineDrawer('scan'));
+document.getElementById('tm-clock-btn').addEventListener('click', () => openTimelineDrawer('threat_model'));
 
 function renderTimelineFilters() {
   const el = document.getElementById('timeline-filters');
   el.innerHTML = '';
-  // scanType is only set for the two scan-kind pills (Reasoning Scan / SCA) — they both filter
-  // to kind === 'scan' but narrow further by scanType, so "active" has to check both fields
-  // instead of just matching key the way the plain agent-kind pills do.
-  const makePill = (key, label, color, scanType) => {
+  const makePill = (key, label, color) => {
     const pill = document.createElement('button');
-    const isActive = scanType
-      ? timelineFilter === 'scan' && timelineScanTypeFilter === scanType
-      : timelineFilter === key;
+    const isActive = timelineFilter === key;
     pill.className = 'filter-pill' + (isActive ? ' active' : '');
     pill.innerHTML = color ? `<span class="fp-dot" style="background:${color}"></span>${escapeHtml(label)}` : escapeHtml(label);
     pill.addEventListener('click', () => {
-      timelineFilter = scanType ? 'scan' : key;
-      timelineScanTypeFilter = scanType || null;
+      timelineFilter = key;
       renderTimeline();
     });
     el.appendChild(pill);
   };
   makePill('all', 'All', null);
-  makePill('scan', 'Reasoning Scan', SCAN_TYPE_META.reasoning.color, 'reasoning');
-  makePill('scan', 'SCA', SCAN_TYPE_META.sca.color, 'sca');
+  // One "Hybrid Scan" pill covers every scan record now — pattern-matching, reasoning, and SCA
+  // all run as part of the same scan (see the Reasoning Scan bullet in CLAUDE.md), so there's no
+  // separate SCA-kind scan record left to filter to; findings still distinguish 'sca' from
+  // 'reasoning' individually, but that's an Agent Triage concern, not a Timeline one.
+  makePill('scan', 'Hybrid Scan', SCAN_TYPE_META.reasoning.color);
   for (const kind of agentsList) makePill(kind, agentMeta(kind).label, agentMeta(kind).color);
 
   const subtitleEl = document.getElementById('timeline-drawer-subtitle');
-  if (timelineFilter === 'scan' && timelineScanTypeFilter) {
-    subtitleEl.textContent = timelineScanTypeFilter === 'sca' ? 'SCA scans, newest first' : 'Reasoning scans, newest first';
+  if (timelineFilter === 'scan') {
+    subtitleEl.textContent = 'Hybrid Scan runs, newest first';
   } else if (timelineFilter !== 'all') {
     subtitleEl.textContent = `${agentMeta(timelineFilter).label} runs, newest first`;
   } else {
@@ -1763,10 +1714,7 @@ function renderTimeline() {
   const listEl = document.getElementById('timeline-list');
   listEl.innerHTML = '';
 
-  let filtered = timelineFilter === 'all' ? timelineEntries : timelineEntries.filter((e) => e.kind === timelineFilter);
-  if (timelineFilter === 'scan' && timelineScanTypeFilter) {
-    filtered = filtered.filter((e) => (e.scanType === 'sca' ? 'sca' : 'reasoning') === timelineScanTypeFilter);
-  }
+  const filtered = timelineFilter === 'all' ? timelineEntries : timelineEntries.filter((e) => e.kind === timelineFilter);
   if (!filtered.length) {
     const empty = document.createElement('div');
     empty.id = 'timeline-empty';
@@ -1853,7 +1801,7 @@ function upsertTimelineEntry(entry) {
 // (derived from scansList/findings, not timelineEntries, so it works before the drawer has ever
 // been opened/loaded), green if nothing in that scope is running but something finished
 // somewhere since the drawer was last opened (timelineUnseenDone, global — matches the old
-// single-badge behavior: opening the drawer for any scope clears it for all three).
+// single-badge behavior: opening the drawer for either scope clears it for both).
 function updateTimelineClockDots() {
   const setDot = (id, running) => {
     const el = document.getElementById(id);
@@ -1862,8 +1810,7 @@ function updateTimelineClockDots() {
     else if (timelineUnseenDone > 0) { el.hidden = false; el.className = 'clock-btn-dot completed'; }
     else { el.hidden = true; }
   };
-  setDot('scans-clock-dot', scansList.some((s) => s.status === 'running' && s.scanType !== 'sca'));
-  setDot('sca-clock-dot', scansList.some((s) => s.status === 'running' && s.scanType === 'sca'));
+  setDot('scans-clock-dot', scansList.some((s) => s.status === 'running'));
   setDot('tm-clock-dot', findings.some((f) => f.latestRun && f.latestRun.agent === 'threat_model' && f.latestRun.status === 'running'));
 }
 
@@ -1881,23 +1828,13 @@ function renderNavBadges() {
   }
 
   const scansBadge = document.getElementById('nav-badge-scans');
-  const runningScanCount = scansList.filter((s) => s.status === 'running' && s.scanType !== 'sca').length;
+  const runningScanCount = scansList.filter((s) => s.status === 'running').length;
   if (runningScanCount > 0) {
     scansBadge.hidden = false;
     scansBadge.className = 'nav-badge running';
     scansBadge.title = `${runningScanCount} scan${runningScanCount === 1 ? '' : 's'} running`;
   } else {
     scansBadge.hidden = true;
-  }
-
-  const scaBadge = document.getElementById('nav-badge-sca');
-  const runningScaCount = scansList.filter((s) => s.status === 'running' && s.scanType === 'sca').length;
-  if (runningScaCount > 0) {
-    scaBadge.hidden = false;
-    scaBadge.className = 'nav-badge running';
-    scaBadge.title = `${runningScaCount} SCA scan${runningScaCount === 1 ? '' : 's'} running`;
-  } else {
-    scaBadge.hidden = true;
   }
 
   const caBadge = document.getElementById('nav-badge-controls-assist');
@@ -2101,7 +2038,7 @@ function renderTmCellFindings(cellEntries) {
 // re-queries the fresh DOM and re-points the tracking object's cached element refs at it, so
 // the next stream-json event's direct DOM mutation (handleAppThreatModelRawEvent, no
 // re-render) lands on the currently-attached node instead of a stale detached one.
-const appThreatModelRuns = new Map(); // runId -> { toolCount, fileCount, tokenCount, lastContextTokens, startTime, elapsedTimer, ...cached DOM refs }
+const appThreatModelRuns = new Map(); // runId -> { toolCount, fileCount, tokenCount, startTime, elapsedTimer, ...cached DOM refs }
 
 function updateAppThreatModelElapsed(run) {
   if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);
@@ -2158,18 +2095,12 @@ function appThreatModelRowHtml(r) {
   const run = appThreatModelRuns.get(r.runId);
   let liveStatsHtml = '';
   if (r.status === 'running' && run) {
-    const contextPct = Math.min(100, Math.round(((run.lastContextTokens || 0) / CONTEXT_WINDOW_TOKENS) * 100));
-    const contextCls = contextPct >= 85 ? ' danger' : contextPct >= 60 ? ' warn' : '';
     liveStatsHtml = `
       <div class="scan-stats atm-live-stats">
         <span class="stat"><b class="atm-tools">${run.toolCount}</b> checks</span>
         <span class="stat"><b class="atm-files">${run.fileCount}</b> files read</span>
         <span class="stat"><b class="atm-tokens">${formatTokenCount(run.tokenCount)}</b> tokens</span>
         <span class="stat"><b class="atm-elapsed">${formatElapsed(Date.now() - run.startTime)}</b> elapsed</span>
-      </div>
-      <div class="context-bar-wrap atm-context-wrap">
-        <div class="context-bar"><div class="context-bar-fill atm-context-fill${contextCls}" style="width:${contextPct}%;"></div></div>
-        <span class="context-bar-label atm-context-label">${contextPct}% of context window</span>
       </div>
     `;
   }
@@ -2203,8 +2134,6 @@ function reattachAppThreatModelLiveRefs() {
     run.filesEl = rowEl.querySelector('.atm-files');
     run.tokensEl = rowEl.querySelector('.atm-tokens');
     run.elapsedEl = rowEl.querySelector('.atm-elapsed');
-    run.contextBarFillEl = rowEl.querySelector('.atm-context-fill');
-    run.contextBarLabelEl = rowEl.querySelector('.atm-context-label');
     run.consoleEl = rowEl.querySelector('.atm-console');
   }
 }
@@ -2281,7 +2210,7 @@ function renderAppThreatModelDetail(record) {
 // pattern, just with its own tracking map and its own detail renderer since the report shape
 // (controls grouped by NIST family, no severity scale) genuinely differs from a threat
 // model's risk cards.
-const controlAssistRuns = new Map(); // runId -> { toolCount, fileCount, tokenCount, lastContextTokens, startTime, elapsedTimer, ...cached DOM refs }
+const controlAssistRuns = new Map(); // runId -> { toolCount, fileCount, tokenCount, startTime, elapsedTimer, ...cached DOM refs }
 
 function updateControlsAssistElapsed(run) {
   if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);
@@ -2318,18 +2247,12 @@ function caRowHtml(r) {
   const run = controlAssistRuns.get(r.runId);
   let liveStatsHtml = '';
   if (r.status === 'running' && run) {
-    const contextPct = Math.min(100, Math.round(((run.lastContextTokens || 0) / CONTEXT_WINDOW_TOKENS) * 100));
-    const contextCls = contextPct >= 85 ? ' danger' : contextPct >= 60 ? ' warn' : '';
     liveStatsHtml = `
       <div class="scan-stats atm-live-stats">
         <span class="stat"><b class="ca-tools">${run.toolCount}</b> checks</span>
         <span class="stat"><b class="ca-files">${run.fileCount}</b> files read</span>
         <span class="stat"><b class="ca-tokens">${formatTokenCount(run.tokenCount)}</b> tokens</span>
         <span class="stat"><b class="ca-elapsed">${formatElapsed(Date.now() - run.startTime)}</b> elapsed</span>
-      </div>
-      <div class="context-bar-wrap atm-context-wrap">
-        <div class="context-bar"><div class="context-bar-fill ca-context-fill${contextCls}" style="width:${contextPct}%;"></div></div>
-        <span class="context-bar-label ca-context-label">${contextPct}% of context window</span>
       </div>
     `;
   }
@@ -2362,8 +2285,6 @@ function reattachControlsAssistLiveRefs() {
     run.filesEl = rowEl.querySelector('.ca-files');
     run.tokensEl = rowEl.querySelector('.ca-tokens');
     run.elapsedEl = rowEl.querySelector('.ca-elapsed');
-    run.contextBarFillEl = rowEl.querySelector('.ca-context-fill');
-    run.contextBarLabelEl = rowEl.querySelector('.ca-context-label');
     run.consoleEl = rowEl.querySelector('.ca-console');
   }
 }
@@ -2670,7 +2591,7 @@ function renderScanFindingsBody(body, scanFindings, scanId) {
 function makeScanCard(runId, targetPath, meta, containerEl) {
   const typeMeta = SCAN_TYPE_META[meta.scanType] || SCAN_TYPE_META.reasoning;
   const metaTags = [
-    `<span class="scan-type-chip" style="color:${typeMeta.color}; background:${hexToRgba(typeMeta.color, .16)};">${escapeHtml(typeMeta.label)}</span>`,
+    `<span class="scan-type-chip">${escapeHtml(typeMeta.label)}</span>`,
     `<span class="scan-type-chip scope-chip">${meta.scope === 'diff' ? `Diff vs ${escapeHtml(meta.baseBranch)}` : 'Full scan'}</span>`,
   ];
   if (meta.branch) metaTags.push(`<span class="scan-meta-text">${icon('branch')}${escapeHtml(meta.branch)}</span>`);
@@ -2679,21 +2600,30 @@ function makeScanCard(runId, targetPath, meta, containerEl) {
     metaTags.push(`<span class="scan-meta-text" style="color:var(--warn);" title="Reasoning calls have no --max-budget-usd cap for this scan">No budget cap</span>`);
   }
 
-  // Reasoning Scan runs two engines in parallel (sast-engine's deterministic pattern agents +
-  // a real claude -p reasoning pass, see server.js's runHybridReasoningScan) and merges their
-  // results — this pair of bars is the only place that's visible before findings land. SCA
-  // Scan is single-engine (just a dependency audit), so it never gets this block.
+  // Hybrid Scan runs three engines in parallel (sast-engine's deterministic pattern agents +
+  // a real claude -p reasoning pass + a dependency audit, see server.js's
+  // runHybridReasoningScan) and merges their results — this trio of bars is the only place
+  // that's visible before findings land. There's no other scanType left that would skip this
+  // block (the standalone SCA-only page is gone), but the meta.scanType check stays as a cheap
+  // guard rather than assuming every scan record will always be 'reasoning' forever.
+  // All three dots/fills share the one monochrome accent — the three engines are told apart
+  // by their label text, not by hue (color here is reserved for severity/status signal).
   const engineBarsHtml = meta.scanType === 'reasoning' ? `
     <div class="scan-engine-bars">
       <div class="scan-engine-bar">
-        <span class="scan-engine-bar-label"><span class="engine-dot" style="background:var(--accent);"></span>Pattern match</span>
-        <div class="scan-engine-bar-track"><div class="scan-engine-bar-fill det-fill" style="width:0%; background:var(--accent);"></div></div>
+        <span class="scan-engine-bar-label"><span class="engine-dot" style="background:var(--text-dim);"></span>Pattern match</span>
+        <div class="scan-engine-bar-track"><div class="scan-engine-bar-fill det-fill" style="width:0%; background:var(--text-dim);"></div></div>
         <span class="scan-engine-bar-stat det-stat">Starting…</span>
       </div>
       <div class="scan-engine-bar">
-        <span class="scan-engine-bar-label"><span class="engine-dot" style="background:var(--warn);"></span>Reasoning</span>
-        <div class="scan-engine-bar-track"><div class="scan-engine-bar-fill reasoning-fill" style="width:0%; background:var(--warn);"></div></div>
+        <span class="scan-engine-bar-label"><span class="engine-dot" style="background:var(--text-dim);"></span>Reasoning</span>
+        <div class="scan-engine-bar-track"><div class="scan-engine-bar-fill reasoning-fill" style="width:0%; background:var(--text-dim);"></div></div>
         <span class="scan-engine-bar-stat reasoning-stat">Starting…</span>
+      </div>
+      <div class="scan-engine-bar">
+        <span class="scan-engine-bar-label"><span class="engine-dot" style="background:var(--text-dim);"></span>Dependency audit</span>
+        <div class="scan-engine-bar-track"><div class="scan-engine-bar-fill sca-fill" style="width:0%; background:var(--text-dim);"></div></div>
+        <span class="scan-engine-bar-stat sca-stat">Starting…</span>
       </div>
     </div>
   ` : '';
@@ -2714,10 +2644,6 @@ function makeScanCard(runId, targetPath, meta, containerEl) {
       <span class="stat"><b class="ss-tools">0</b> checks</span>
       <span class="stat"><b class="ss-files">0</b> files read</span>
       <span class="stat"><b class="ss-elapsed">0:00</b> elapsed</span>
-    </div>
-    <div class="context-bar-wrap">
-      <div class="context-bar"><div class="context-bar-fill ss-context-fill"></div></div>
-      <span class="context-bar-label ss-context-label">0% of context</span>
     </div>
     <pre class="console-panel ss-console" hidden></pre>
     <div class="scan-error-msg" hidden></div>
@@ -2861,9 +2787,8 @@ function trackScanCandidates(run, event) {
 // Shared by scan cards and app-level threat model rows — both invoke `claude -p` against a
 // whole directory and want the same live stats, unlike per-finding runs (deliberately quiet,
 // see "No live per-finding streaming view" in CLAUDE.md). Both kinds of `run` tracking objects
-// use the same field names (toolCount/toolsEl/fileCount/filesEl/tokenCount/tokensEl/
-// contextBarFillEl/contextBarLabelEl) so these functions don't need to know which kind they're
-// updating.
+// use the same field names (toolCount/toolsEl/fileCount/filesEl/tokenCount/tokensEl) so these
+// functions don't need to know which kind they're updating.
 function trackRunToolActivity(run, event) {
   if (event.type !== 'assistant' || !event.message || !Array.isArray(event.message.content)) return;
   let sawTool = false;
@@ -2883,32 +2808,11 @@ function formatTokenCount(n) {
   return String(n);
 }
 
-// Approximate context window size used only for the fill-bar warning — this app has no way
-// to query the actual configured limit from here, so it assumes the standard Claude context
-// window. The bar is meant as an early "your scope might be too broad" signal, not a precise
-// meter.
-const CONTEXT_WINDOW_TOKENS = 200000;
-
-function updateContextBar(run, contextTokens) {
-  if (!run.contextBarFillEl) return;
-  const pct = Math.min(100, Math.round((contextTokens / CONTEXT_WINDOW_TOKENS) * 100));
-  run.contextBarFillEl.style.width = pct + '%';
-  run.contextBarFillEl.classList.toggle('warn', pct >= 60 && pct < 85);
-  run.contextBarFillEl.classList.toggle('danger', pct >= 85);
-  if (run.contextBarLabelEl) run.contextBarLabelEl.textContent = `${pct}% of context window`;
-}
-
 function trackRunTokens(run, event) {
   if (event.type !== 'assistant' || !event.message || !event.message.usage) return;
   const u = event.message.usage;
   run.tokenCount += (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
   if (run.tokensEl) run.tokensEl.textContent = formatTokenCount(run.tokenCount);
-
-  // The context window holds the latest turn's input (including cached prefix), not the
-  // running sum of every turn's input — summing would double-count the growing history that
-  // gets resent each turn. run.tokenCount above is a different, cumulative "work done" metric.
-  run.lastContextTokens = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
-  updateContextBar(run, run.lastContextTokens);
 }
 
 // Feeds the opt-in per-run console panel: extracts the assistant's narrated prose text (not
@@ -2971,7 +2875,7 @@ function reattachConsoleRefs(containerEl, runsMap, panelClass) {
 
 // Updates the "Pattern match" bar from a scan-progress message (deterministic engine only —
 // see server.js's runDeterministicPatternScan, which counts completed sast-engine agents out
-// of the fixed 29-agent total). No-op on an SCA Scan card (detFillEl is null there).
+// of the fixed 29-agent total).
 function updateDetBar(run, done, total) {
   if (!run.detFillEl) return;
   run.detDone = done;
@@ -2980,6 +2884,19 @@ function updateDetBar(run, done, total) {
   run.detFillEl.style.width = pct + '%';
   run.detFillEl.classList.toggle('done', done >= total && total > 0);
   run.detStatEl.textContent = total ? `${done}/${total} agents done` : 'Starting…';
+}
+
+// Updates the "Dependency audit" bar from a scan-progress {engine:'sca'} message — sent exactly
+// once, the moment server.js's runDeterministicScaScan() resolves (see runHybridReasoningScan()),
+// independent of the other two engines' own completion. Unlike the pattern-match/reasoning bars,
+// there's no real multi-step progress to show for one atomic audit call, so this only ever jumps
+// straight from 0% to 100%.
+function updateScaBar(run, done, total) {
+  if (!run.scaFillEl) return;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  run.scaFillEl.style.width = pct + '%';
+  run.scaFillEl.classList.toggle('done', done >= total && total > 0);
+  run.scaStatEl.textContent = total ? (done >= total ? 'Done' : 'Starting…') : 'Starting…';
 }
 
 // Appended to the Reasoning bar's stat text whenever real spend is known (from a scan-progress
@@ -3063,11 +2980,7 @@ function beginScanRun(targetPath, instruction, scanMeta, containerEl) {
     filesEl: cardEl.querySelector('.ss-files'),
     tokensEl: cardEl.querySelector('.ss-tokens'),
     elapsedEl: cardEl.querySelector('.ss-elapsed'),
-    contextBarFillEl: cardEl.querySelector('.ss-context-fill'),
-    contextBarLabelEl: cardEl.querySelector('.ss-context-label'),
-    lastContextTokens: 0,
-    // Per-engine bars (Reasoning Scan only — null on SCA Scan cards, guarded on every use).
-    // The reasoning bar reuses toolCount/tokenCount below rather than tracking its own copy:
+    // Per-engine bars. The reasoning bar reuses toolCount/tokenCount below rather than tracking its own copy:
     // the synthetic events the deterministic engine sends never carry tool_use/usage blocks,
     // so trackRunToolActivity()/trackRunTokens() only ever fire for the real reasoning-pass
     // events anyway — toolCount is already effectively "reasoning engine's tool calls".
@@ -3077,6 +2990,12 @@ function beginScanRun(targetPath, instruction, scanMeta, containerEl) {
     detStatEl: cardEl.querySelector('.det-stat'),
     reasoningFillEl: cardEl.querySelector('.reasoning-fill'),
     reasoningStatEl: cardEl.querySelector('.reasoning-stat'),
+    // SCA is the third engine folded into every Hybrid Scan (see server.js's
+    // runHybridReasoningScan) — one atomic dependency-audit call, not a multi-step process, so
+    // this bar only ever jumps from 0% ("Starting…") straight to 100% ("Done") — see
+    // updateScaBar() below.
+    scaFillEl: cardEl.querySelector('.sca-fill'),
+    scaStatEl: cardEl.querySelector('.sca-stat'),
     // Set once a scan-progress {engine:'reasoning'} message reports a real total > 1 (a "Full"
     // scope scan whose directory partitioned into more than one module) — see
     // updateReasoningModuleProgress() above for how this changes what drives the bar.
@@ -3133,21 +3052,7 @@ function startScan() {
   beginScanRun(targetPath, '', scanMeta, scanLiveContainer);
 }
 
-function startScaScan() {
-  const targetPath = scaPathInput.value.trim();
-  if (!targetPath) {
-    alert('Enter a target directory path.');
-    return;
-  }
-  const branch = scaBranchInput.value.trim();
-  const app = scaAppInput.value.trim();
-
-  const scanMeta = { branch, app, scanType: 'sca', scope: 'full', baseBranch: null };
-  beginScanRun(targetPath, '', scanMeta, scaLiveContainer);
-}
-
 scanStartBtn.addEventListener('click', startScan);
-scaStartBtn.addEventListener('click', startScaScan);
 
 function handleScanServerMessage(msg) {
   const run = msg.runId ? scanRuns.get(msg.runId) : null;
@@ -3162,6 +3067,7 @@ function handleScanServerMessage(msg) {
 
   if (msg.type === 'scan-progress') {
     if (msg.engine === 'reasoning') updateReasoningModuleProgress(run, msg.done, msg.total, msg.costUsd);
+    else if (msg.engine === 'sca') updateScaBar(run, msg.done, msg.total);
     else updateDetBar(run, msg.done, msg.total);
     return;
   }
@@ -3207,6 +3113,7 @@ function handleScanServerMessage(msg) {
     stopScanElapsedTimer(run);
     markReasoningBarDone(run);
     if (run.detFillEl && run.detTotal) updateDetBar(run, run.detTotal, run.detTotal); // in case the last scan-progress arrives after scan-done
+    if (run.scaFillEl) updateScaBar(run, 1, 1); // same fallback — SCA's own scan-progress message could in principle arrive after scan-done too
     const n = msg.findings.length;
     const finalStatus = cancelled ? 'cancelled' : (msg.code === 0 ? 'done' : 'error');
     setStageStatus(run, finalStatus, cancelled ? 'Cancelled' : `${n} finding${n === 1 ? '' : 's'} created`);
@@ -3299,7 +3206,7 @@ function severityLabel(sev) { return sev.charAt(0).toUpperCase() + sev.slice(1);
 const SEV_ORDER_MAP = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
 const STATUS_ORDER_MAP = { new: 0, in_review: 1, remediation_ready: 2, remediation_generated: 3, closed: 4, verified_fixed: 5 };
 
-const FINDINGS_TYPE_LABEL = { all: 'All', reasoning: 'Reasoning', sca: 'SCA' };
+const FINDINGS_TYPE_LABEL = { all: 'All', reasoning: 'Hybrid', sca: 'SCA' };
 const FINDINGS_COLUMNS = {
   all: [
     { key: 'severity', label: 'Severity', sortable: true },
@@ -3352,7 +3259,7 @@ function renderFindingsView() {
 }
 
 function scanFilterLabel(s) {
-  const kind = s.scanType === 'sca' ? 'SCA scan' : 'Reasoning scan';
+  const kind = s.scanType === 'sca' ? 'SCA scan' : 'Hybrid scan';
   return `${kind} on ${s.path} started ${formatRelativeTime(s.startedAt)}`;
 }
 
@@ -3433,12 +3340,23 @@ function findingStageRuns(f) {
     }
     return null;
   };
-  return { triage: latestByAgent('triage'), remediation: latestByAgent('remediation'), verify: latestByAgent('verify') };
+  return {
+    triage: latestByAgent('triage'),
+    remediation: latestByAgent('remediation'),
+    fix: latestByAgent('fix'),
+    verify: latestByAgent('verify'),
+  };
 }
 
+// 'remediated' tracks the read-only Remediate proposal; 'fixed' tracks the separate, later Fix
+// apply step that writes whatever Remediate proposed. 'fixed' has one extra state beyond the
+// usual pending/running/attention/done: 'unavailable', for when Remediate finished but didn't
+// propose a specific edit (a legitimate "this needs a human, not a guess" outcome per
+// agents/remediation.md) — there's nothing for Fix to apply, so it isn't just "not started yet".
 function findingLoopState(f) {
   const stageRuns = findingStageRuns(f);
   let triaged = 'pending';
+  let remediated = 'pending';
   let fixed = 'pending';
   let verified = 'pending';
 
@@ -3449,14 +3367,19 @@ function findingLoopState(f) {
   }
 
   if (stageRuns.remediation) {
-    if (stageRuns.remediation.status === 'running') fixed = 'running';
-    // 'done' requires a real applied_diff, not just f.status === 'remediation_generated' —
-    // that status flips true for ANY completed remediation with corrected_code, including a
-    // write-capable run that chose not to edit anything (see agents/remediation.md's apply-mode
-    // guidance: "don't guess with an edit"). Showing "Fixed" — and offering "Verify the fix" —
-    // when nothing was actually written would be actively misleading, not just imprecise.
-    else if (stageRuns.remediation.verdict && stageRuns.remediation.verdict.applied_diff) fixed = 'done';
-    else if (stageRuns.remediation.status === 'error' || stageRuns.remediation.status === 'cancelled') fixed = 'attention';
+    if (stageRuns.remediation.status === 'running') remediated = 'running';
+    else if (stageRuns.remediation.status === 'error' || stageRuns.remediation.status === 'cancelled') remediated = 'attention';
+    else remediated = 'done';
+  }
+
+  const plan = stageRuns.remediation && stageRuns.remediation.verdict && stageRuns.remediation.verdict.edit_plan;
+  const hasPlan = !!(plan && Array.isArray(plan.files) && plan.files.length);
+  if (remediated === 'done' && !hasPlan) fixed = 'unavailable';
+
+  if (stageRuns.fix) {
+    if (stageRuns.fix.status === 'running') fixed = 'running';
+    else if (stageRuns.fix.verdict && stageRuns.fix.verdict.applied_diff) fixed = 'done';
+    else fixed = 'attention'; // errored, cancelled, or somehow finished with nothing applied
   }
 
   if (stageRuns.verify) {
@@ -3470,29 +3393,35 @@ function findingLoopState(f) {
     else verified = 'attention'; // still_vulnerable / partially_fixed / inconclusive
   }
 
-  return { triaged, fixed, verified };
+  return { triaged, remediated, fixed, verified, hasPlan };
 }
 
 // The one thing clicking the loop cell's advance button would do next — 'triage' | 'remediate'
-// | 'verify' | null (busy, or nothing left to do). Triage issues (never run, or errored) come
-// first — nothing else should happen before a finding's been triaged. verified === 'attention'
-// maps back to 'remediate', not another 'verify': Verify already said the fix didn't hold, so
-// the actionable next step is another fix attempt, not re-checking the same unfixed state.
+// | 'fix' | 'verify' | null (busy, or nothing left to do). Triage issues (never run, or errored)
+// come first — nothing else should happen before a finding's been triaged. verified/fixed ===
+// 'attention' both map back to 'remediate', not a retry of the same stage: Verify already said
+// the fix didn't hold, and a failed Fix likely means the proposed plan went stale against the
+// live file — either way the actionable next step is a fresh proposal, not repeating the same
+// attempt. 'unavailable' (Remediate proposed nothing to apply) has no further automated step.
 function findingLoopNextAction(f) {
-  const { triaged, fixed, verified } = findingLoopState(f);
-  if (triaged === 'running' || fixed === 'running' || verified === 'running') return null;
+  const { triaged, remediated, fixed, verified } = findingLoopState(f);
+  if (triaged === 'running' || remediated === 'running' || fixed === 'running' || verified === 'running') return null;
   if (triaged === 'pending' || triaged === 'attention') return 'triage';
   if (verified === 'attention') return 'remediate';
-  if (fixed === 'pending' || fixed === 'attention') return 'remediate';
+  if (fixed === 'attention') return 'remediate';
+  if (remediated === 'pending' || remediated === 'attention') return 'remediate';
+  if (fixed === 'unavailable') return null;
+  if (fixed === 'pending') return 'fix';
   if (verified === 'pending') return 'verify';
   return null; // verified === 'done' — nothing left
 }
 
-function loopTrackHtml(triaged, fixed, verified) {
+function loopTrackHtml(triaged, remediated, fixed, verified) {
   return `
-    <div class="loop-track" title="Triaged → Fixed → Verified">
+    <div class="loop-track" title="Triaged → Remediated → Fixed → Verified">
       <span class="loop-seg ${triaged}"></span>
-      <span class="loop-seg ${fixed}"></span>
+      <span class="loop-seg ${remediated}"></span>
+      <span class="loop-seg ${fixed === 'unavailable' ? 'pending' : fixed}"></span>
       <span class="loop-seg ${verified}"></span>
     </div>
   `;
@@ -3511,14 +3440,16 @@ function findingLoopCellHtml(f) {
     return `<div class="loop-cell"><span class="hint">Closed — not applicable</span></div>`;
   }
 
-  const { triaged, fixed, verified } = findingLoopState(f);
-  const track = loopTrackHtml(triaged, fixed, verified);
+  const { triaged, remediated, fixed, verified } = findingLoopState(f);
+  const track = loopTrackHtml(triaged, remediated, fixed, verified);
 
   let statusHtml;
   if (triaged === 'running') {
     statusHtml = `<span class="loop-status-text">Triaging…</span>`;
+  } else if (remediated === 'running') {
+    statusHtml = `<span class="loop-status-text">Proposing fix…</span>`;
   } else if (fixed === 'running') {
-    statusHtml = `<span class="loop-status-text">Fixing…</span>`;
+    statusHtml = `<span class="loop-status-text">Applying fix…</span>`;
   } else if (verified === 'running') {
     statusHtml = `<span class="loop-status-text">Verifying…</span>`;
   } else if (triaged === 'attention') {
@@ -3526,12 +3457,18 @@ function findingLoopCellHtml(f) {
   } else if (verified === 'attention') {
     statusHtml = `<span class="loop-status-text attention">Not fixed yet</span>`;
   } else if (fixed === 'attention') {
-    statusHtml = `<span class="loop-status-text attention">Fix failed</span>`;
+    statusHtml = `<span class="loop-status-text attention">Apply failed</span>`;
+  } else if (remediated === 'attention') {
+    statusHtml = `<span class="loop-status-text attention">Propose failed</span>`;
   } else if (verified === 'done') {
     statusHtml = `<span class="loop-status-text ok">Verified fixed</span>`
       + `<button class="loop-view-diff" type="button" data-view-diff-btn="${escapeHtml(f.id)}" title="View the applied diff">${icon('checkCircle')}View diff</button>`;
   } else if (fixed === 'done') {
     statusHtml = `<span class="loop-status-text accent">Fixed</span>`;
+  } else if (fixed === 'unavailable') {
+    statusHtml = `<span class="loop-status-text">No fix proposed</span>`;
+  } else if (remediated === 'done') {
+    statusHtml = `<span class="loop-status-text accent">Fix proposed</span>`;
   } else if (triaged === 'done') {
     statusHtml = `<span class="loop-status-text accent">Triaged</span>`;
   } else {
@@ -3541,8 +3478,8 @@ function findingLoopCellHtml(f) {
   return `<div class="loop-cell">${track}<div class="loop-status-row">${statusHtml}</div></div>`;
 }
 
-// Small tag next to a reasoning finding's title showing which of Reasoning Scan's two engines
-// found it — deterministic (sast-engine's pattern agents) or reasoning (agents/scan.md's LLM
+// Small tag next to a reasoning finding's title showing which of Hybrid Scan's code-analysis
+// engines found it — deterministic (sast-engine's pattern agents) or reasoning (agents/scan.md's LLM
 // pass), read straight off the synthetic triage verdict's `source` field (see
 // findingFromSastEngine()/findingFromLLMScan() in server.js). Colors match the two progress
 // bars on the scan card (accent = pattern match, warn = reasoning) so the two surfaces read as
@@ -3551,10 +3488,10 @@ function findingLoopCellHtml(f) {
 function findingSourceTagHtml(f) {
   const source = f.stageRuns && f.stageRuns.triage && f.stageRuns.triage.verdict && f.stageRuns.triage.verdict.source;
   if (source === 'sast-engine-verifier') {
-    return `<span class="finding-source-tag" style="color:var(--accent); background:var(--accent-soft);" title="Found by the deterministic pattern-matching engine">Pattern match</span>`;
+    return `<span class="finding-source-tag" title="Found by the deterministic pattern-matching engine">Pattern match</span>`;
   }
   if (source === 'reasoning-scan') {
-    return `<span class="finding-source-tag" style="color:var(--warn); background:var(--warn-soft);" title="Found by the LLM reasoning pass">Reasoning</span>`;
+    return `<span class="finding-source-tag" title="Found by the LLM reasoning pass">Reasoning</span>`;
   }
   return '';
 }
@@ -3565,7 +3502,7 @@ function findingsCellHtml(f, key) {
       return `<div class="ft-sev-cell"><span class="sev-dot ${f.severity}"></span>${escapeHtml(severityLabel(f.severity))}</div>`;
     case 'type': {
       const m = SCAN_TYPE_META[f.scanType] || SCAN_TYPE_META.reasoning;
-      return `<span class="scan-type-chip" style="color:${m.color}; background:${hexToRgba(m.color, .16)};">${escapeHtml(m.label)}</span>`;
+      return `<span class="scan-type-chip">${escapeHtml(m.label)}</span>`;
     }
     case 'title':
       return `<div class="ft-title">${escapeHtml(f.title)}${findingSourceTagHtml(f)}</div>`;
@@ -3605,7 +3542,6 @@ function renderFindingsTable() {
     const cmp = va < vb ? -1 : va > vb ? 1 : 0;
     return findingsSort.dir === 'asc' ? cmp : -cmp;
   });
-
   findingsTableHeadEl.innerHTML = '';
   const headRow = document.createElement('tr');
   for (const col of columns) {
@@ -3711,26 +3647,27 @@ function findingSourcePath(finding) {
 // ---------- writing real fixes: the only place an agent touches the user's real files ----------
 // Triage is no longer a live stage at all (see CLAUDE.md) — every finding already carries a
 // triage verdict from when it was created, so the loop's first stage is always already "done".
-// Two entry points on the loop cell for what's left:
-//   - The single arrow (onLoopAdvanceClick) runs exactly the *next* stage — a write-capable
-//     Remediation apply, or Verify — and stops. One deliberate click per stage. (The 'triage'
-//     branch below is a defensive fallback for a finding that somehow has no triage run yet;
-//     it shouldn't be reachable in practice.)
-//   - The fast-forward button (onLoopRunAllClick) chains Remediation (apply) -> Verify under
-//     one confirm(), for when stepping through individually isn't needed.
-// Both are gated by a native confirm() naming the exact target directory and the git-clean
-// requirement — that's the friction point, not a hidden mode toggle (an earlier version had a
-// page-level "Read-only" checkbox that silently changed what a shared button did, removed as
-// confusing) — except Verify alone, which never needs that confirmation since it's read-only.
-// The applied diff itself is never shown in a popup — it renders directly on the finding's own
-// detail page (runCardHtml() draws any remediation run's applied_diff as a colored diff block
-// there), so seeing what changed is "click into the finding," the same way you'd read any other
-// run's verdict.
-const applyWriteRunIds = new Set(); // runIds whose flow includes a git-clean-tree precheck that can fail before any run is pushed server-side — see the 'error' handler below, which alerts those failures directly since the generic error-badge treatment has no run to attach to
+// Remediate and Fix are two separate stages now, not one: Remediate is read-only (proposes a
+// fix, writes nothing — no confirmation needed) and Fix is the one write-capable step (applies
+// exactly what Remediate proposed). Entry points on the loop cell:
+//   - The single arrow (onLoopAdvanceClick) runs exactly the *next* stage and stops. One
+//     deliberate click per stage. (The 'triage' branch below is a defensive fallback for a
+//     finding that somehow has no triage run yet; it shouldn't be reachable in practice.)
+//   - The fast-forward button (onLoopRunAllClick) chains Remediate -> Fix -> Verify under one
+//     confirm(), for when stepping through individually isn't needed.
+// Fix (both standalone and inside "run all") is gated by a native confirm() naming the exact
+// target directory and the git-clean requirement — that's the friction point, not a hidden mode
+// toggle (an earlier version had a page-level "Read-only" checkbox that silently changed what a
+// shared button did, removed as confusing). Remediate and Verify never need that confirmation
+// since neither writes. The applied diff itself is never shown in a popup — it renders directly
+// on the finding's own detail page (runCardHtml() draws a fix run's applied_diff as a colored
+// diff block there), so seeing what changed is "click into the finding," the same way you'd
+// read any other run's verdict.
+const precheckRunIds = new Set(); // runIds whose flow includes a server-side precheck (path validation, git-clean-tree) that can fail before any run is pushed server-side — see the 'error' handler below, which alerts those failures directly since the generic error-badge treatment has no run to attach to
 
 function confirmApplyWrite(targetPath) {
   return confirm(
-    `This lets the Remediation agent directly edit files in:\n${targetPath}\n\n` +
+    `This writes the proposed fix directly to files in:\n${targetPath}\n\n` +
     `The target must be a clean git working tree (no uncommitted changes) — the run will refuse ` +
     `otherwise. You'll see the resulting diff once it's done. Continue?`
   );
@@ -3747,26 +3684,31 @@ async function onLoopAdvanceClick(findingId) {
   }
   const targetPath = findingSourcePath(finding);
   if (!targetPath) {
-    alert('This finding has no known source directory (it wasn\'t produced by a scan), so there\'s nothing to apply a fix to.');
+    alert('This finding has no known source directory (it wasn\'t produced by a scan), so there\'s nothing to run this stage against.');
     return;
   }
+  if (next === 'remediate') {
+    startRemediatePreview(findingId, finding, targetPath);
+    return;
+  }
+  // next === 'fix' — the one step that writes.
   if (!confirmApplyWrite(targetPath)) return;
-  startRemediateApply(findingId, finding, targetPath);
+  startRemediateFix(findingId, finding, targetPath);
 }
 
 function confirmRunAll(targetPath) {
   return confirm(
-    `This runs Remediation and Verify in sequence against:\n${targetPath}\n\n` +
-    `Remediation directly edits files there, so the target must be a clean git working tree ` +
+    `This proposes a fix, applies it, and verifies it in sequence against:\n${targetPath}\n\n` +
+    `Applying the fix directly edits files there, so the target must be a clean git working tree ` +
     `(no uncommitted changes) — the run will refuse otherwise. Continue?`
   );
 }
 
-// The loop cell's "run all stages" button — Remediation (write) -> Verify chained under one
-// confirm(), for when stepping through each stage individually isn't needed. There's no live
-// Triage sub-call here: every finding already carries a triage verdict from when it was
-// created (see CLAUDE.md), and buildBaseContext() already folds that verdict into the context
-// string Remediation receives below.
+// The loop cell's "run all stages" button — Remediate (propose) -> Fix (apply) -> Verify
+// chained under one confirm(), for when stepping through each stage individually isn't needed.
+// There's no live Triage sub-call here: every finding already carries a triage verdict from
+// when it was created (see CLAUDE.md), and buildBaseContext() already folds that verdict into
+// the context string Remediate receives below.
 async function onLoopRunAllClick(findingId) {
   const finding = await ensureFindingCached(findingId);
   if (!finding) return;
@@ -3787,12 +3729,14 @@ function onViewDiffClick(findingId) {
 }
 
 // Mirrors startStage()'s optimistic-placeholder pattern so the run shows as in-progress
-// immediately rather than only once it finishes.
-function startRemediateApply(findingId, finding, targetPath) {
+// immediately rather than only once it finishes. Read-only — no precheck can fail here beyond
+// "is this a real directory", but it's still tracked in precheckRunIds since that failure can
+// still happen before any run record exists server-side.
+function startRemediatePreview(findingId, finding, targetPath) {
   const runId = uid();
   stages.set(runId, findingId);
   stageConsoles.set(runId, { runId, consoleText: '', consoleOpen: false, consoleEl: null });
-  applyWriteRunIds.add(runId);
+  precheckRunIds.add(runId);
 
   const startedAt = Date.now();
   const context = buildBaseContext(finding);
@@ -3803,21 +3747,43 @@ function startRemediateApply(findingId, finding, targetPath) {
   finding.runs.push({ runId, agent: 'remediation', status: 'running', verdict: null, startedAt, finishedAt: null });
   if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
 
-  ws.send(JSON.stringify({ type: 'remediate_apply', runId, findingId, context, instruction: '', path: targetPath }));
+  ws.send(JSON.stringify({ type: 'remediate_preview', runId, findingId, context, instruction: '', path: targetPath }));
 }
 
-// Only the first stage (Remediation) gets an optimistic client-side placeholder — Verify's
-// placeholder arrives via the server's own 'started' message once that stage actually begins
-// (same dedup pattern startStage()'s comment describes), since we don't yet know whether it'll
-// even run (Remediation failing stops the chain early).
+// The write-capable step — applies whatever the most recent Remediate run proposed. No console
+// tracking: this makes no `claude` call at all (see handleRemediateFixMessage in server.js), so
+// there's never any narrated text for the console panel to show.
+function startRemediateFix(findingId, finding, targetPath) {
+  const runId = uid();
+  stages.set(runId, findingId);
+  precheckRunIds.add(runId);
+
+  const startedAt = Date.now();
+  upsertTimelineEntry({
+    kind: 'fix', runId, findingId, findingTitle: finding.title, agent: 'fix',
+    status: 'running', instruction: '', verdict: null, startedAt, finishedAt: null,
+  });
+  finding.runs.push({ runId, agent: 'fix', status: 'running', verdict: null, startedAt, finishedAt: null });
+  if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
+
+  ws.send(JSON.stringify({ type: 'remediate_fix', runId, findingId, path: targetPath }));
+}
+
+// Only the first stage (Remediate) gets an optimistic client-side placeholder — Fix's and
+// Verify's placeholders arrive via the server's own 'started' message once each stage actually
+// begins (same dedup pattern startStage()'s comment describes), since we don't yet know whether
+// they'll even run (Remediate proposing nothing usable, or Fix failing to apply, both stop the
+// chain early).
 function startRemediateAll(findingId, finding, targetPath) {
   const remediationRunId = uid();
+  const fixRunId = uid();
   const verifyRunId = uid();
   stages.set(remediationRunId, findingId);
+  stages.set(fixRunId, findingId);
   stages.set(verifyRunId, findingId);
   stageConsoles.set(remediationRunId, { runId: remediationRunId, consoleText: '', consoleOpen: false, consoleEl: null });
   stageConsoles.set(verifyRunId, { runId: verifyRunId, consoleText: '', consoleOpen: false, consoleEl: null });
-  applyWriteRunIds.add(remediationRunId); // a precheck failure (dirty tree) is tagged with the first stage's runId, since that's the only one with a client-side placeholder before the server responds
+  precheckRunIds.add(remediationRunId); // a precheck failure (dirty tree) is tagged with the first stage's runId, since that's the only one with a client-side placeholder before the server responds
 
   const startedAt = Date.now();
   const context = buildBaseContext(finding);
@@ -3829,7 +3795,7 @@ function startRemediateAll(findingId, finding, targetPath) {
   if (currentView === 'finding-detail' && currentFindingDetailId === findingId) renderFindingDetail(findingId);
 
   ws.send(JSON.stringify({
-    type: 'remediate_all', findingId, remediationRunId, verifyRunId, context, instruction: '', path: targetPath,
+    type: 'remediate_all', findingId, remediationRunId, fixRunId, verifyRunId, context, instruction: '', path: targetPath,
   }));
 }
 
@@ -3868,7 +3834,12 @@ function buildBaseContext(finding) {
 
 const fdBodyEl = document.getElementById('fd-body');
 const VERDICT_BADGE_FIELDS = ['verdict', 'severity_confirmed', 'confidence', 'priority'];
-const VERDICT_SKIP_FIELDS = new Set([...VERDICT_BADGE_FIELDS, 'reasoning', 'next_agent', 'applied_diff']);
+// corrected_code and edit_plan get their own dedicated renderers (a syntax-highlighted code
+// block, and a diff-style preview respectively — see runCardHtml()) instead of the generic
+// key/value grid every other field falls into, since dumping a multi-line code string or a
+// nested {summary,risk,files:[...]} object through String() there produced unreadable output
+// (a wrapped code paragraph with no monospacing, and literally "[object Object]").
+const VERDICT_SKIP_FIELDS = new Set([...VERDICT_BADGE_FIELDS, 'reasoning', 'next_agent', 'applied_diff', 'corrected_code', 'edit_plan']);
 
 async function openFindingDetail(findingId) {
   currentFindingDetailId = findingId;
@@ -3898,7 +3869,7 @@ function renderFindingDetail(findingId) {
     <div class="fd-badges">
       <span class="badge ${finding.severity}">${escapeHtml(severityLabel(finding.severity))}</span>
       <span class="badge ${finding.status}">${escapeHtml(statusLabel(finding.status))}</span>
-      <span class="scan-type-chip" style="color:${typeMeta.color}; background:${hexToRgba(typeMeta.color, .16)};">${escapeHtml(typeMeta.label)}</span>
+      <span class="scan-type-chip">${escapeHtml(typeMeta.label)}</span>
       ${findingSourceTagHtml({ stageRuns: findingStageRuns(finding) })}
     </div>
   `;
@@ -3999,6 +3970,75 @@ function verdictFieldLabel(key) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Agent free-text (reasoning/root_cause/evidence/etc.) commonly contains Markdown-ish inline
+// code spans and bold the model wrote assuming a Markdown renderer downstream — this app had
+// none, so a literal backtick or `**` pair just showed up as stray punctuation. A small
+// hand-rolled inline formatter (escape first, then linkify backtick spans and bold — no lists/
+// headers/links, this app's verdict fields never use them) fixes that without pulling in an
+// external Markdown library, consistent with this app's other hand-rolled renderers
+// (highlightCode(), diffLineHtml()).
+function formatInlineText(str) {
+  return escapeHtml(str)
+    .replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, (_, b) => `<strong>${b}</strong>`);
+}
+
+// An array field like `evidence`/`verification_steps` joined into one comma-separated run-on
+// string reads as a wall of text once items are full sentences (and gets actively confusing
+// when an item itself contains a comma, e.g. a SQL snippet or a regex alternation). `evidence`
+// specifically (per agents/verify.md's contract: "short file/path or pattern references") is
+// code/reference lines, not prose — those render one-per-line in a monospace block, the same
+// visual language as the finding's own CODE section, rather than prose bullets. Other long
+// arrays (verification_steps and the like — actual sentences) get a real bulleted list instead;
+// short arrays (control IDs, single-word tags) stay as an inline comma list, which reads better
+// at that size than a list with one item per line.
+function verdictArrayHtml(items, key) {
+  const strs = items.map((v) => String(v));
+  if (key === 'evidence') {
+    return `<pre class="code-block fd-verdict-codeblock">${strs.map((s) => escapeHtml(s)).join('\n')}</pre>`;
+  }
+  const needsList = strs.length > 3 || strs.some((s) => s.length > 30);
+  if (!needsList) return formatInlineText(strs.join(', '));
+  return `<ul class="fd-verdict-list">${strs.map((s) => `<li>${formatInlineText(s)}</li>`).join('')}</ul>`;
+}
+
+// `corrected_code` is a full replacement code snippet — rendered exactly like the finding's own
+// CODE section (highlightCode() + .code-block) so it reads as code, not a wrapped paragraph.
+function correctedCodeHtml(code) {
+  if (!code) return '';
+  return `<div class="fd-section-title" style="margin-top:10px;">Proposed fix</div><pre class="code-block"><code>${highlightCode(code)}</code></pre>`;
+}
+
+// `edit_plan` is a structured { summary, risk, files: [{ path, edits: [{find, replace}] }] }
+// object (or a { path, create/append } companion-file entry) — rendered as a diff-style preview
+// (reusing diffLineHtml(), the same renderer applied_diff uses) so "what will Fix write" reads
+// the same way as "what did Fix write" does once it's actually run, rather than a raw dump of
+// the object.
+function editPlanHtml(plan) {
+  if (!plan || typeof plan !== 'object') return '';
+  const files = Array.isArray(plan.files) ? plan.files : [];
+  if (!files.length) return '';
+  const summaryHtml = plan.summary
+    ? `<div class="fd-verdict-reasoning" style="margin-top:10px;">${formatInlineText(plan.summary)}${plan.risk ? ` <span class="badge ${escapeHtml(String(plan.risk))}">${escapeHtml(String(plan.risk))} risk</span>` : ''}</div>`
+    : '';
+  const fileBlocks = files.map((f) => {
+    const lines = [];
+    if (Array.isArray(f.edits)) {
+      for (const e of f.edits) {
+        String(e.find || '').split('\n').forEach((l) => lines.push('-' + l));
+        String(e.replace || '').split('\n').forEach((l) => lines.push('+' + l));
+      }
+    } else if (f.create) {
+      String(f.content || '').split('\n').forEach((l) => lines.push('+' + l));
+    } else if (f.append != null) {
+      String(f.append).split('\n').forEach((l) => lines.push('+' + l));
+    }
+    if (!lines.length) return '';
+    return `<div class="fd-section-title" style="margin-top:10px;">${escapeHtml(f.path || '')}</div><pre class="diff-block">${lines.map(diffLineHtml).join('')}</pre>`;
+  }).join('');
+  return summaryHtml + fileBlocks;
+}
+
 function runCardHtml(run) {
   const meta = agentMeta(run.agent);
   const timeStr = run.startedAt ? formatRelativeTime(run.startedAt) : '';
@@ -4018,12 +4058,14 @@ function runCardHtml(run) {
       : '';
     verdictHtml = `
       ${badgeFields.length ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">${badgeFields.map((k) => `<span class="badge ${escapeHtml(String(v[k]))}">${escapeHtml(String(v[k]))}</span>`).join('')}</div>` : ''}
-      ${v.reasoning ? `<div class="fd-verdict-reasoning">${escapeHtml(v.reasoning)}</div>` : ''}
+      ${v.reasoning ? `<div class="fd-verdict-reasoning">${formatInlineText(v.reasoning)}</div>` : ''}
       ${otherFields.length ? `
         <div class="fd-verdict-grid" style="margin-top:8px;">
-          ${otherFields.map((k) => `<div class="fd-verdict-item"><b>${escapeHtml(verdictFieldLabel(k))}</b><span>${escapeHtml(Array.isArray(v[k]) ? v[k].join(', ') : String(v[k]))}</span></div>`).join('')}
+          ${otherFields.map((k) => `<div class="fd-verdict-item"><b>${escapeHtml(verdictFieldLabel(k))}</b><div class="fd-verdict-value">${Array.isArray(v[k]) ? verdictArrayHtml(v[k], k) : formatInlineText(String(v[k]))}</div></div>`).join('')}
         </div>
       ` : ''}
+      ${correctedCodeHtml(v.corrected_code)}
+      ${editPlanHtml(v.edit_plan)}
       ${appliedDiffHtml}
     `;
   } else if (run.status === 'error') {
@@ -4066,32 +4108,42 @@ function fdLoopBoxesHtml(f) {
   if (f.scanType === 'sca') return '';
   if (f.status === 'closed') return `<div class="hint">Closed — remediation loop not applicable.</div>`;
 
-  const { triaged, fixed, verified } = findingLoopState(f);
+  const { triaged, remediated, fixed, verified } = findingLoopState(f);
   const next = findingLoopNextAction(f);
   const hasPath = !!findingSourcePath(f);
-  const anyRunning = triaged === 'running' || fixed === 'running' || verified === 'running';
+  const anyRunning = triaged === 'running' || remediated === 'running' || fixed === 'running' || verified === 'running';
 
-  const box = (stage, agentKey, label, runningLabel, state, actionable, actionTitle) => {
+  // Each box always shows a short, fixed caption describing what the stage does — not just a
+  // hover tooltip — since the boxes alone (icon + one-word status) didn't make it obvious what
+  // clicking one would actually do.
+  const box = (stage, agentKey, label, caption, runningLabel, state, actionable, actionTitle) => {
     const meta = agentMeta(agentKey);
     const statusText = state === 'running' ? runningLabel
       : state === 'attention' ? (stage === 'verify' ? 'Not fixed' : 'Failed')
+      : state === 'unavailable' ? 'No fix proposed'
       : state === 'done' ? 'Done' : 'Not started';
     const clickable = actionable && !anyRunning;
     const title = clickable ? actionTitle
       : state === 'done' ? `${label} complete`
+      : state === 'unavailable' ? 'Remediate didn’t propose a specific edit for this finding — nothing to apply'
       : !hasPath && stage !== 'triage' ? 'No known source directory — this finding wasn\'t produced by a scan'
       : '';
     return `
       <button class="fd-loop-box${clickable ? ' clickable' : ''} state-${state}" type="button"
         data-fd-loop-box${clickable ? '' : ' disabled'} title="${escapeHtml(title)}">
-        ${icon(meta.icon)}<span class="fd-loop-box-text"><span class="fd-loop-box-label">${escapeHtml(label)}</span><span class="fd-loop-box-status">${escapeHtml(statusText)}</span></span>
+        ${icon(meta.icon)}<span class="fd-loop-box-text">
+          <span class="fd-loop-box-label">${escapeHtml(label)}</span>
+          <span class="fd-loop-box-caption">${escapeHtml(caption)}</span>
+          <span class="fd-loop-box-status">${escapeHtml(statusText)}</span>
+        </span>
       </button>`;
   };
 
   const boxesHtml = '<div class="fd-loop-boxes">'
-    + box('triage', 'triage', 'Triage', 'Triaging…', triaged, next === 'triage', 'Run Triage')
-    + box('remediate', 'remediation', 'Fix', 'Fixing…', fixed, next === 'remediate', 'Apply a fix (writes to your code)')
-    + box('verify', 'verify', 'Verify', 'Verifying…', verified, next === 'verify', 'Verify the fix')
+    + box('triage', 'triage', 'Triage', 'Confirms it’s real', 'Triaging…', triaged, next === 'triage', 'Run Triage')
+    + box('remediate', 'remediation', 'Remediate', 'Proposes a fix to review', 'Proposing…', remediated, next === 'remediate', 'Propose a fix — nothing written yet')
+    + box('fix', 'fix', 'Fix', 'Writes the fix to your code', 'Applying…', fixed, next === 'fix', 'Apply the proposed fix — writes to your code')
+    + box('verify', 'verify', 'Verify', 'Re-checks the live code', 'Verifying…', verified, next === 'verify', 'Verify the fix actually landed')
     + '</div>';
 
   const runAllDisabled = anyRunning || !next || !hasPath;
@@ -4235,11 +4287,12 @@ function handleServerMessage(msg) {
   if (!findingId) return;
 
   if (msg.type === 'started') {
-    // startStage()/startRemediateApply() push their own optimistic "running" placeholder before
-    // sending, so this is a no-op duplicate-check for those. startRemediateAll()'s Remediation
-    // and Verify stages are the exception — they can't get a placeholder at click-time since the
-    // chain doesn't yet know whether they'll even run (Triage might close the finding or error
-    // out first) — push one now if it's missing.
+    // startStage()/startRemediatePreview()/startRemediateFix() push their own optimistic
+    // "running" placeholder before sending, so this is a no-op duplicate-check for those.
+    // startRemediateAll()'s Fix and Verify stages are the exception — they can't get a
+    // placeholder at click-time since the chain doesn't yet know whether they'll even run
+    // (Remediate proposing nothing usable, or Fix failing to apply, both stop it early) — push
+    // one now if it's missing.
     const finding = findingCache.get(findingId);
     if (finding && !finding.runs.some((r) => r.runId === msg.runId)) {
       finding.runs.push({ runId: msg.runId, agent: msg.agent, status: 'running', verdict: null, startedAt: Date.now(), finishedAt: null });
@@ -4261,8 +4314,8 @@ function handleServerMessage(msg) {
     // A write-flow precheck failure (not a git repo, dirty tree, etc.) never gets a run pushed
     // server-side, so there's nothing for the normal error badge to attach to — surface it
     // directly instead of leaving the user staring at a run that silently vanishes.
-    if (applyWriteRunIds.has(msg.runId)) {
-      applyWriteRunIds.delete(msg.runId);
+    if (precheckRunIds.has(msg.runId)) {
+      precheckRunIds.delete(msg.runId);
       alert(msg.message);
     }
     upsertTimelineEntry({ runId: msg.runId, status: 'error', finishedAt: Date.now() });
@@ -4271,7 +4324,7 @@ function handleServerMessage(msg) {
   }
   if (msg.type === 'done') {
     upsertTimelineEntry({ runId: msg.runId, status: msg.code === 0 ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
-    applyWriteRunIds.delete(msg.runId);
+    precheckRunIds.delete(msg.runId);
     refreshFindingAfterRun(findingId);
     return;
   }
@@ -4313,7 +4366,7 @@ function setStageStatus(stage, status, text) {
 // column's step arrow and "run all stages" button (see findingLoopCellHtml()) — so this menu no
 // longer lists them; it's just Threat Model (a separate, optional deep-dive that deliberately
 // doesn't sit on that path — see CLAUDE.md's Pipeline shape) plus whatever custom agents exist.
-const FIX_FLOW_AGENTS = ['triage', 'remediation', 'verify'];
+const FIX_FLOW_AGENTS = ['triage', 'remediation', 'fix', 'verify'];
 // SCA findings additionally lose Threat Model too — none of the four per-finding code-analysis
 // agents apply to a dependency version bump (already named in the Package/Fixed-in columns), so
 // nothing in FIX_FLOW_AGENTS or Threat Model is offered, leaving only custom agents (if any).
@@ -4512,8 +4565,6 @@ exportCsvBtn.addEventListener('click', () => {
 
 const THEME_KEY = 'appsecops-theme';
 const navThemeBtn = document.getElementById('nav-theme-btn');
-const navThemeIconMoon = document.getElementById('nav-theme-icon-moon');
-const navThemeIconSun = document.getElementById('nav-theme-icon-sun');
 const navThemeLabel = document.getElementById('nav-theme-label');
 
 function applyTheme(theme) {
@@ -4525,8 +4576,6 @@ function applyTheme(theme) {
 
 function renderThemeToggle() {
   const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-  navThemeIconMoon.hidden = current === 'light';
-  navThemeIconSun.hidden = current === 'dark';
   navThemeLabel.textContent = current === 'light' ? 'Light theme' : 'Dark theme';
   navThemeBtn.title = current === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
   navThemeBtn.setAttribute('aria-checked', current === 'dark' ? 'true' : 'false');
@@ -4573,7 +4622,6 @@ async function clearSession() {
   for (const run of controlAssistRuns.values()) stopControlsAssistElapsedTimer(run);
   controlAssistRuns.clear();
   scanLiveContainer.innerHTML = '';
-  scaLiveContainer.innerHTML = '';
   expandedAtmRunId = null;
   expandedCaRunId = null;
   timelineUnseenDone = 0;
