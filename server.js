@@ -157,8 +157,9 @@ function normalizeSeverity(raw) {
 }
 
 // Synthetic 'triage' run for a reasoning finding with no source directory to actually check
-// anything against (manually added via "+ Add", or seed data) — see the /api/findings POST
-// handler and seedFindings() below. Triage is no longer a live agent stage at all (its .md
+// anything against — today that means one manually added via "+ Add"; see the /api/findings
+// POST handler below. (It also covered the boot-time sample findings, until seedFindings() was
+// removed and the store started empty.) Triage is no longer a live agent stage at all (its .md
 // file is gone), so every reasoning finding needs *some* triage run at creation time or the
 // Remediation Loop's first stage is permanently stuck pointing at a stage that can't run.
 function placeholderTriageRun(severity) {
@@ -523,105 +524,6 @@ function findingFromLLMScan(rf, scan) {
   return finding;
 }
 
-function seedFindings() {
-  const samples = [
-    {
-      title: 'SQL Injection via title search parameter',
-      severity: 'high',
-      scanType: 'reasoning',
-      rule: 'CWE-89 SQL Injection',
-      file: 'findings-dashboard.jsx:112 (example legacy endpoint, hypothetical Node/Express backend)',
-      description:
-        "Scanner: Veracode SAST\nRule: CWE-89 SQL Injection\n\nUser-controlled query parameter `title` is concatenated directly into a SQL string and executed without parameterization.",
-      code:
-        "app.get('/api/findings/search', (req, res) => {\n  const q = req.query.title;\n  const sql = `SELECT * FROM findings WHERE title LIKE '%${q}%'`;\n  db.query(sql, (err, rows) => {\n    if (err) return res.status(500).send('error');\n    res.json(rows);\n  });\n});",
-    },
-    {
-      title: 'Reflected XSS in finding title render',
-      severity: 'medium',
-      scanType: 'reasoning',
-      rule: 'CWE-79 Cross-Site Scripting',
-      file: 'findings-dashboard.jsx:58 (hypothetical detail pane)',
-      description:
-        "Scanner: manual review\nRule: CWE-79 Reflected XSS\n\nfinding.title comes from an uploaded CSV and is interpolated directly into innerHTML with no escaping. A crafted title in the CSV would execute in the analyst's browser session.",
-      code: "detailPane.innerHTML = `<h2>${finding.title}</h2>`;",
-    },
-    {
-      title: 'Hardcoded Azure DevOps PAT in ticket-creation helper',
-      severity: 'critical',
-      scanType: 'reasoning',
-      rule: 'CWE-798 Use of Hard-coded Credentials',
-      file: 'findings-dashboard.jsx:201 (ticket creation helper, hypothetical)',
-      description:
-        "Scanner: gitleaks\nRule: CWE-798 Hardcoded credentials\n\nA personal access token is committed directly in client-side JS, shipped to every browser that loads the dashboard.",
-      code:
-        "const ADO_PAT = 'ado_pat_9f2a...redacted...';\nfetch(`https://dev.azure.com/org/_apis/wit/workitems?api-version=6.0`, {\n  headers: { Authorization: `Basic ${btoa(':' + ADO_PAT)}` }\n});",
-    },
-    {
-      title: 'Missing authorization check on /api/findings/:id/status',
-      severity: 'low',
-      scanType: 'reasoning',
-      rule: 'CWE-862 Missing Authorization',
-      file: 'server.js (hypothetical future endpoint, not yet built here)',
-      description:
-        "Scanner: manual review (design note)\nRule: CWE-862 Missing Authorization\n\nThe planned PATCH /api/findings/:id/status endpoint (for marking findings triaged/closed from the dashboard) has no auth model defined yet in this local single-user tool. Flagging now so it's not forgotten if this app is ever exposed beyond localhost.",
-    },
-    {
-      title: 'Prototype pollution in lodash <4.17.21 (merge/defaultsDeep)',
-      severity: 'high',
-      scanType: 'sca',
-      rule: 'CVE-2020-8203',
-      file: 'package.json',
-      description:
-        "Scanner: npm audit\nRule: CVE-2020-8203 Prototype Pollution\n\nlodash@4.17.15 is resolved via a transitive dependency. Versions before 4.17.21 allow prototype pollution via `_.merge`/`_.defaultsDeep` on attacker-controlled objects, which can lead to denial of service or, in some call sites, property-injection based logic bypass.",
-      packageName: 'lodash',
-      packageVersion: '4.17.15',
-      fixedVersion: '4.17.21',
-    },
-    {
-      title: 'Unauthenticated internal metrics endpoint reachable externally',
-      severity: 'medium',
-      scanType: 'reasoning',
-      rule: 'CWE-306 Missing Authentication for Critical Function',
-      file: 'server.js (route registration, hypothetical)',
-      description:
-        "Scanner: manual review (static approximation of runtime testing)\nRule: CWE-306 Missing Authentication\n\n/internal/metrics is registered with no auth middleware ahead of it and no IP allowlist, so it's reachable by anyone who can route to this host, not just the ops network it was intended for. Response includes queue depths and internal hostnames.",
-      endpoint: '/internal/metrics',
-      method: 'GET',
-    },
-  ];
-
-  for (const s of samples) {
-    const id = crypto.randomUUID();
-    const finding = {
-      id,
-      title: s.title,
-      severity: s.severity,
-      scanType: s.scanType,
-      rule: s.rule,
-      file: s.file,
-      description: s.description,
-      code: s.code || null,
-      packageName: s.packageName || null,
-      packageVersion: s.packageVersion || null,
-      fixedVersion: s.fixedVersion || null,
-      endpoint: s.endpoint || null,
-      method: s.method || null,
-      status: 'new',
-      createdAt: Date.now(),
-      runs: [],
-    };
-    // Same reasoning as the manual "+ Add" handler above: Triage no longer exists as a
-    // runnable stage, so this seed data needs a synthetic run too or its Remediation Loop
-    // starts permanently stuck.
-    if (finding.scanType === 'reasoning') {
-      finding.runs.push(placeholderTriageRun(finding.severity));
-    }
-    finding.status = deriveStatus(finding);
-    findings.set(id, finding);
-  }
-}
-seedFindings();
 
 // ---------- in-memory scans store ----------
 // A scan is one "scan this directory" invocation of sast-engine's deterministic pattern
