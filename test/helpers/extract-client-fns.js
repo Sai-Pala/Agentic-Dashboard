@@ -50,7 +50,16 @@ const path = require('node:path');
 const vm = require('node:vm');
 const parser = require('@babel/parser');
 
-const INDEX_HTML = path.join(__dirname, '..', '..', 'public', 'index.html');
+// Phase 4 step 1 moved the application script out of index.html into its own module file.
+// Before that, this harness regexed the largest <script> block out of the HTML; now the file
+// IS the script, so it is read directly. The only <script> left in index.html is the 9-line
+// flash-free theme bootstrap, which would otherwise have been picked as "the largest block"
+// and silently produced an empty extraction.
+//
+// This whole harness is temporary scaffolding. Once the split finishes and these functions
+// are real ES module exports, client-logic.test.js can import them directly and this file
+// gets deleted — see PHASE4-PLAN.md §4.
+const APP_SCRIPT = path.join(__dirname, '..', '..', 'public', 'js', 'app.js');
 
 /**
  * The body of the largest <script> block in index.html.
@@ -60,19 +69,12 @@ const INDEX_HTML = path.join(__dirname, '..', '..', 'public', 'index.html');
  * hardcoding line numbers, which would rot on the first edit above it.
  */
 function readMainScript() {
-  if (!fs.existsSync(INDEX_HTML)) {
-    throw new Error(`extract-client-fns: cannot find ${INDEX_HTML}`);
+  if (!fs.existsSync(APP_SCRIPT)) {
+    throw new Error(`extract-client-fns: cannot find ${APP_SCRIPT}`);
   }
-  const html = fs.readFileSync(INDEX_HTML, 'utf8');
-  const blocks = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
-  if (!blocks.length) {
-    throw new Error('extract-client-fns: no <script> block found in public/index.html');
-  }
-  const main = blocks.reduce((a, b) => (b.length > a.length ? b : a));
-  // Offset of the chosen block within the file, so we can report real line numbers.
-  const offset = html.indexOf(main);
-  const startLine = html.slice(0, offset).split('\n').length;
-  return { source: main, startLine };
+  // The file is the script now, so there is no block to select and the reported line numbers
+  // are the file's own — startLine 1 rather than an offset into the HTML.
+  return { source: fs.readFileSync(APP_SCRIPT, 'utf8'), startLine: 1 };
 }
 
 /**
