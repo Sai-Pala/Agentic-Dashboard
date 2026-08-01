@@ -271,8 +271,11 @@ export class ManagedAgentScanner extends BaseAgent {
   /**
    * Only run if the codebase references Managed Agents API/SDK.
    */
+  // "Regex short-circuits anyway" was true per-file but still walked the whole
+  // tree on every scan. Gate on the agent tooling it actually inspects.
   shouldRun(recon) {
-    return true; // Lightweight patterns — always run, regex will short-circuit on non-matching files
+    if (!recon) return true;
+    return (recon.aiFrameworks || []).length > 0 || (recon.mcpConfigs || []).length > 0;
   }
 
   async analyze(context) {

@@ -32,6 +32,8 @@
 
 import path from 'path';
 import { BaseAgent, createFinding } from './base-agent.js';
+import { parseFile } from '../ast-extract.js';
+import { analyzeTaintAst } from './taint-ast.js';
 
 // ── Where untrusted data enters ───────────────────────────────────────────────
 const TAINT_SOURCE = /\b(?:req|request)\s*\.\s*(?:query|body|params|headers|cookies)\b|\bctx\s*\.\s*(?:query|params|request)\b|\bevent\s*\.\s*(?:body|queryStringParameters|pathParameters)\b|\bprocess\.argv\b|\blocation\s*\.\s*(?:search|hash|href)\b|\bwindow\.name\b|\bdocument\.referrer\b|\bnew\s+URLSearchParams\b/;
@@ -197,8 +199,48 @@ export class TaintFlowAgent extends BaseAgent {
   async analyze(context) {
     const files = this.getFilesToScan(context).filter((f) =>
       CODE_EXTENSIONS.has(path.extname(f).toLowerCase()));
+    const forceRegex = Boolean(context.options && context.options.forceRegexTaint);
     const findings = [];
-    for (const file of files) findings.push(...this._scanFile(file));
+    for (const file of files) {
+      findings.push(...(forceRegex ? this._scanFile(file) : this._scanFileAst(file)));
+    }
+    return findings;
+  }
+
+  /**
+   * Preferred path: track taint over a real parse tree. Falls back to the regex
+   * scanner for any single file that will not parse, so an exotic dialect or a
+   * syntax error costs that one file rather than silently blanking it.
+   */
+  _scanFileAst(filePath) {
+    const content = this.readFile(filePath);
+    if (!content) return [];
+    const ast = parseFile(content, filePath);
+    if (!ast) return this._scanFile(filePath);
+
+    const sourceLines = content.split('\n');
+    const findings = [];
+    for (const hit of analyzeTaintAst(ast, sourceLines)) {
+      const rawLine = sourceLines[hit.line - 1] || '';
+      if (this.isSuppressed(rawLine, hit.sink.severity)) continue;
+      const f = createFinding({
+        file: filePath,
+        line: hit.line,
+        column: Math.max(1, rawLine.indexOf(hit.varName) + 1),
+        severity: hit.sink.severity,
+        category: 'dataflow',
+        rule: hit.sink.rule,
+        title: hit.sink.title,
+        description: `User input from \`${hit.via}\` (line ${hit.originLine}) flows into \`${hit.varName}\` and ${hit.sink.what} here on line ${hit.line} with no validation or escaping in between.`,
+        matched: hit.matched,
+        confidence: 'high',
+        cwe: hit.sink.cwe,
+        owasp: hit.sink.owasp,
+        fix: hit.sink.fix,
+      });
+      f.taintSourceLine = hit.originLine;
+      findings.push(f);
+    }
     return findings;
   }
 

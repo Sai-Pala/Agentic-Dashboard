@@ -5,7 +5,6 @@ const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const fg = require('fast-glob'); // CommonJS-compatible — used by partitionReasoningModules() below
 
 const PORT = process.env.PORT || 4500;
 const AGENTS_DIR = path.join(__dirname, 'agents');
@@ -26,64 +25,70 @@ const PRIORITIES = ['p0', 'p1', 'p2', 'p3'];
 const SCAN_TYPES = ['reasoning', 'sca'];
 const FINDING_SCAN_TYPES = ['reasoning', 'sca'];
 const SCAN_SCOPES = ['full', 'diff'];
-// Reasoning Scan's LLM half no longer takes one unscoped pass over an entire target directory
-// on a "full" scope scan — that scales token spend and hallucination surface directly with
-// repo size, with nothing bounding how far the model roams. Instead the directory is
-// partitioned into modules (see partitionReasoningModules()) sized by actual file count, not
-// just directory boundaries, and each module gets its own scoped `claude -p` call — smaller
-// context, a hard dollar cap via --max-budget-usd, and results from all modules are merged
-// before the usual dedup-against-deterministic-findings step. A "diff" scope scan skips
-// partitioning entirely — the changed-file list from git is already a tight, pre-bounded scope,
-// so it stays exactly one call, same as before.
-// Per-module budget, scaled by how much code the module actually covers. A flat cap was the
-// first design and measurably too low at the small end: a 10-file, ~200-line module
-// exhausted a flat $0.50 and reported "coverage may be incomplete" on every run, which is both
-// a real coverage loss and the kind of thing that undermines a scan's credibility. Scaling by
-// file count gives a small module enough room to actually finish while still bounding a large
-// one. Budget is base + per-file, clamped — see moduleBudgetUsd().
-// Calibrated against observed spend rather than guessed: a 9-file module exhausted both a flat
-// $0.50 and a scaled $0.85 before finishing, and an uncapped reasoning call over a comparable
-// directory settled around $2.30 on its own. So ~$1-2 is what a thorough pass over a small
-// module actually costs, and anything under that buys a truncated review rather than a cheaper
-// one — the scan still pays for the tokens it spent, it just throws away the conclusion.
-const REASONING_MODULE_BUDGET_BASE_USD = 0.75;
-const REASONING_MODULE_BUDGET_PER_FILE_USD = 0.12;
-const REASONING_MODULE_BUDGET_MAX_USD = 2.5;
-// Ceiling on the reasoning half of a single scan. Without this, worst-case spend is
-// REASONING_MODULE_MAX modules × the per-module cap (plus the cross-cutting pass) with nothing
-// bounding the total — raising the per-module cap alone would have made that worse. Once
-// accumulated spend crosses this, remaining modules are skipped and reported rather than run,
-// so a scan degrades to "partial coverage, stated plainly" instead of an open-ended bill.
-const REASONING_SCAN_BUDGET_USD = 12.0;
-const REASONING_MODULE_CONCURRENCY = 3; // how many module-scoped claude -p processes run at once
-// Target file count per module. A group over this gets recursively split by subdirectory
-// (partitionReasoningModules()); groups under this get merged back together (by actual size, not
-// arbitrary order) so a repo that's naturally small — or a giant single top-level directory that
-// can't be split further — doesn't pay for more or fewer module calls than its real size justifies.
-const REASONING_MODULE_MAX_FILES = 30;
-const REASONING_MODULE_SPLIT_MAX_DEPTH = 3; // how many directory levels we'll recurse into an oversized group before accepting its size as-is
-const REASONING_MODULE_MAX = 24; // hard cap on total modules after merging — see the bin-packing merge step
-// A cross-cutting pass runs once per "full" scope scan, unscoped (unlike the module calls),
-// specifically hunting for wiring gaps a per-module call structurally can't see — a protection
-// defined in one module (auth middleware, a validator) never actually applied where it should be
-// in another. Slightly higher budget than a single module since it has to sample across the
-// whole tree rather than deep-dive one area. See runLLMReasoningScan()'s crosscut branch.
-// Measured, not guessed: at $2.00 this pass was observed truncating mid-analysis on
-// even a small tree, each time discarding a partially-built picture of the app's
-// wiring. Since it is the only call that sees the whole tree, truncating it costs
-// exactly the findings no other call can produce — so it gets the largest per-call
-// budget in the design rather than the smallest.
-const REASONING_CROSSCUT_BUDGET_USD = 3.5;
+// The reasoning half is scoped by the *application's shape*, not by its file count: the
+// enumerated attack surface (every route with its resolved middleware chain, every mount, every
+// security control with its real call count) is what bounds the model's work, so a large
+// repository costs about what a small one does. A "diff" scope scan narrows that worklist to
+// the changed files on top. See runLLMReasoningScan().
+// ── Reasoning-pass budgets ──────────────────────────────────────────────────
+//
+// The reasoning half used to partition the target into up to 24 file-count-sized
+// modules and spawn a scoped `claude -p` per module plus an unscoped cross-cutting
+// pass, all concurrent, each with its own scaled dollar cap and a $12 per-scan
+// ceiling on top. That design made cost scale with *repo size*, and it re-read
+// every file the deterministic half had just read while knowing nothing about
+// what that half found — two engines racing over the same tree, reconciled
+// afterwards by a dedupe step. A union, not a hybrid.
+//
+// It is now two calls, both taking the deterministic half's output as input:
+//
+//   1. ADJUDICATE — the pattern findings, with their code, asking which are real.
+//      Cost scales with finding count. This is the pass that kills false
+//      positives, which pattern matching cannot do for itself.
+//   2. REVIEW     — the enumerated attack surface (routes, guards, mounts,
+//      controls defined but never applied) plus a list of what the deterministic
+//      half already reported, asking the authorization and business-logic
+//      questions no fixed rule set can express. Cost scales with endpoint count.
+//
+// Neither scales with repo size, so a large codebase costs roughly what a small
+// one does. Two calls also removes the need for a per-scan ceiling: worst case is
+// the sum of the two caps below, by construction.
+const REASONING_ADJUDICATE_BUDGET_USD = 1.5;
+// Per review *shard*, not per scan — see planReviewShards().
+const REASONING_REVIEW_BUDGET_USD = 3.5;
+// Ceiling across every review shard in one scan. Sharding reintroduces the possibility of
+// unbounded total spend that the two-call design had removed by construction, so the ceiling
+// comes back with it. Once crossed, remaining shards are skipped and named in a scan-warning
+// rather than run — coverage degrades to "partial, stated plainly" instead of an open bill.
+const REASONING_REVIEW_TOTAL_USD = 8.0;
 
-// Dollar cap for one module's claude -p call. The cross-cutting pass gets its own flat figure
-// (it samples across the whole tree rather than covering a fixed file list, so file count isn't
-// a meaningful input for it).
-function moduleBudgetUsd(mod) {
-  if (mod.crosscut) return REASONING_CROSSCUT_BUDGET_USD;
-  const fileCount = Array.isArray(mod.paths) ? mod.paths.length : REASONING_MODULE_MAX_FILES;
-  const scaled = REASONING_MODULE_BUDGET_BASE_USD + fileCount * REASONING_MODULE_BUDGET_PER_FILE_USD;
-  return Math.min(REASONING_MODULE_BUDGET_MAX_USD, Math.round(scaled * 100) / 100);
-}
+// The review pass is sharded by ATTACK SURFACE, not by files. One call cannot genuinely answer
+// four questions about 800 routes: long before the dollar cap binds, the context window does,
+// and `claude -p` responds to a full context by compacting — silently discarding its own
+// earlier analysis. Removing the cap would therefore buy a larger bill and *the same* missing
+// coverage. Bounding the routes per call is the only thing that actually fixes it.
+//
+// 40 is set so the measured 31-route fixture stays a single shard (identical cost and
+// behaviour to before sharding existed) while still being a real per-route interrogation.
+const REVIEW_ROUTES_PER_SHARD = 40;
+// With the budget cap on, at most this many shards run — ~240 routes reviewed, whatever is
+// left over is reported. With the cap off (the form's "Budget cap" toggle), the user has
+// explicitly chosen completeness over cost, so every route is reviewed and only this much
+// higher ceiling remains as a runaway backstop.
+const REVIEW_MAX_SHARDS = 6;
+const REVIEW_MAX_SHARDS_UNCAPPED = 24;
+const REVIEW_SHARD_CONCURRENCY = 3;
+
+// Per-agent deadline for the deterministic half. See runDeterministicPatternScan() for why
+// this is a hang detector rather than a work budget.
+const DETERMINISTIC_AGENT_TIMEOUT_MS = 180_000;
+
+// Cap on how many deterministic findings go into one adjudication call. Beyond
+// this the prompt stops being a review and starts being a haystack, and the
+// per-finding attention that makes adjudication worth doing collapses. Findings
+// past the cap keep whatever verdict VerifierAgent gave them (reported, not
+// silently dropped — see runAdjudicationPass()).
+const ADJUDICATE_MAX_FINDINGS = 40;
 // Shipped with the app and load-bearing for other hardcoded UI (the scan flow,
 // the Dashboard's pipeline health panel) — editable, but not deletable via the
 // Agents screen.
@@ -91,12 +96,15 @@ function moduleBudgetUsd(mod) {
 // synthetic verdict assigned at finding-creation time instead of a live agent stage — see
 // CLAUDE.md. 'scan' is back (agents/scan.md exists again, invoked by handleScanMessage's
 // reasoning-pass half, not the generic per-finding run path — see NON_FINDING_AGENTS below).
-const BUILTIN_AGENTS = ['scan', 'threat_model', 'remediation', 'verify', 'app_threat_model', 'controls_assist'];
+const BUILTIN_AGENTS = ['scan', 'adjudicate', 'threat_model', 'remediation', 'verify', 'app_threat_model', 'controls_assist'];
 // Agent .md files that operate on a whole directory via their own dedicated flow
 // (Scans, App Threat Model, Controls Assist) rather than the per-finding stage/branch
 // UI — excluded from the per-finding agent dropdown and the SCA "run after scan" pill
 // row, but still editable in Agent Configuration (see the `all` query flag below).
-const NON_FINDING_AGENTS = ['scan', 'app_threat_model', 'controls_assist'];
+// 'adjudicate' joins these: it runs as the reasoning half's first pass over a whole scan's
+// deterministic findings, not as a stage a user starts against one finding, so it must not
+// appear in the per-finding agent menu or the stage modal's dropdown.
+const NON_FINDING_AGENTS = ['scan', 'adjudicate', 'app_threat_model', 'controls_assist'];
 
 // Lazily loads the vendored deterministic scanning engine (sast-engine/, ported from the
 // MIT-licensed ship-safe project — see CLAUDE.md's Reasoning Scan / SCA Scan bullets). It's a
@@ -111,9 +119,12 @@ function loadSastEngine() {
       import('./sast-engine/commands/deps.js'),
       import('./sast-engine/remediation-apply.js'),
       import('./sast-engine/utils/patterns.js'),
-    ]).then(([agentsIndex, deps, remediationApply, patterns]) => ({
+      import('./sast-engine/enumerate.js'),
+    ]).then(([agentsIndex, deps, remediationApply, patterns, enumerate]) => ({
       buildOrchestratorAsync: agentsIndex.buildOrchestratorAsync,
       listBuiltInAgents: agentsIndex.listBuiltInAgents,
+      enumerateSurface: enumerate.enumerateSurface,
+      renderWorklist: enumerate.renderWorklist,
       runDepsAudit: deps.runDepsAudit,
       validatePlan: remediationApply.validatePlan,
       applyPlan: remediationApply.applyPlan,
@@ -291,6 +302,9 @@ function toListItem(finding) {
       verify: latestRunByAgent(runs, 'verify'),
     },
     sourceScanId: finding.sourceScanId || null,
+    // Source→sink line span for dataflow findings, so the detail view can show
+    // the path the value takes rather than just where it ended up.
+    flow: finding.flow || null,
   };
 }
 
@@ -319,7 +333,7 @@ function deriveStatus(finding) {
 // deriveStatus, the Finding Detail page) already renders/derives from *any* triage run
 // generically, so this is the only integration point needed to make a scan-sourced finding
 // show up already "Triaged".
-function findingFromSastEngine(f, scan, targetPath) {
+function findingFromSastEngine(f, scan, targetPath, adjudication = null) {
   const relFile = f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : null;
   const fileLabel = relFile ? `${relFile}${f.line ? ':' + f.line : ''}` : null;
   const severity = normalizeSeverity(f.severity);
@@ -327,6 +341,29 @@ function findingFromSastEngine(f, scan, targetPath) {
   const codeSnippet = Array.isArray(f.codeContext) && f.codeContext.length
     ? f.codeContext.map((c) => c.text).join('\n')
     : null;
+
+  // A dataflow finding knows both ends of the path — where untrusted input
+  // entered and where it reached something dangerous. Read the real lines
+  // between them so the UI can show the flow rather than a single line number,
+  // which is the difference between "a rule fired here" and "this is the route
+  // an attacker takes". Bounded, because a 60-line span is a wall of code, not
+  // an explanation.
+  let flow = null;
+  if (f.taintSourceLine && f.line && f.taintSourceLine < f.line && f.file) {
+    const span = f.line - f.taintSourceLine;
+    if (span <= 25) {
+      try {
+        const all = fs.readFileSync(f.file, 'utf8').split(/\r?\n/);
+        flow = {
+          sourceLine: f.taintSourceLine,
+          sinkLine: f.line,
+          lines: all
+            .slice(f.taintSourceLine - 1, f.line)
+            .map((text, i) => ({ n: f.taintSourceLine + i, text })),
+        };
+      } catch { flow = null; }
+    }
+  }
 
   const finding = {
     id: crypto.randomUUID(),
@@ -346,13 +383,31 @@ function findingFromSastEngine(f, scan, targetPath) {
     createdAt: Date.now(),
     runs: [],
     sourceScanId: scan.id,
+    flow,
   };
 
   // Only critical/high findings actually go through VerifierAgent's code-context checks
   // (f.verified is null for everything else — "not checked", not "unverified"). Either way we
   // still synthesize a triage run so the finding enters the pipeline already triaged; an
   // unverified finding just lands as 'needs_review' instead of 'confirmed'.
-  const verdictLabel = f.verified === true ? 'confirmed' : 'needs_review';
+  //
+  // When the reasoning half's adjudication pass reached a conclusion about this
+  // finding, that conclusion wins — it read the surrounding code with far more
+  // context than a regex plus a verification heuristic has. A finding it calls a
+  // false positive still gets created; deriveStatus() maps that verdict to
+  // 'closed', so it stays inspectable in Agent Triage rather than vanishing.
+  // Never dropping a finding outright is deliberate: a wrong adjudication should
+  // cost visibility, not evidence.
+  const adjVerdict = adjudication && ['confirmed', 'needs_review', 'false_positive'].includes(adjudication.verdict)
+    ? adjudication.verdict
+    : null;
+  const verdictLabel = adjVerdict || (f.verified === true ? 'confirmed' : 'needs_review');
+  const adjSeverity = adjudication && adjudication.severity ? normalizeSeverity(adjudication.severity) : null;
+  const finalSeverity = adjSeverity || severity;
+  const finalConfidence = adjudication && ['high', 'medium', 'low'].includes(adjudication.confidence)
+    ? adjudication.confidence
+    : confidence;
+  if (adjSeverity) finding.severity = finalSeverity;
   finding.runs.push({
     runId: crypto.randomUUID(),
     agent: 'triage',
@@ -361,16 +416,21 @@ function findingFromSastEngine(f, scan, targetPath) {
     finishedAt: Date.now(),
     verdict: {
       verdict: verdictLabel,
-      severity_confirmed: severity,
-      confidence,
-      priority: priorityFromSeverityConfidence(severity, confidence),
-      reasoning: f.verifierNote || 'Deterministic pattern match; below the verification severity floor, so not independently re-checked against surrounding code.',
+      severity_confirmed: finalSeverity,
+      confidence: finalConfidence,
+      priority: priorityFromSeverityConfidence(finalSeverity, finalConfidence),
+      reasoning: (adjudication && adjudication.reasoning)
+        || f.verifierNote
+        || 'Deterministic pattern match; below the verification severity floor, so not independently re-checked against surrounding code.',
       owasp: f.owasp || null,
       asvs: null, // sast-engine has no ASVS mapping — see CLAUDE.md's taxonomy convention note
       cwe: f.cwe || null,
       nist_800_53: [], // same gap as asvs above
       next_agent: verdictLabel === 'confirmed' ? 'remediation' : null,
-      source: 'sast-engine-verifier', // marks this as an auto-triage, not an LLM run — Finding Detail badges it accordingly
+      // Distinguishes a pattern-plus-VerifierAgent auto-triage from one the
+      // reasoning half actually adjudicated — Finding Detail badges them
+      // differently, and it matters which one closed a finding.
+      source: adjVerdict ? 'reasoning-adjudication' : 'sast-engine-verifier',
     },
     fullText: '',
   });
@@ -594,10 +654,15 @@ function toScanListItem(scan) {
     // Scan form's "Budget cap" toggle) — always true for an SCA scan (no reasoning half, so
     // the field is inert, but a real boolean rather than undefined keeps the API shape simple).
     budgetEnabled: scan.budgetEnabled !== false,
-    // Real dollar spend across the reasoning half's claude -p calls (modules + the
-    // cross-cutting pass) — set once runHybridReasoningScan() finishes; undefined until then,
-    // and always undefined for an SCA scan (no reasoning half to spend anything).
+    // Real dollar spend across the reasoning half's claude -p calls — set once
+    // runHybridReasoningScan() finishes; undefined until then.
     reasoningCostUsd: scan.reasoningCostUsd,
+    // Which pattern agents this target actually warranted. Persisted rather than only relayed
+    // live, because "which agents were judged inapplicable" is part of what a scan covered —
+    // a card rebuilt after a page reload, or a scan read back via GET /api/scans/:id, should
+    // still be able to say so instead of silently implying the engine ran whole.
+    agentsRun: scan.agentsRun,
+    agentsSkipped: scan.agentsSkipped || [],
   };
 }
 
@@ -616,6 +681,28 @@ app.get('/api/scans/:id', (req, res) => {
     ...toScanListItem(scan),
     findings: scan.findingIds.map((id) => findings.get(id)).filter(Boolean).map(toListItem),
   });
+});
+
+/**
+ * The structural map a scan produced: every route with its resolved middleware
+ * chain, every mount and what guards it, and every security function that is
+ * defined and never called.
+ *
+ * Deliberately its own endpoint rather than a field on GET /api/scans/:id — the
+ * manifest for a large repo is far bigger than the scan summary, and the scan
+ * list is fetched on nearly every view. Only the Attack Surface page pays for it.
+ */
+app.get('/api/scans/:id/surface', (req, res) => {
+  const scan = scans.get(req.params.id);
+  if (!scan) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  if (!scan.surface) {
+    res.status(404).json({ error: 'This scan has no attack-surface map. Only scans run after the feature was added carry one.' });
+    return;
+  }
+  res.json({ scanId: scan.id, path: scan.path, app: scan.app, startedAt: scan.startedAt, ...scan.surface });
 });
 
 app.delete('/api/scans/:id', (req, res) => {
@@ -1679,11 +1766,42 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
     return result;
   });
 
-  const [detResult, llmResult, scaResult] = await Promise.all([
-    runDeterministicPatternScan(engine, scan, targetPath, diffFiles, { send }),
-    runLLMReasoningScan(scan, targetPath, diffFiles, { children, send }),
-    scaPromise,
-  ]);
+  // The deterministic half runs FIRST, not alongside the reasoning half. It costs
+  // seconds and nothing, and both reasoning calls take its output as their input:
+  // the adjudication pass reviews its findings, the review pass is told what it
+  // already covered so it spends its tokens elsewhere. Running them concurrently
+  // (the old design) meant the expensive engine re-read the whole tree knowing
+  // nothing about what the free one had just found. Serializing costs a few
+  // seconds of wall clock and is what makes this a hybrid rather than a union.
+  //
+  // SCA keeps running in the background throughout — it shares no data with
+  // either half.
+  const detResult = await runDeterministicPatternScan(engine, scan, targetPath, diffFiles, { send });
+
+  if (scan.status === 'cancelled') return;
+
+  // Keep the structural map this scan produced. It is built every run either way
+  // and was previously discarded once the prompts were assembled — but it is the
+  // only description of the application's shape the app has (every endpoint, what
+  // guards it, which controls are never applied), which is posture information no
+  // findings list conveys. Surfaced by the Attack Surface page.
+  if (detResult.surface) scan.surface = detResult.surface;
+
+  // Collapse a deterministic rule that fired repeatedly on consecutive lines of one file. A
+  // whole-file condition like "no security headers configured" is checked per line, so it
+  // reported once per app.use() call — five rows for one issue. Deliberately only merges
+  // *adjacent* hits of the *same rule in the same file*: three separate SQL injections in one
+  // file are three real findings and must stay three, so distance is what distinguishes "one
+  // condition observed repeatedly" from "several distinct sites".
+  //
+  // Runs before adjudication so the reasoning pass reviews 5 distinct issues
+  // rather than 5 restatements of one, which is both cheaper and more accurate.
+  const collapsedDet = dedupeAdjacentSameRule(detResult.findings);
+
+  const llmResult = await runLLMReasoningScan(
+    scan, targetPath, diffFiles, collapsedDet, detResult.surface, { children, send },
+  );
+  const scaResult = await scaPromise;
 
   if (scan.status === 'cancelled') return;
 
@@ -1696,16 +1814,9 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   if (scaResult.error) send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Dependency audit failed (other engines still succeeded): ${scaResult.error}` });
 
   const created = [];
-  // Collapse a deterministic rule that fired repeatedly on consecutive lines of one file. A
-  // whole-file condition like "no security headers configured" is checked per line, so it
-  // reported once per app.use() call — five rows for one issue. Deliberately only merges
-  // *adjacent* hits of the *same rule in the same file*: three separate SQL injections in one
-  // file are three real findings and must stay three, so distance is what distinguishes "one
-  // condition observed repeatedly" from "several distinct sites".
-  const collapsedDet = [];
-  for (const f of dedupeAdjacentSameRule(detResult.findings)) {
-    collapsedDet.push(f);
-    const finding = findingFromSastEngine(f, scan, targetPath);
+  const adjudications = llmResult.adjudications || new Map();
+  for (const [i, f] of collapsedDet.entries()) {
+    const finding = findingFromSastEngine(f, scan, targetPath, adjudications.get(i) || null);
     findings.set(finding.id, finding);
     scan.findingIds.push(finding.id);
     created.push(toListItem(finding));
@@ -1781,17 +1892,45 @@ async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, 
   // this to the real post-filter count before any onAgentDone call fires, so the "Pattern match"
   // bar doesn't permanently stall below 100% once the skipped agents' slots are unfillable.
   let total = orchestrator.agents.length;
+
+  // Agents that errored or — far more likely on a large repo — timed out. The orchestrator
+  // already records this as `success: false`, but nothing read it: a timed-out agent
+  // contributed zero findings while still advancing the progress bar to 100%, so a scan that
+  // could not finish checking for SQL injection looked exactly like a scan that found none.
+  // That is the one confusion this engine cannot afford, and it was live until now.
+  const failedAgents = [];
+  // Agents filtered out by shouldRun(recon) before the run started — not failures, the
+  // opposite: evidence the engine matched itself to this target. Surfaced so the UI can say
+  // "17 ran, 15 not applicable" instead of an unqualified "17/17".
+  let skipped = [];
+
   try {
     const result = await orchestrator.runAll(targetPath, {
       quiet: true,
       onlyFiles: diffFiles || undefined,
-      onScopeReady: (realTotal) => {
+      // The orchestrator's own default is 30s per agent. Every agent walks the whole file
+      // list, so its work scales with repo size while that deadline did not — on a large
+      // target, agents start timing out and silently contributing nothing. Raised well past
+      // any legitimate run: this is a hang detector, not a work budget. A small repo is
+      // unaffected (agents finish in well under a second), and a large one gets the room it
+      // actually needs. Anything still running at this point is stuck, not slow.
+      timeout: DETERMINISTIC_AGENT_TIMEOUT_MS,
+      onScopeReady: (realTotal, skippedNames) => {
         total = realTotal;
+        skipped = Array.isArray(skippedNames) ? skippedNames : [];
+        // Persisted on the scan record too, not just relayed live — which agents were judged
+        // irrelevant to a target is part of what that scan actually covered, and a scan
+        // reviewed later (or via GET /api/scans/:id) should still be able to say so.
+        scan.agentsRun = realTotal;
+        scan.agentsSkipped = skipped;
         if (scan.status === 'cancelled') return;
-        send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'deterministic', done, total });
+        send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'deterministic', done, total, skipped });
       },
       onAgentDone: (agentResult, agentFindings) => {
         done++;
+        if (agentResult && agentResult.success === false) {
+          failedAgents.push(`${agentResult.agent} (${agentResult.error || 'unknown error'})`);
+        }
         if (scan.status === 'cancelled') return;
         // Drives the "Pattern match" progress bar on the scan card — see updateDetBar() in
         // index.html. Sent every time regardless of whether this agent found anything, unlike
@@ -1811,128 +1950,28 @@ async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, 
         });
       },
     });
-    return { findings: result.findings, error: null };
+    // Partial coverage is reported, never inferred from a full progress bar. Each of these
+    // agents checked for a whole vulnerability class and came back with nothing because it
+    // could not finish — which is not the same claim as "this class is clean."
+    if (failedAgents.length && scan.status !== 'cancelled') {
+      send({
+        type: 'scan-warning',
+        runId: scan.runId,
+        scanId: scan.id,
+        message: `${failedAgents.length} of ${total} pattern agents did not complete, so the vulnerability classes they cover were NOT checked — this is incomplete coverage, not a clean result: ${failedAgents.join(', ')}`,
+      });
+    }
+    return {
+      findings: result.findings,
+      surface: result.surface || null,
+      failedAgents,
+      error: null,
+    };
   } catch (err) {
-    return { findings: [], error: err.message };
+    return { findings: [], failedAgents, error: err.message };
   }
 }
 
-// Deterministically splits a target directory into scoped "modules" for the reasoning pass —
-// one per top-level subdirectory (skipping sast-engine's own SKIP_DIRS + dotfiles/dotdirs), plus
-// one bucket for any loose files sitting directly in the root. Each module becomes its own
-// scoped claude -p call in runLLMReasoningScan() instead of one unscoped pass over the whole
-// tree, so token spend and hallucination surface stop scaling with total repo size. This is a
-// coarse proxy for "module" (a real one would need a symbol/call-graph index this app doesn't
-// have — see the design discussion this shipped under) but costs nothing beyond a directory
-// listing and works for the common case of one top-level dir per logical area (src/, lib/,
-// routes/, services/, etc).
-// Recursively groups a flat file list by path segment, splitting any group whose file count
-// exceeds REASONING_MODULE_MAX_FILES by descending into the *next* path segment instead — e.g.
-// a repo whose only top-level entry is `src/` groups everything under the same segment at depth
-// 0 (no separation there), so it tries depth 1 next and splits by src's own subdirectories
-// instead; any of those that's still too big splits one level deeper again, up to
-// REASONING_MODULE_SPLIT_MAX_DEPTH. A group that can't be subdivided further even at max depth
-// (hundreds of flat files with no nesting left to split on) is returned as-is rather than
-// recursing forever; it's still bounded by --max-budget-usd regardless of size.
-function splitFileGroup(fileList, depth) {
-  if (fileList.length <= REASONING_MODULE_MAX_FILES) return [fileList];
-  if (depth >= REASONING_MODULE_SPLIT_MAX_DEPTH) return [fileList];
-  const buckets = new Map();
-  for (const rel of fileList) {
-    const parts = rel.split('/');
-    const key = parts.length > depth + 1 ? parts[depth] : `(files here)`;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(rel);
-  }
-  // Grouping by this depth's segment didn't separate anything — e.g. every file shares the same
-  // single top-level directory (a repo with one `src/` and nothing else at the root). Try the
-  // *next* depth on the same file list instead of giving up here; REASONING_MODULE_SPLIT_MAX_DEPTH
-  // above still bounds how far this can recurse.
-  if (buckets.size <= 1) return splitFileGroup(fileList, depth + 1);
-  const result = [];
-  for (const groupFiles of buckets.values()) {
-    if (groupFiles.length > REASONING_MODULE_MAX_FILES) {
-      result.push(...splitFileGroup(groupFiles, depth + 1));
-    } else {
-      result.push(groupFiles);
-    }
-  }
-  return result;
-}
-
-// Deterministically splits a target directory into scoped "modules" for the reasoning pass,
-// sized by actual file count — not just directory boundaries, which was the previous version's
-// biggest weakness (a repo with one giant top-level `src/` and a few tiny folders got zero real
-// scoping benefit, since "src/" alone was still the whole codebase in one call). This is still a
-// coarse proxy for "module" (a real one would need a symbol/call-graph index this app doesn't
-// have) but it's now grounded in the repo's real shape:
-//   1. Enumerate every real file under targetPath via fast-glob, respecting sast-engine's own
-//      skip-dirs/extensions/filenames/.gitignore rules — the same "real code" definition the
-//      deterministic engine uses, so a module's budget isn't spent surveying node_modules or a
-//      minified bundle.
-//   2. Recursively split (splitFileGroup()) any group bigger than REASONING_MODULE_MAX_FILES by
-//      subdirectory, starting from the top-level directory and descending only as needed.
-//   3. Bin-pack the resulting groups smallest-first into buckets capped at
-//      REASONING_MODULE_MAX_FILES each (by actual size, not arbitrary directory index — the
-//      previous version's other weak spot), so a repo with many small directories doesn't spawn
-//      one process per directory. Never exceeds REASONING_MODULE_MAX total buckets — anything
-//      beyond that merges into whichever bucket is currently smallest rather than being dropped.
-// A module's `paths` is the literal list of relative file paths it covers (not a directory
-// reference) — the same explicit-file-list style the diff-scope flow already used, so the model
-// gets an exact manifest instead of needing its own Glob call to discover what's in scope. A
-// small repo (or one that just doesn't have much real code) naturally collapses into a single
-// module here — there's no special-cased "skip partitioning" path, it falls out of the algorithm.
-function partitionReasoningModules(targetPath, engine) {
-  const ignore = Array.from(engine.SKIP_DIRS || []).flatMap((d) => [`**/${d}/**`, `${d}/**`]);
-  if (typeof engine.loadGitignorePatterns === 'function') {
-    ignore.push(...engine.loadGitignorePatterns(targetPath));
-  }
-
-  let allFiles;
-  try {
-    allFiles = fg.sync(['**/*'], { cwd: targetPath, onlyFiles: true, dot: false, ignore });
-  } catch {
-    return [];
-  }
-
-  const skipExt = engine.SKIP_EXTENSIONS || new Set();
-  const skipNames = engine.SKIP_FILENAMES || new Set();
-  const maxSize = engine.MAX_FILE_SIZE || 1_000_000;
-  const files = allFiles.filter((rel) => {
-    const ext = path.extname(rel).toLowerCase();
-    if (skipExt.has(ext)) return false;
-    const base = path.basename(rel);
-    if (skipNames.has(base) || base.endsWith('.min.js') || base.endsWith('.min.css')) return false;
-    try {
-      if (fs.statSync(path.join(targetPath, rel)).size > maxSize) return false;
-    } catch {
-      return false;
-    }
-    return true;
-  });
-  if (!files.length) return [];
-
-  const rawGroups = splitFileGroup(files, 0);
-
-  const sorted = rawGroups.slice().sort((a, b) => a.length - b.length);
-  const buckets = [];
-  for (const group of sorted) {
-    let target = buckets.find((b) => b.length + group.length <= REASONING_MODULE_MAX_FILES);
-    if (!target && buckets.length < REASONING_MODULE_MAX) {
-      target = [];
-      buckets.push(target);
-    }
-    if (!target) {
-      target = buckets.reduce((min, b) => (b.length < min.length ? b : min), buckets[0]);
-    }
-    target.push(...group);
-  }
-
-  return buckets.map((paths) => ({
-    label: paths.length <= 2 ? paths.join(', ') : `${paths.slice(0, 2).join(', ')}, +${paths.length - 2} more`,
-    paths,
-  }));
-}
 
 // Tells the reasoning pass what the deterministic half already covers, so it can lean into
 // business logic/authz/attack-surface reasoning instead of re-deriving known pattern categories
@@ -1952,91 +1991,16 @@ function buildCoverageSummary(engine) {
     'analysis a fixed rule set structurally cannot do:\n' + lines.join('\n');
 }
 
-// Runs the LLM reasoning pass (agents/scan.md), relaying its real narration live exactly like
-// the pipeline's other claude -p stages, and returns { findings, error } — a raw array of
-// finding objects merged across every module call (not yet turned into Finding records; see
-// findingFromLLMScan(), called by runHybridReasoningScan() after both engines finish).
+// Spawns one `claude -p` reasoning call, relays its stream-json live as scan-events exactly
+// like every other stage in this app, and resolves with the parsed verdict plus real spend.
 //
-// Diff scope stays exactly one call over the pre-bounded changed-file list, same as before this
-// scan was module-scoped — there's nothing to partition when the scope is already tight. Full
-// scope partitions the directory (partitionReasoningModules()) and runs one scoped call per
-// module, at most REASONING_MODULE_CONCURRENCY at a time, each capped via --max-budget-usd at a
-// size-scaled figure (moduleBudgetUsd()) so a single module can't blow an unbounded amount of
-// spend chasing a dead end, with REASONING_SCAN_BUDGET_USD bounding the whole reasoning half on
-// top of that. Each module's child process is registered under its own synthetic
-// `${scan.runId}::mod${i}` key in `children` (tracked on scan.moduleRunIds) so the WS 'cancel'
-// handler can kill every in-flight module, not just one child, for this scan.
-async function runLLMReasoningScan(scan, targetPath, diffFiles, { children, send }) {
-  const scanAgentPath = agentFilePath('scan');
-  if (!fs.existsSync(scanAgentPath)) {
-    return { findings: [], error: 'Scan agent (agents/scan.md) is not available.' };
-  }
-  let systemPrompt;
-  try {
-    systemPrompt = fs.readFileSync(scanAgentPath, 'utf8');
-  } catch (err) {
-    return { findings: [], error: `Failed to read scan agent prompt: ${err.message}` };
-  }
-
-  let engine;
-  try {
-    engine = await loadSastEngine();
-  } catch (err) {
-    return { findings: [], error: `Failed to load scan engine: ${err.message}` };
-  }
-  systemPrompt += '\n\n' + buildCoverageSummary(engine);
-
-  let modules;
-  if (diffFiles) {
-    modules = [{ label: 'diff', paths: diffFiles }];
-  } else {
-    modules = partitionReasoningModules(targetPath, engine);
-    if (!modules.length) return { findings: [], error: null }; // nothing to scan — a valid empty outcome
-    // A cross-cutting pass sees the whole tree, unscoped — every module call above is told to
-    // stay inside its own file list, which means none of them can notice a protection defined
-    // in one module (auth middleware, a validator) never actually being applied in another. This
-    // one extra call exists specifically to catch that class of gap. See CLAUDE.md.
-    modules = [...modules, { label: '(cross-cutting review)', paths: null, crosscut: true }];
-  }
-
-  scan.moduleRunIds = [];
-  const total = modules.length;
-  let done = 0;
-  const allFindings = [];
-  const moduleErrors = [];
-  let totalCostUsd = 0;
-
-  const runOneModule = (mod, index) => new Promise((resolve) => {
-    if (scan.status === 'cancelled') { resolve(); return; }
-
-    const budgetUsd = moduleBudgetUsd(mod);
-    const promptParts = [
-      'Scan this directory for real, concrete security vulnerabilities in the code, and reason ' +
-      'about externally-reachable endpoints and attack surface the way an attacker interacting ' +
-      'with the running application could exploit them. No live instance is being hit — this is ' +
-      'inferred from static code, so frame findings accordingly.',
-    ];
-    if (mod.crosscut) {
-      promptParts.push(
-        'This is a cross-cutting architectural pass, not a file-by-file review — separate calls ' +
-        'are already deep-diving each module\'s own files individually, so do NOT re-review file ' +
-        'internals in depth here. Instead, specifically check whether protections defined in one ' +
-        'place are actually applied everywhere they should be: does every route that needs auth ' +
-        'actually invoke the auth/authorization middleware, not just have it defined nearby? Does ' +
-        'every handler touching user input actually run it through the validator/sanitizer the ' +
-        'codebase defines elsewhere, or does some call site skip it? Are there routes registered ' +
-        'without going through the same middleware chain as their siblings? Sample route ' +
-        'registration files, middleware definitions, and shared validators/config across the whole ' +
-        'tree to answer these questions — you have access to the entire directory for this pass, ' +
-        'unlike the per-module calls.'
-      );
-    } else if (diffFiles) {
-      promptParts.push(`Limit your review to only the following changed files versus the base branch — do not scan anything else in the repository:\n${mod.paths.map((p) => `- ${p}`).join('\n')}`);
-    } else {
-      promptParts.push(`Limit your review to only the following files, relative to the target directory below — do not read or reason about anything outside them:\n${mod.paths.map((p) => `- ${p}`).join('\n')}`);
-    }
-    promptParts.push(`Target directory: ${targetPath}`);
-    const userPrompt = promptParts.join('\n\n');
+// Registered in `children` under a synthetic `${scan.runId}::pass${i}` key (tracked on
+// scan.moduleRunIds) rather than the scan's own runId, so the WS 'cancel' handler can kill
+// every in-flight reasoning call for a scan, not just one child. The key name kept its `mod`
+// prefix through the module-based design and back out again; only cancel bookkeeping reads it.
+function runReasoningCall({ scan, targetPath, children, send, index, label, systemPrompt, userPrompt, budgetUsd }) {
+  return new Promise((resolve) => {
+    if (scan.status === 'cancelled') { resolve({ parsed: null, error: null, costUsd: 0 }); return; }
 
     const args = [
       '-p', userPrompt,
@@ -2046,24 +2010,24 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, { children, send
       '--allowedTools', 'Read,Grep,Glob',
       '--permission-mode', 'acceptEdits',
     ];
-    // scan.budgetEnabled defaults true (see handleScanMessage) — the Reasoning Scan form's
+    // scan.budgetEnabled defaults true (see handleScanMessage) — the Hybrid Scan form's
     // "Budget cap" toggle is the only way to turn this off, an explicit opt-in for when a scan
     // is getting cut short by the cap and the user wants it to finish regardless of cost.
     if (scan.budgetEnabled) args.push('--max-budget-usd', String(budgetUsd));
 
-    const moduleRunId = `${scan.runId}::mod${index}`;
+    const callRunId = `${scan.runId}::mod${index}`;
     const child = spawn('claude', args, { cwd: targetPath, shell: false });
-    children.set(moduleRunId, child);
-    scan.moduleRunIds.push(moduleRunId);
+    children.set(callRunId, child);
+    scan.moduleRunIds.push(callRunId);
 
     let stdoutBuffer = '';
     let fullText = '';
     // Captures the final stream-json `result` event — carries `total_cost_usd` (real dollar
     // spend for this call, confirmed empirically — see CLAUDE.md) and, when the process hit its
     // --max-budget-usd cap rather than finishing normally, `subtype: 'error_max_budget_usd'`
-    // (also `is_error: true`, `terminal_reason: 'budget_exhausted'`). Used in child.on('close')
-    // below to tell a real "ran out of budget mid-exploration" from a generic crash, and to
-    // aggregate real spend rather than estimating it from token/tool-call counts.
+    // (also `is_error: true`, `terminal_reason: 'budget_exhausted'`). Used below to tell a real
+    // "ran out of budget mid-analysis" from a generic crash, and to report real spend rather
+    // than estimating it from token/tool-call counts.
     let resultEvent = null;
 
     child.stdout.on('data', (chunk) => {
@@ -2075,7 +2039,7 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, { children, send
         let event;
         try {
           event = JSON.parse(line);
-        } catch (err) {
+        } catch {
           continue;
         }
         if (event.type === 'assistant' && event.message && Array.isArray(event.message.content)) {
@@ -2092,80 +2056,408 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, { children, send
       send({ type: 'scan-stderr', runId: scan.runId, scanId: scan.id, data: chunk.toString() });
     });
 
-    const finishModule = (findingsForModule, err) => {
-      children.delete(moduleRunId);
-      done++;
-      if (resultEvent && typeof resultEvent.total_cost_usd === 'number') {
-        totalCostUsd += resultEvent.total_cost_usd;
-      }
-      if (scan.status !== 'cancelled') {
-        send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'reasoning', done, total, costUsd: totalCostUsd });
-      }
-      if (err) moduleErrors.push(`${mod.label}: ${err}`);
-      allFindings.push(...findingsForModule);
-      resolve();
+    const settle = (error) => {
+      children.delete(callRunId);
+      const costUsd = resultEvent && typeof resultEvent.total_cost_usd === 'number'
+        ? resultEvent.total_cost_usd
+        : 0;
+      // Parse even on a non-zero exit: a call that hit its budget cap mid-way often still
+      // emitted a complete JSON block first, and discarding it because the process technically
+      // errored throws away work already paid for.
+      resolve({ parsed: extractVerdict(fullText), error, costUsd });
     };
 
     child.on('close', (code) => {
-      if (scan.status === 'cancelled') { finishModule([], null); return; }
-      const parsed = extractVerdict(fullText);
-      const rawFindings = parsed && Array.isArray(parsed.findings) ? parsed.findings : [];
-      let err = null;
-      if (code !== 0) {
-        if (resultEvent && resultEvent.subtype === 'error_max_budget_usd') {
-          err = rawFindings.length
-            ? `hit its $${budgetUsd} budget cap before finishing (kept ${rawFindings.length} finding${rawFindings.length === 1 ? '' : 's'} reported before the cutoff — coverage may be incomplete)`
-            : `hit its $${budgetUsd} budget cap before reporting anything — coverage of this ${mod.crosscut ? 'pass' : 'module'} is incomplete, not a clean "nothing found"`;
-        } else {
-          err = `claude exited with code ${code}`;
-        }
+      if (scan.status === 'cancelled') { settle(null); return; }
+      if (code === 0) { settle(null); return; }
+      if (resultEvent && resultEvent.subtype === 'error_max_budget_usd') {
+        settle(`${label} hit its $${budgetUsd} budget cap before finishing — its coverage is incomplete, not a clean "nothing found"`);
+        return;
       }
-      finishModule(rawFindings, err);
+      settle(`${label}: claude exited with code ${code}`);
     });
 
-    child.on('error', (err) => {
-      finishModule([], `Failed to spawn claude: ${err.message}`);
-    });
+    child.on('error', (err) => settle(`${label}: failed to spawn claude — ${err.message}`));
+  });
+}
+
+// Renders the deterministic findings as a numbered worklist for the adjudication pass. The id
+// is the finding's index in the array the caller holds, so verdicts map straight back with no
+// title matching. Code context is included because it is the thing being judged; the file is
+// still named so the model can read past the snippet, which the prompt tells it to do.
+function renderAdjudicationWorklist(detFindings, targetPath) {
+  return detFindings.map((f, i) => {
+    const rel = f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : '(no file)';
+    const loc = f.line ? `${rel}:${f.line}` : rel;
+    const code = Array.isArray(f.codeContext) && f.codeContext.length
+      ? f.codeContext.map((c) => `    ${c.line != null ? String(c.line).padStart(5) + ' | ' : ''}${c.text}`).join('\n')
+      : '    (no code context captured)';
+    const flow = f.taintSourceLine && f.line && f.taintSourceLine < f.line
+      ? `\n  Dataflow: untrusted input enters at line ${f.taintSourceLine}, reaches the sink at line ${f.line}.`
+      : '';
+    return `[${i}] ${f.title || f.rule || 'Untitled'}\n`
+      + `  Rule: ${f.rule || 'n/a'} | Severity as matched: ${f.severity || 'unknown'} | Location: ${loc}`
+      + `${f.verified === true ? ' | already re-checked against surrounding code' : ''}${flow}\n`
+      + `  ${(f.description || '').replace(/\s+/g, ' ').trim()}\n`
+      + `  Code:\n${code}`;
+  }).join('\n\n');
+}
+
+// Words that indicate a middleware checks *privilege*, not merely identity. Case-insensitive
+// for the vocabulary, case-SENSITIVE for the camelCase predicate shape — folding them into one
+// /i regex makes `requireAdmin` match on the bare word `admin` and the distinction collapses.
+const PRIVILEGE_WORD_RE = /admin|role|permission|privileg|acl|rbac|scope|claim|staff|superuser|owner|tenant/i;
+const PRIVILEGE_PREDICATE_RE = /\b(?:can|is|has|may)[A-Z]/;
+const looksPrivileged = (name) => PRIVILEGE_WORD_RE.test(name) || PRIVILEGE_PREDICATE_RE.test(name);
+
+/**
+ * Splits the enumerated routes into review shards, riskiest first.
+ *
+ * Why shard at all: one call cannot genuinely answer four questions about several hundred
+ * routes. Long before the dollar cap binds, the context window does — and a full context makes
+ * `claude -p` compact, which silently discards its own earlier analysis. So an uncapped single
+ * call on a large repo costs more AND still loses coverage, just without saying so.
+ *
+ * Why shard by attack surface rather than by files: the worklist is the unit of work. An
+ * earlier design partitioned by file count, which made cost scale with repo size while cutting
+ * straight through related handlers. Grouping by file keeps sibling routes together — the
+ * coupon-stacking and refund flaws in the measured fixture are only visible when the routes
+ * that share state are reviewed side by side.
+ *
+ * Why risk-ordered: when there are more routes than shards, the ones that get reviewed should
+ * be the ones most likely to be broken, not whichever the filesystem listed first.
+ *
+ * @returns {{ list: Array<{files: string[]|null, routeCount: number}>, totalRoutes: number,
+ *             reviewedRoutes: number, skippedRoutes: number }}
+ */
+function planReviewShards(surface, detFindings, targetPath, { maxShards }) {
+  const routes = surface && Array.isArray(surface.routes) ? surface.routes : [];
+  // No HTTP surface at all — a library, a CLI, a worker. One unscoped call over the whole
+  // tree, which is exactly the pre-sharding behaviour and the right thing here: there are no
+  // routes to divide, and the model should still get to look around.
+  if (!routes.length) {
+    return { list: [{ files: null, routeCount: 0 }], totalRoutes: 0, reviewedRoutes: 0, skippedRoutes: 0 };
+  }
+
+  const findingsPerFile = new Map();
+  for (const f of detFindings) {
+    if (!f.file) continue;
+    const rel = path.relative(targetPath, f.file).split(path.sep).join('/');
+    findingsPerFile.set(rel, (findingsPerFile.get(rel) || 0) + 1);
+  }
+  const sinksPerFile = new Map();
+  for (const s of (surface.sinks || [])) {
+    sinksPerFile.set(s.file, (sinksPerFile.get(s.file) || 0) + 1);
+  }
+
+  // Group routes by the file that declares them, scoring as we go.
+  const byFile = new Map();
+  for (const r of routes) {
+    let g = byFile.get(r.file);
+    if (!g) { g = { file: r.file, routes: 0, score: 0 }; byFile.set(r.file, g); }
+    g.routes++;
+    const mw = Array.isArray(r.middleware) ? r.middleware : [];
+    if (!mw.length) {
+      g.score += 3;                                   // reachable with no guard at all
+    } else if (!mw.some(looksPrivileged)) {
+      g.score += 2;                                   // authenticated but never authorized —
+    }                                                 // reads as protected, isn't
+  }
+  for (const g of byFile.values()) {
+    // Capped so one enormous file can't monopolise the ordering on volume alone.
+    g.score += Math.min(5, sinksPerFile.get(g.file) || 0);
+    g.score += Math.min(6, (findingsPerFile.get(g.file) || 0) * 2);
+  }
+
+  const groups = [...byFile.values()].sort((a, b) => b.score - a.score || b.routes - a.routes);
+
+  // Pack highest-risk-first into shards. A single file with more routes than the shard size
+  // becomes its own oversized shard rather than being split — splitting one router's handlers
+  // across two calls is exactly the sibling-context loss this design exists to avoid.
+  const list = [];
+  let current = null;
+  for (const g of groups) {
+    if (current && current.routeCount + g.routes > REVIEW_ROUTES_PER_SHARD) current = null;
+    if (!current) {
+      if (list.length >= maxShards) break;
+      current = { files: [], routeCount: 0 };
+      list.push(current);
+    }
+    current.files.push(g.file);
+    current.routeCount += g.routes;
+    if (current.routeCount >= REVIEW_ROUTES_PER_SHARD) current = null;
+  }
+
+  const totalRoutes = routes.length;
+  const reviewedRoutes = list.reduce((n, s) => n + s.routeCount, 0);
+  return { list, totalRoutes, reviewedRoutes, skippedRoutes: totalRoutes - reviewedRoutes };
+}
+
+// Runs the reasoning half of a hybrid scan: two calls, both taking the deterministic half's
+// output as input. Returns { findings, adjudications, error, costUsd } — `findings` is a raw
+// array of new finding objects from the review pass (turned into Finding records by
+// runHybridReasoningScan() via findingFromLLMScan()), `adjudications` is a Map of
+// deterministic-finding index → verdict, applied by findingFromSastEngine().
+//
+// Pass 1, ADJUDICATE, only runs when the deterministic half found something. Pass 2, REVIEW,
+// always runs — an empty deterministic result is not evidence the code is clean, it is exactly
+// the case where reasoning matters most.
+//
+// Neither pass partitions the repository. The previous design split the tree into up to 24
+// file-count-sized modules and spawned a scoped call per module plus an unscoped cross-cutting
+// pass; that made cost scale with repo size and had the expensive engine re-read everything the
+// free one had just read. Scope now comes from the enumerated attack surface and the finding
+// list, both of which scale with the application's shape rather than its file count.
+async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, surface, { children, send }) {
+  let engine;
+  try {
+    engine = await loadSastEngine();
+  } catch (err) {
+    return { findings: [], adjudications: new Map(), error: `Failed to load scan engine: ${err.message}`, costUsd: 0 };
+  }
+
+  const readAgent = (name) => {
+    const p = agentFilePath(name);
+    if (!fs.existsSync(p)) throw new Error(`agents/${name}.md is not available.`);
+    return fs.readFileSync(p, 'utf8');
+  };
+
+  let reviewPrompt;
+  try {
+    reviewPrompt = readAgent('scan') + '\n\n' + buildCoverageSummary(engine);
+  } catch (err) {
+    return { findings: [], adjudications: new Map(), error: err.message, costUsd: 0 };
+  }
+
+  scan.moduleRunIds = [];
+
+  // ── Plan the passes ───────────────────────────────────────────────────────
+  const adjudicable = [...detFindings.entries()]
+    .sort(([, a], [, b]) => severityRank(a.severity) - severityRank(b.severity));
+  const adjudicating = adjudicable.slice(0, ADJUDICATE_MAX_FINDINGS);
+  const overflow = adjudicable.length - adjudicating.length;
+
+  let adjudicatePrompt = null;
+  if (adjudicating.length) {
+    try {
+      adjudicatePrompt = readAgent('adjudicate');
+    } catch (err) {
+      send({
+        type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+        message: `${err.message} Deterministic findings will keep their pattern-engine verdicts without independent review.`,
+      });
+    }
+  }
+
+  // Planned before `total` so the progress bar's denominator is right from the first message —
+  // the same reason the deterministic half has onScopeReady (see runDeterministicPatternScan).
+  const shards = planReviewShards(surface, detFindings, targetPath, {
+    maxShards: scan.budgetEnabled ? REVIEW_MAX_SHARDS : REVIEW_MAX_SHARDS_UNCAPPED,
   });
 
-  // Concurrency-limited queue — at most REASONING_MODULE_CONCURRENCY calls run at once
-  // regardless of how many modules (plus the one cross-cutting pass) there are, keeping process
-  // count sane on a dev machine and avoiding hammering rate limits on a repo with many
-  // top-level directories.
-  let nextIndex = 0;
-  let skippedForBudget = 0;
-  const worker = async () => {
-    while (nextIndex < modules.length && scan.status !== 'cancelled') {
-      const i = nextIndex++;
-      const mod = modules[i];
-      // The cross-cutting pass is never skipped for budget. It's appended last, so a plain
-      // "stop once the ceiling is hit" would drop it first — and it's the one call that can see
-      // wiring gaps no module-scoped call structurally can (measured: it confirmed an unwired
-      // auth middleware that module calls could only guess at). It has its own cap, so letting
-      // it through overshoots the ceiling by a bounded amount at most.
-      if (scan.budgetEnabled && !mod.crosscut && totalCostUsd >= REASONING_SCAN_BUDGET_USD) {
-        skippedForBudget++;
-        done++;
-        send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'reasoning', done, total, costUsd: totalCostUsd });
-        continue;
-      }
-      await runOneModule(mod, i);
+  const total = (adjudicatePrompt ? 1 : 0) + shards.list.length;
+  let done = 0;
+  let totalCostUsd = 0;
+  const errors = [];
+  const progress = () => {
+    if (scan.status !== 'cancelled') {
+      send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'reasoning', done, total, costUsd: totalCostUsd });
     }
   };
-  await Promise.all(Array.from({ length: Math.min(REASONING_MODULE_CONCURRENCY, modules.length) }, worker));
+  progress();
 
-  if (scan.status === 'cancelled') return { findings: [], error: null, costUsd: totalCostUsd };
-  if (skippedForBudget) {
-    send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Reasoning pass reached its $${REASONING_SCAN_BUDGET_USD} per-scan budget — ${skippedForBudget} of ${total} module${skippedForBudget === 1 ? '' : 's'} were skipped and not reviewed. Turn off the budget cap, or scan a narrower directory, for full coverage.` });
+  // ── Both passes, concurrently ─────────────────────────────────────────────
+  // They share no data with each other: adjudication reads the deterministic
+  // findings, review reads the enumerated surface. Both inputs already exist by
+  // the time this function is called, so running them in sequence adds the whole
+  // of the shorter pass to every scan's wall clock and buys nothing. Measured on
+  // a 16-file fixture before this was fixed: adjudication alone took 268s with
+  // the review pass only starting afterwards, which made a scan slower than the
+  // module-partitioned design this replaced — the opposite of the point.
+  const adjudications = new Map();
+
+  const adjudicatePass = async () => {
+    if (!adjudicatePrompt) return;
+    if (overflow > 0) {
+      send({
+        type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+        message: `${adjudicable.length} deterministic findings exceeded the ${ADJUDICATE_MAX_FINDINGS}-finding adjudication limit — the ${ADJUDICATE_MAX_FINDINGS} most severe were independently reviewed; the remaining ${overflow} keep their pattern-engine verdict and are marked "needs review".`,
+      });
+    }
+
+    const worklist = renderAdjudicationWorklist(adjudicating.map(([, f]) => f), targetPath);
+    const userPrompt = [
+      `A deterministic pattern-matching engine reported ${adjudicating.length} finding${adjudicating.length === 1 ? '' : 's'} in this codebase. Decide which are real.`,
+      'Read the actual files before deciding — the snippets below are a few lines of context, and what makes a finding real or not is often outside them.',
+      `Target directory: ${targetPath}`,
+      `Findings to adjudicate:\n\n${worklist}`,
+    ].join('\n\n');
+
+    const res = await runReasoningCall({
+      scan, targetPath, children, send, index: 0, label: 'Adjudication pass',
+      systemPrompt: adjudicatePrompt, userPrompt, budgetUsd: REASONING_ADJUDICATE_BUDGET_USD,
+    });
+    totalCostUsd += res.costUsd;
+    done++;
+    progress();
+    if (res.error) errors.push(res.error);
+
+    const verdicts = res.parsed && Array.isArray(res.parsed.verdicts) ? res.parsed.verdicts : [];
+    for (const v of verdicts) {
+      // `id` indexes the sorted slice handed to the model, not detFindings — map it back
+      // through `adjudicating` so a verdict can never land on the wrong finding.
+      const entry = adjudicating[Number(v.id)];
+      if (!entry) continue;
+      adjudications.set(entry[0], v);
+    }
+  };
+
+  // Reviews the surface the pattern engine structurally cannot. Sharded by attack surface —
+  // see planReviewShards() for why, and why the shards are risk-ordered rather than arbitrary.
+  // (`shards` itself is planned above, before `total`.)
+  if (!surface) {
+    send({
+      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+      message: 'Attack-surface enumeration produced nothing — the review pass will run without a route worklist, which weakens coverage of authorization and business-logic issues.',
+    });
   }
-  if (moduleErrors.length === modules.length) {
-    return { findings: [], error: moduleErrors.join(' | '), costUsd: totalCostUsd };
+  if (shards.skippedRoutes > 0) {
+    send({
+      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+      message: `${shards.totalRoutes} routes exceeded what ${REVIEW_MAX_SHARDS} review shards can cover — the ${shards.reviewedRoutes} highest-risk were reviewed (unguarded mounts and authenticated-but-not-authorized surfaces first); ${shards.skippedRoutes} were NOT reviewed for authorization or business-logic issues. Turn off the budget cap, or scan a narrower directory, for full coverage.`,
+    });
   }
-  if (moduleErrors.length) {
-    send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `${moduleErrors.length}/${modules.length} reasoning calls had issues: ${moduleErrors.join(' | ')}` });
+
+  const runReviewShard = async (shard, index) => {
+    // The per-scan ceiling. Checked at dispatch rather than up front so shards already in
+    // flight always finish — killing a call mid-analysis wastes what it already spent.
+    if (scan.budgetEnabled && totalCostUsd >= REASONING_REVIEW_TOTAL_USD) {
+      return { findings: [], skipped: true };
+    }
+
+    const parts = [
+      'Review this application for security vulnerabilities that a pattern-matching engine cannot find: '
+      + 'authorization and access-control gaps, business-logic flaws, and controls that are defined in one '
+      + 'place but never actually applied where they are needed. Reason about externally-reachable endpoints '
+      + 'the way an attacker interacting with the running application would. No live instance is being hit — '
+      + 'this is inferred from static code, so frame findings accordingly.',
+    ];
+
+    if (diffFiles) {
+      parts.push(`Limit your review to only the following changed files versus the base branch — do not scan anything else in the repository:\n${diffFiles.map((p) => `- ${p}`).join('\n')}`);
+    } else if (shard.files && shards.list.length > 1) {
+      // Focus, NOT a sandbox. The routes below are this call's responsibility, but answering
+      // "what does this handler actually change, and could it belong to someone else" almost
+      // always means following the call into a service or model file outside the list. Telling
+      // the model it may not read those would defeat the questions it is being asked.
+      parts.push(
+        'You are reviewing one slice of a larger application. These files hold the routes you '
+        + 'are responsible for:\n'
+        + shard.files.map((p) => `- ${p}`).join('\n')
+        + '\n\nReport findings for these routes only — other slices are being reviewed separately, '
+        + 'so do not report issues whose root cause lives in a file outside this list. You may and '
+        + 'should read anything in the repository to understand what these routes do.',
+      );
+    }
+    parts.push(`Target directory: ${targetPath}`);
+
+    // The enumerated surface is what bounds this call. It lists each route with its resolved
+    // middleware chain, plus whole-app mount and unused-control context, so the model answers
+    // questions about a known set of endpoints instead of deciding for itself what to read.
+    //
+    // Failure here is non-fatal: a review with no worklist is the old unscoped behaviour, which
+    // is worse but still works, so it must never abort the scan.
+    if (surface) {
+      try {
+        const worklist = engine.renderWorklist(surface, shard.files || diffFiles || null);
+        if (worklist.trim()) parts.push(worklist);
+      } catch { /* a malformed worklist must not cost us the shard */ }
+    }
+
+    // Telling the review pass what the deterministic half already reported is the other half of
+    // making this a hybrid: without it the model spends its budget rediscovering the same
+    // hardcoded secret and the same SQL concatenation the free engine already found, and those
+    // duplicates then have to be thrown away in the merge. Locations only — full descriptions
+    // would be prompt bloat, and the point is avoidance, not review (that was pass 1's job).
+    // Scoped to the shard's own files, so a large repo doesn't paste hundreds of irrelevant
+    // locations into every call.
+    const shardFileSet = shard.files ? new Set(shard.files) : null;
+    const relevantDet = detFindings.filter((f) => {
+      if (!shardFileSet) return true;
+      if (!f.file) return false;
+      return shardFileSet.has(path.relative(targetPath, f.file).split(path.sep).join('/'));
+    });
+    if (relevantDet.length) {
+      const already = relevantDet.slice(0, 60).map((f) => {
+        const rel = f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : '(no file)';
+        return `- ${f.title || f.rule} @ ${f.line ? `${rel}:${f.line}` : rel}`;
+      }).join('\n');
+      parts.push(
+        'Already reported by the deterministic engine — do NOT report these again, and do not spend '
+        + `effort re-deriving them. Report only what is missing from this list:\n${already}`
+        + (relevantDet.length > 60 ? `\n(+${relevantDet.length - 60} more of the same kinds)` : ''),
+      );
+    }
+
+    const res = await runReasoningCall({
+      scan, targetPath, children, send,
+      // index 0 is the adjudication pass; review shards follow it.
+      index: index + 1,
+      label: shards.list.length > 1 ? `Review shard ${index + 1}/${shards.list.length}` : 'Review pass',
+      systemPrompt: reviewPrompt, userPrompt: parts.join('\n\n'), budgetUsd: REASONING_REVIEW_BUDGET_USD,
+    });
+    totalCostUsd += res.costUsd;
+    done++;
+    progress();
+    if (res.error) errors.push(res.error);
+    return {
+      findings: res.parsed && Array.isArray(res.parsed.findings) ? res.parsed.findings : [],
+      skipped: false,
+    };
+  };
+
+  const reviewPass = async () => {
+    const out = [];
+    let skippedForBudget = 0;
+    let next = 0;
+    const worker = async () => {
+      while (next < shards.list.length && scan.status !== 'cancelled') {
+        const i = next++;
+        const r = await runReviewShard(shards.list[i], i);
+        if (r.skipped) { skippedForBudget++; done++; progress(); continue; }
+        out.push(...r.findings);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(REVIEW_SHARD_CONCURRENCY, shards.list.length) }, worker),
+    );
+    if (skippedForBudget) {
+      send({
+        type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+        message: `The review pass reached its $${REASONING_REVIEW_TOTAL_USD} per-scan budget — ${skippedForBudget} of ${shards.list.length} shards were skipped and their routes were NOT reviewed. Turn off the budget cap for full coverage.`,
+      });
+    }
+    return out;
+  };
+
+  const [, reviewFindings] = await Promise.all([adjudicatePass(), reviewPass()]);
+
+  if (scan.status === 'cancelled') {
+    return { findings: [], adjudications, error: null, costUsd: totalCostUsd };
   }
-  return { findings: allFindings, error: null, costUsd: totalCostUsd };
+
+  // Every pass failing is an engine failure; some passing is a degraded scan that still produced
+  // real results, reported as a warning rather than swallowed (scan-stderr is discarded
+  // client-side, which is why this uses scan-warning — see CLAUDE.md).
+  if (errors.length === total) {
+    return { findings: [], adjudications, error: errors.join(' | '), costUsd: totalCostUsd };
+  }
+  if (errors.length) {
+    send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `${errors.length}/${total} reasoning passes had issues: ${errors.join(' | ')}` });
+  }
+  return { findings: reviewFindings, adjudications, error: null, costUsd: totalCostUsd };
 }
+
 
 const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, moderate: 2, low: 3, informational: 4 };
 function severityRank(sev) {

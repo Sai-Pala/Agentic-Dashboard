@@ -286,6 +286,17 @@ export class APIFuzzer extends BaseAgent {
     super('APIFuzzer', 'API endpoint security analysis', 'api');
   }
 
+  // Needs an HTTP surface. Recon's apiRoutes is a file-level heuristic, so fall
+  // back to "a server framework is present" rather than missing routes it
+  // didn't recognize by path convention.
+  shouldRun(recon) {
+    if (!recon) return true;
+    if ((recon.apiRoutes || []).length > 0) return true;
+    const SERVER = ['express', 'fastify', 'hono', 'koa', 'nextjs', 'nuxtjs',
+      'sveltekit', 'remix', 'django', 'rails', 'flask', 'fastapi'];
+    return (recon.frameworks || []).some((f) => SERVER.includes(f));
+  }
+
   async analyze(context) {
     const { files } = context;
     const codeFiles = files.filter(f => {

@@ -342,6 +342,16 @@ export class AgenticSecurityAgent extends BaseAgent {
     );
   }
 
+  // Agentic risks (tool abuse, autonomous loops, over-broad permissions) need
+  // an agent to exist — via a model SDK, an assistant config, or MCP wiring.
+  // Deliberately NOT gated on agentConfigs: a CLAUDE.md/.cursorrules only says
+  // someone edits this repo with an assistant, not that the application itself
+  // is agentic. Requires real wiring — a model SDK or an MCP server.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.aiFrameworks || []).length > 0 || (recon.mcpConfigs || []).length > 0;
+  }
+
   async analyze(context) {
     const { files } = context;
 

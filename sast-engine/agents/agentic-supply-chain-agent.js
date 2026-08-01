@@ -197,6 +197,13 @@ export class AgenticSupplyChainAgent extends BaseAgent {
     );
   }
 
+  // Supply-chain risk *specific to agent tooling* — the generic dependency
+  // surface is SupplyChainAudit's job and always runs.
+  shouldRun(recon) {
+    if (!recon) return true;
+    return (recon.aiFrameworks || []).length > 0 || (recon.mcpConfigs || []).length > 0;
+  }
+
   async analyze(context) {
     const { rootPath, files } = context;
     const findings = [];
