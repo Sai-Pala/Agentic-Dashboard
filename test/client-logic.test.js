@@ -49,13 +49,9 @@ const { extract } = require('./helpers/extract-client-fns.js');
 // Every top-level declaration lifted out of index.html. Pure constants are included because
 // the functions close over them (SEV_ORDER_MAP / STATUS_ORDER_MAP / AGENT_META).
 const TARGETS = [
-  'guardKindOf',
-  // guardKindOf's own dependencies. It used to be self-contained with an inline regex; the
-  // fix for the substring-matching false-authz bug split the vocabulary out into these three
-  // declarations, so they have to be lifted alongside it or it throws at call time.
-  'guardNameSegments',
-  'AUTHZ_WORDS',
-  'AUTHN_WORDS',
+  // NOTE: guardKindOf / guardNameSegments / AUTHZ_WORDS / AUTHN_WORDS moved to
+  // views/surface-guards.js, and worstOfList / agentMeta / SEV_ORDER_MAP / STATUS_ORDER_MAP /
+  // AGENT_META moved to ui/heatmap.js and data/meta.js. All are real imports below now.
   'findingStageRuns',
   'findingLoopState',
   'findingLoopNextAction',
@@ -66,11 +62,6 @@ const TARGETS = [
   // into public/js/util/format.js, so they are now imported as real module exports instead —
   // see `format` below. Each name that leaves this list is a name the harness no longer has to
   // fake, and the harness is deleted entirely once the list is empty (PHASE4-PLAN.md §4).
-  'worstOfList',
-  'agentMeta',
-  'SEV_ORDER_MAP',
-  'STATUS_ORDER_MAP',
-  'AGENT_META',
 ];
 
 // Real module exports, imported directly — no extraction, no vm realm, no shims. As the Phase
@@ -78,15 +69,24 @@ const TARGETS = [
 // test bodies below are unchanged either way because both sources are merged into `C`.
 // Node can require() an ES module as long as it has no top-level await, which these do not.
 const format = require('../public/js/util/format.js');
+const meta = require('../public/js/data/meta.js');
+const heatmap = require('../public/js/ui/heatmap.js');
+const guards = require('../public/js/views/surface-guards.js');
 
 // scanFilterLabel is still extracted from app.js but calls formatRelativeTime, which now lives
 // in a module the bare vm context cannot see. Seed it so the extracted function can resolve it.
 // This is the shape of every remaining step: as a dependency moves out, whatever still depends
 // on it gets that binding injected until it moves too.
-const extracted = extract(TARGETS, { bindings: { formatRelativeTime: format.formatRelativeTime } });
+const extracted = extract(TARGETS, {
+  bindings: {
+    formatRelativeTime: format.formatRelativeTime,   // used by scanFilterLabel
+    SEV_ORDER_MAP: meta.SEV_ORDER_MAP,               // used by findingsSortValue
+    STATUS_ORDER_MAP: meta.STATUS_ORDER_MAP,         // used by findingsSortValue
+  },
+});
 
 // __meta is non-enumerable, so an object spread silently drops it — carry it across explicitly.
-const C = { ...extracted, ...format, __meta: extracted.__meta };
+const C = { ...extracted, ...format, ...meta, ...heatmap, ...guards, __meta: extracted.__meta };
 
 /**
  * Objects created inside the vm context carry that realm's Object.prototype, not the host's,

@@ -1,3 +1,7 @@
+import { guardNameSegments, guardKindOf, surfaceGuardBadge, AUTHZ_WORDS, AUTHN_WORDS } from './views/surface-guards.js';
+import { buildThreatHeatmap, worstOfList } from './ui/heatmap.js';
+import { HL_KEYWORDS, HL_TOKEN_RE, highlightCode, diffLineHtml } from './ui/highlight.js';
+import { KNOWN_AGENTS, AGENT_META, agentMeta, SCAN_TYPE_META, SEV_VAR, SEV_ORDER, SEV_ORDER_MAP, STATUS_ORDER_MAP, FINDINGS_TYPE_LABEL, APPLICABILITY_LABELS, IMPLEMENTATION_STATUS_LABELS, HEATMAP_SEVERITY_COLS, VERDICT_BADGE_FIELDS, VERDICT_SKIP_FIELDS, FIX_FLOW_AGENTS, SCA_EXCLUDED_AGENTS } from './data/meta.js';
 import { uid, truncate, formatRelativeTime, dateGroupLabel, formatElapsed, formatTokenCount, statusLabel, severityLabel, verdictFieldLabel } from './util/format.js';
 import { escapeHtml, formatInlineText, downloadTextFile } from './util/html.js';
 import { ICONS, icon } from './ui/icons.js';
@@ -7,25 +11,7 @@ import { ICONS, icon } from './ui/icons.js';
 
 // ---------- agent metadata (shared across dashboard / timeline / findings) ----------
 
-// 'triage' deliberately excluded — agents/triage.md no longer exists (Triage is a synthetic
-// verdict now, not a live agent stage, see CLAUDE.md), so GET /api/agents can never return it;
-// including it here permanently capped knownAgentsAvailableCount() at 3/4 on a healthy install.
-const KNOWN_AGENTS = ['threat_model', 'remediation', 'verify'];
-// Kind is differentiated by icon + label text only, not hue — color in this app is reserved
-// for real signal (severity, running/done/error state), not decorative category-tagging.
-const AGENT_META = {
-  scan: { label: 'Scan', icon: 'radar', color: 'var(--text-dim)', role: 'Reads a directory and creates findings' },
-  triage: { label: 'Triage', icon: 'search', color: 'var(--text-dim)', role: 'First pass: real finding or noise, how urgent' },
-  threat_model: { label: 'Threat Model', icon: 'target', color: 'var(--text-dim)', role: 'Exploit path, preconditions, blast radius' },
-  remediation: { label: 'Remediate', icon: 'wrench', color: 'var(--text-dim)', role: 'Proposes a fix for review — writes nothing' },
-  fix: { label: 'Fix', icon: 'edit', color: 'var(--text-dim)', role: 'Writes the proposed fix directly to your code' },
-  verify: { label: 'Verify', icon: 'checkCircle', color: 'var(--text-dim)', role: 'Re-checks the live code to confirm a fix actually landed' },
-  app_threat_model: { label: 'App Threat Model', icon: 'shield', color: 'var(--text-dim)', role: 'Whole-app architecture-level threat model' },
-  controls_assist: { label: 'Control Scan', icon: 'clipboard', color: 'var(--text-dim)', role: 'Whole-app NIST 800-53 control identification for SSP drafting' },
-};
-function agentMeta(name) {
-  return AGENT_META[name] || { label: name, icon: 'gear', color: 'var(--muted)', role: '' };
-}
+
 // Health-check count: how many of the 3 built-in pipeline agents' files are present.
 // Distinct from agentsList.length, which also includes any custom agents.
 function knownAgentsAvailableCount() {
@@ -34,18 +20,6 @@ function knownAgentsAvailableCount() {
 
 // ---------- scan type metadata (mirrors what server.js's SCAN_TYPE_FRAMING actually does) ----------
 
-// 'reasoning' replaced the old separate 'sast'/'dast' entries — both were just this same LLM
-// reading source and reasoning about it, so calling them distinct scanner categories was
-// misleading. SCA stays distinct on a per-FINDING basis — Agent Triage's type tabs/columns and
-// this chip still tell a dependency finding apart from a code finding — even though there's no
-// longer a separate SCA Scan page to kick one off from; a dependency audit now always runs
-// alongside pattern-matching and reasoning as part of a single Hybrid Scan (see the Reasoning
-// Scan bullet in CLAUDE.md), so every scan RECORD's own scanType is always 'reasoning' now —
-// only individual findings still carry 'sca'.
-const SCAN_TYPE_META = {
-  reasoning: { label: 'Hybrid Scan', icon: 'search', color: 'var(--text-dim)', caption: 'LLM reasoning pass over source — vulnerability patterns and attack surface, no live target is hit' },
-  sca: { label: 'SCA', icon: 'package', color: 'var(--text-dim)', caption: 'Dependency manifests & lockfiles for known-vulnerable packages' },
-};
 
 // ---------- dom refs ----------
 
@@ -638,54 +612,7 @@ function latestThreatModelEntries() {
   return [...byFinding.values()].filter((e) => e.verdict && ['confirmed', 'needs_review'].includes(e.verdict.verdict));
 }
 
-const HEATMAP_SEVERITY_COLS = ['critical', 'high', 'medium', 'low', 'informational'];
 
-function worstOfList(list, getSeverity) {
-  let worst = null;
-  for (const item of list) {
-    const sev = getSeverity(item);
-    if (!sev) continue;
-    if (worst === null || (SEV_ORDER_MAP[sev] ?? 99) < (SEV_ORDER_MAP[worst] ?? 99)) worst = sev;
-  }
-  return worst || 'informational';
-}
-
-// Shared by both the per-finding Threat Model page and the app-level report's diagram: rows are
-// categories (OWASP, sorted by finding/risk count descending), columns are the fixed severity
-// scale. Cells only carry data-category/data-sev — callers re-derive the underlying items for a
-// clicked cell from their own already-grouped data rather than the DOM, since a cell represents
-// a whole category+severity bucket, not a single item.
-function buildThreatHeatmap(categories, getSeverity) {
-  const headerCells = HEATMAP_SEVERITY_COLS.map((sev) => `<div class="tm-heat-col-label">${severityLabel(sev)}</div>`).join('');
-  const rowsHtml = categories.map(([category, list]) => {
-    const counts = new Map(HEATMAP_SEVERITY_COLS.map((s) => [s, 0]));
-    for (const item of list) {
-      const sev = getSeverity(item);
-      const key = counts.has(sev) ? sev : 'informational';
-      counts.set(key, counts.get(key) + 1);
-    }
-    const maxCount = Math.max(1, ...HEATMAP_SEVERITY_COLS.map((s) => counts.get(s)));
-    const cellsHtml = HEATMAP_SEVERITY_COLS.map((sev) => {
-      const count = counts.get(sev);
-      const intensity = count ? (0.28 + 0.72 * (count / maxCount)).toFixed(2) : 0;
-      return `<button type="button" class="tm-heat-cell${count ? ` has-findings sev-${sev}` : ' empty'}" style="--heat-intensity:${intensity}" data-category="${escapeHtml(category)}" data-sev="${sev}"${count ? '' : ' disabled'}>${count || ''}</button>`;
-    }).join('');
-    const rowSev = worstOfList(list, getSeverity);
-    return `
-      <div class="tm-heat-row">
-        <div class="tm-heat-row-label sev-${rowSev}" title="${escapeHtml(category)}">${escapeHtml(category)} <span class="tm-heat-row-count">${list.length}</span></div>
-        <div class="tm-heat-row-cells">${cellsHtml}</div>
-      </div>
-    `;
-  }).join('');
-
-  return `
-    <div class="tm-heatmap">
-      <div class="tm-heat-header"><div class="tm-heat-row-label"></div><div class="tm-heat-row-cells">${headerCells}</div></div>
-      ${rowsHtml}
-    </div>
-  `;
-}
 
 function allThreatModelEntriesForFinding(findingId) {
   // timelineEntries is newest-first already, so this stays newest-first too.
@@ -1060,14 +987,6 @@ function renderControlsAssistSection() {
   return `<div class="atm-list">${sorted.map((r) => caRowHtml(r)).join('')}</div>`;
 }
 
-const APPLICABILITY_LABELS = {
-  app_addressed: 'App addressed', partially_addressed: 'Partially addressed',
-  inherited: 'Inherited', not_applicable: 'Not applicable',
-};
-const IMPLEMENTATION_STATUS_LABELS = {
-  implemented: 'Implemented', partially_implemented: 'Partially implemented',
-  planned: 'Planned', not_applicable: 'Not applicable',
-};
 
 function renderControlsAssistDetail(record) {
   if (record.status === 'running') {
@@ -1525,8 +1444,7 @@ function stopScanElapsedTimer(run) {
   updateScanElapsed(run);
 }
 
-const SEV_VAR = { critical: 'var(--crit)', high: 'var(--err)', medium: 'var(--warn)', low: 'var(--ok)', informational: 'var(--muted)' };
-const SEV_ORDER = ['critical', 'high', 'medium', 'low', 'informational'];
+
 const SEV_TAG_RE = /\[(critical|high|medium|low|informational)\]\s+([^\[]*)/gi;
 
 function renderScanSevChips(run) {
@@ -1992,10 +1910,7 @@ async function loadFindings() {
 }
 
 
-const SEV_ORDER_MAP = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
-const STATUS_ORDER_MAP = { new: 0, in_review: 1, remediation_ready: 2, remediation_generated: 3, closed: 4, verified_fixed: 5 };
 
-const FINDINGS_TYPE_LABEL = { all: 'All', reasoning: 'Hybrid', sca: 'SCA' };
 const FINDINGS_COLUMNS = {
   all: [
     { key: 'severity', label: 'Severity', sortable: true },
@@ -2588,18 +2503,6 @@ function startRemediateAll(findingId, finding, targetPath) {
   }));
 }
 
-// Minimal unified-diff line coloring — no external diff library, consistent with this app's
-// no-external-deps aesthetic. Only cares about the leading +/-/@@ marker per line. Used by
-// runCardHtml() to render a write-capable remediation run's applied_diff on Finding Detail.
-function diffLineHtml(line) {
-  let cls = '';
-  if (line.startsWith('+++') || line.startsWith('---')) cls = 'meta';
-  else if (line.startsWith('+')) cls = 'add';
-  else if (line.startsWith('-')) cls = 'del';
-  else if (line.startsWith('@@')) cls = 'hunk';
-  else if (line.startsWith('diff --git') || line.startsWith('index ')) cls = 'meta';
-  return `<div class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line) || '&nbsp;'}</div>`;
-}
 
 function buildBaseContext(finding) {
   const latestRun = finding.runs && finding.runs.length ? finding.runs[finding.runs.length - 1] : null;
@@ -2622,13 +2525,6 @@ function buildBaseContext(finding) {
 // ---------- finding detail (full page) ----------
 
 const fdBodyEl = document.getElementById('fd-body');
-const VERDICT_BADGE_FIELDS = ['verdict', 'severity_confirmed', 'confidence', 'priority'];
-// corrected_code and edit_plan get their own dedicated renderers (a syntax-highlighted code
-// block, and a diff-style preview respectively — see runCardHtml()) instead of the generic
-// key/value grid every other field falls into, since dumping a multi-line code string or a
-// nested {summary,risk,files:[...]} object through String() there produced unreadable output
-// (a wrapped code paragraph with no monospacing, and literally "[object Object]").
-const VERDICT_SKIP_FIELDS = new Set([...VERDICT_BADGE_FIELDS, 'reasoning', 'next_agent', 'applied_diff', 'corrected_code', 'edit_plan']);
 
 async function openFindingDetail(findingId) {
   currentFindingDetailId = findingId;
@@ -2962,18 +2858,6 @@ document.getElementById('fd-back-btn').addEventListener('click', () => showView(
 // ---------- syntax highlighting (hand-rolled, no external deps — universal ----------
 // token classes across C-like/Python/etc. syntaxes, not a full per-language grammar) ----------
 
-const HL_KEYWORDS = new Set([
-  'function', 'const', 'let', 'var', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue',
-  'import', 'export', 'from', 'as', 'default', 'class', 'extends', 'implements', 'interface', 'new', 'delete', 'typeof',
-  'instanceof', 'try', 'catch', 'finally', 'throw', 'async', 'await', 'yield', 'static', 'public', 'private', 'protected',
-  'void', 'null', 'true', 'false', 'undefined', 'this', 'super', 'in', 'of',
-  'def', 'elif', 'pass', 'lambda', 'with', 'is', 'not', 'and', 'or', 'None', 'True', 'False', 'self', 'raise', 'except',
-  'global', 'nonlocal', 'assert',
-  'func', 'package', 'go', 'chan', 'defer', 'select', 'range', 'struct', 'type', 'map', 'nil',
-  'namespace', 'using', 'fn', 'impl', 'pub', 'mut', 'match', 'loop', 'enum', 'trait', 'mod',
-  'int', 'string', 'bool', 'float', 'double', 'char', 'long', 'short', 'unsigned', 'const', 'include', 'define',
-]);
-const HL_TOKEN_RE = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_$][A-Za-z0-9_$]*\b)/g;
 
 // ── Attack Surface ──────────────────────────────────────────────────────────
 //
@@ -3035,88 +2919,6 @@ function renderSurfaceScanPicker() {
   btn.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; };
 }
 
-/**
- * Is this guard chain doing authorization, only authentication, or nothing at all?
- *
- * Takes anything carrying a `middleware` array — a mount OR a single route — so the same
- * three-way classification drives both the mounted-router rows and the per-route rollup in
- * the stat tiles. It used to take a mount only, which is what made the tiles lie about an
- * app with no routers: see renderSurfaceView().
- */
-// Words that indicate a middleware decides WHETHER YOU MAY (authorization).
-const AUTHZ_WORDS = new Set([
-  'admin', 'role', 'roles', 'permission', 'permissions', 'privilege', 'privileged',
-  'acl', 'rbac', 'abac', 'scope', 'scopes', 'claim', 'claims', 'owner', 'ownership',
-  'tenant', 'grant', 'grants', 'policy', 'policies', 'authorize', 'authorized',
-  'authorization', 'can', 'allowed', 'forbid', 'entitlement',
-]);
-// Words that indicate a middleware decides WHO YOU ARE (authentication).
-const AUTHN_WORDS = new Set([
-  'auth', 'authenticate', 'authenticated', 'authentication', 'login', 'logged',
-  'session', 'jwt', 'token', 'bearer', 'identity', 'passport', 'oidc', 'saml',
-  'user', 'account', 'signin', 'signed', 'apikey', 'credentials',
-]);
-
-/** Split a middleware name into lowercase words: requireAdmin -> [require, admin]. */
-function guardNameSegments(name) {
-  return String(name)
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .map((s) => s.toLowerCase());
-}
-
-/**
- * Is this guard chain doing authorization, only authentication, or nothing at all?
- *
- * Takes anything carrying a `middleware` array — a mount OR a single route — so the same
- * classification drives both the mounted-router rows and the per-route stat tiles.
- *
- * Two things here were wrong in ways that both pointed the SAME direction — making an
- * unprotected surface look protected, which is the only direction that really matters:
- *
- * 1. Any middleware at all counted as authentication, so a route whose only middleware was
- *    `helmet` or `bodyParser` rendered amber "authenticated, not authorized" instead of red
- *    "no guard". Parsing a request body is not a guard.
- * 2. The privilege test was an UNANCHORED substring regex, so incidental letter runs promoted
- *    ordinary middleware to full authorization and rendered the reassuring green "guarded" —
- *    suppressing the warning entirely. Real examples that matched: `validateOracle` and
- *    `oracleClient` (contain "acl"), `scopedLogger` and `descope` ("scope"), `reclaimSession`
- *    and `disclaimerBanner` ("claim"), `rolexTimer` ("role").
- *
- * Now the name is split into words and matched against explicit vocabularies. A middleware
- * whose words match NEITHER vocabulary is treated as not-a-guard: in a security view an
- * unrecognised name is not evidence of protection, and "no guard" is the safe way to be
- * wrong — it invites a look, where a false green does not.
- *
- * Two limitations remain, both known and both preferred to the alternatives:
- *  - A name with no case or delimiter boundaries (`REQUIREADMIN`, `requireadmin`) cannot be
- *    split, so it matches nothing and reads as "no guard". That is a false RED — noisy, but
- *    it errs toward inspection. Reintroducing prefix/suffix matching to catch it would also
- *    re-admit `scopedLogger` (starts with "scope") into the false-green bucket, which is the
- *    failure this fix exists to remove.
- *  - Some words are genuinely ambiguous: `telemetryScope` classifies as authz because "scope"
- *    really is an authorization word in OAuth/JWT terms. Word-splitting cannot tell an OAuth
- *    scope from a telemetry scope, and dropping "scope"/"claim" from the vocabulary would
- *    miss real `requireScope`/`checkClaims` guards. Residual, and narrower than the eight
- *    incidental matches the substring regex produced.
- */
-function guardKindOf(node) {
-  const raw = node && node.middleware;
-  // Tolerate a malformed surface payload rather than throwing mid-render.
-  const mw = Array.isArray(raw) ? raw : [];
-  if (!mw.length) return 'none';
-  const words = mw.flatMap(guardNameSegments);
-  if (words.some((w) => AUTHZ_WORDS.has(w))) return 'authz';
-  if (words.some((w) => AUTHN_WORDS.has(w))) return 'authn';
-  return 'none';
-}
-
-function surfaceGuardBadge(kind) {
-  if (kind === 'none') return '<span class="surface-badge crit">no guard</span>';
-  if (kind === 'authn') return '<span class="surface-badge warn">authenticated, not authorized</span>';
-  return '<span class="surface-badge ok">guarded</span>';
-}
 
 function surfaceRouteRowsHtml(list) {
   return list.map((r) => `
@@ -3287,24 +3089,6 @@ function findingFlowHtml(finding) {
   `;
 }
 
-function highlightCode(code) {
-  let out = '';
-  let lastIndex = 0;
-  HL_TOKEN_RE.lastIndex = 0;
-  let m;
-  while ((m = HL_TOKEN_RE.exec(code))) {
-    if (m.index > lastIndex) out += escapeHtml(code.slice(lastIndex, m.index));
-    const [full, comment, string, number, word] = m;
-    if (comment) out += `<span class="tok-comment">${escapeHtml(comment)}</span>`;
-    else if (string) out += `<span class="tok-string">${escapeHtml(string)}</span>`;
-    else if (number) out += `<span class="tok-number">${escapeHtml(number)}</span>`;
-    else if (word && HL_KEYWORDS.has(word)) out += `<span class="tok-keyword">${escapeHtml(word)}</span>`;
-    else out += escapeHtml(full);
-    lastIndex = m.index + full.length;
-  }
-  if (lastIndex < code.length) out += escapeHtml(code.slice(lastIndex));
-  return out;
-}
 
 // Launching a run doesn't render a live tool/token stats feed — that UI (Analysis/
 // Conclusion per stage) was removed along with the old finding-detail panel. It does,
@@ -3447,15 +3231,6 @@ function setStageStatus(stage, status, text) {
 
 // ---------- context menus ----------
 
-// Triage/Remediation/Verify each have their own dedicated control now — the Remediation Loop
-// column's step arrow and "run all stages" button (see findingLoopCellHtml()) — so this menu no
-// longer lists them; it's just Threat Model (a separate, optional deep-dive that deliberately
-// doesn't sit on that path — see CLAUDE.md's Pipeline shape) plus whatever custom agents exist.
-const FIX_FLOW_AGENTS = ['triage', 'remediation', 'fix', 'verify'];
-// SCA findings additionally lose Threat Model too — none of the four per-finding code-analysis
-// agents apply to a dependency version bump (already named in the Package/Fixed-in columns), so
-// nothing in FIX_FLOW_AGENTS or Threat Model is offered, leaving only custom agents (if any).
-const SCA_EXCLUDED_AGENTS = [...FIX_FLOW_AGENTS, 'threat_model'];
 
 // `finding` is optional — pass it when the caller already has one (a table row's own object, or
 // Finding Detail's cached object) so SCA findings can have Threat Model filtered out of the menu
