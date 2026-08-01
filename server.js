@@ -7,6 +7,15 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 4500;
+// Bind loopback only. `server.listen(PORT)` with no host binds 0.0.0.0/:: — every interface —
+// which put the entire unauthenticated REST + WebSocket surface on whatever network this
+// machine is attached to. There is no auth anywhere in this app, and the WebSocket can drive
+// the Fix stage, so "reachable" means "can write to this user's files". The whole documented
+// security posture ("local single-user dev tool") assumed this was already loopback-bound; it
+// was not, and the startup banner printing "localhost" actively hid that.
+// HOST is overridable for the rare case of deliberately serving a container or VM, but the
+// default must stay loopback: anything else needs auth first, not a different bind address.
+const HOST = process.env.HOST || '127.0.0.1';
 const AGENTS_DIR = path.join(__dirname, 'agents');
 const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 const RUN_ID_RE = /^[a-zA-Z0-9_-]+$/;
@@ -834,10 +843,59 @@ app.get('/api/timeline', (req, res) => {
 // ---------- websocket: agent invocation ----------
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+/**
+ * Is this WebSocket handshake coming from our own page, or from some other website?
+ *
+ * Exported for tests. Returns true to accept.
+ *
+ * The same-origin policy does NOT cover WebSockets: a page on evil.example can open a socket
+ * to http://127.0.0.1:4500 and the browser will happily connect. Binding to loopback does not
+ * help, because the request originates from the user's own browser. Nothing here requires
+ * auth, and `remediate_fix` writes to disk — so without this check, visiting a web page was
+ * enough to let that page start scans and apply edit plans to the user's repository. That is
+ * cross-site WebSocket hijacking, and it is the one hole where "local single-user tool" stops
+ * being an adequate excuse: the attacker never needs access to the machine.
+ *
+ * A browser ALWAYS sends Origin on a WebSocket handshake, and script cannot forge it. So:
+ *   - Origin present  -> it must be one of our own loopback origins.
+ *   - Origin absent   -> not a browser (curl, a test, a CLI). Allowed: anything running
+ *                        locally outside a browser already has this user's privileges, so
+ *                        rejecting it buys nothing and would break the test suite.
+ */
+function isAllowedWsOrigin(origin, port = PORT) {
+  if (!origin) return true;
+  let parsed;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false; // unparseable Origin is not something we should be lenient about
+  }
+  const hostOk = parsed.hostname === 'localhost'
+    || parsed.hostname === '127.0.0.1'
+    || parsed.hostname === '[::1]'
+    || parsed.hostname === '::1';
+  // Compare the port explicitly: another service on a different loopback port is still a
+  // different origin, and one of them being localhost does not make it ours.
+  const portOk = parsed.port === String(port);
+  return hostOk && portOk;
+}
+
+const wss = new WebSocketServer({
+  server,
+  verifyClient: ({ origin, req }) => {
+    if (isAllowedWsOrigin(origin)) return true;
+    console.warn(`Rejected WebSocket connection from disallowed origin: ${origin} (${req.socket.remoteAddress})`);
+    return false;
+  },
+});
 
 function extractVerdict(text) {
-  const match = text.match(/```json\s*([\s\S]*?)```/);
+  // Case-insensitive fence: every agent .md asks for ```json, but a model that emits ```JSON
+  // is following the instruction in spirit and there is no reason to punish the difference.
+  // It used to be case-sensitive, and the failure was silent and total — the run completed
+  // "successfully" with verdict null, so the finding got no triage, no status change and no
+  // error anywhere. A whole paid agent run produced nothing, and looked fine doing it.
+  const match = String(text || '').match(/```json\s*([\s\S]*?)```/i);
   if (!match) return null;
   try {
     return JSON.parse(match[1]);
@@ -2756,6 +2814,44 @@ app.post('/api/session/clear', (req, res) => {
   res.json({ ok: true });
 });
 
-server.listen(PORT, () => {
-  console.log(`Findings Agent App listening on http://localhost:${PORT}`);
-});
+// Only bind a port when this file is *run* (`npm start` / `node server.js`), not when it is
+// `require()`d. The unit tests import this module to exercise the pure decision logic below
+// (deriveStatus, dedupeAdjacentSameRule, extractVerdict, ...); importing must never start a
+// listener, or every test run would either occupy port 4500 or fail against an already-running
+// dev server, and the test process would never exit.
+if (require.main === module) {
+  server.listen(PORT, HOST, () => {
+    // Report the real bind address rather than always claiming localhost — if someone
+    // deliberately overrides HOST, the banner should say so instead of hiding it.
+    console.log(`Findings Agent App listening on http://${HOST}:${PORT}`);
+    if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
+      console.log(`WARNING: bound to ${HOST}, not loopback. This app has no authentication and`);
+      console.log('         its WebSocket can write to your files. Anyone who can reach this');
+      console.log('         port has the same power over this machine as you do.');
+    }
+  });
+}
+
+// Exported purely for testing — nothing in the app requires this module. These are the pure
+// (side-effect-free) decision helpers characterization tests lock in, so a later refactor that
+// moves them into their own modules can prove behaviour is unchanged.
+module.exports = {
+  deriveStatus,
+  dedupeAdjacentSameRule,
+  priorityFromSeverityConfidence,
+  normalizeSeverity,
+  placeholderTriageRun,
+  extractVerdict,
+  latestRunByAgent,
+  toListItem,
+  severityRank,
+  parseFileLine,
+  isDuplicateOfReasoning,
+  csvEscape,
+  planReviewShards,
+  renderAdjudicationWorklist,
+  toScanListItem,
+  toAppThreatModelListItem,
+  toControlAssessmentListItem,
+  isAllowedWsOrigin,
+};

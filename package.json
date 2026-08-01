@@ -5,7 +5,8 @@
   "description": "Local test harness that invokes Claude Code headless as findings-triage agents and streams live output to a browser UI over WebSocket.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
     "@babel/parser": "^7.29.8",
