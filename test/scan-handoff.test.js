@@ -103,6 +103,26 @@ describe('agreement between engines is merged, not resolved by deletion', () => 
     assert.equal(triage.source, 'both-engines');
   });
 
+  test('corroboration stays visible even when adjudication sets the source', () => {
+    // The regression this prevents: `source` can only hold one value, so a merged finding that
+    // was also adjudicated reported source 'reasoning-adjudication' and the merge became
+    // invisible — which is exactly how a real merge was first mistaken for "the merge never
+    // fired" when checking a live scan.
+    const merged = findingFromSastEngine(
+      patternFinding, scan, '/repo',
+      { verdict: 'confirmed', reasoning: 'Real.' },
+      reasoningFinding,
+    );
+    const triage = merged.runs[0].verdict;
+    assert.equal(triage.source, 'reasoning-adjudication');
+    assert.equal(triage.corroborated, true, 'the merge must remain visible independently of source');
+  });
+
+  test('an uncorroborated finding says so', () => {
+    const plain = findingFromSastEngine(patternFinding, scan, '/repo', null, null);
+    assert.equal(plain.runs[0].verdict.corroborated, false);
+  });
+
   test('an explicit false-positive adjudication still wins over agreement', () => {
     // Corroboration is two engines pattern-matching the same spot; adjudication is a pass that
     // read the surrounding code. The latter is better evidence and must not be overridden.

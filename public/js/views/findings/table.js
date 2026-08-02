@@ -93,6 +93,52 @@ function findingsCellHtml(f, key) {
   }
 }
 
+/**
+ * Collapse repeated hits of one rule into a single row.
+ *
+ * A rule that fires 17 times is one decision, not 17. Ungrouped, the triage list showed three
+ * genuinely distinct findings followed by seventeen consecutive copies of
+ * "XSS via innerHTML Assignment" — so the first screen, which is all anyone reads, carried three
+ * pieces of information instead of twenty.
+ *
+ * This is presentation only. Every finding still exists, is still counted, still has its own
+ * detail page and its own place in the pipeline; the group is just a lid. Nothing is suppressed,
+ * which is why this needs no corpus to justify — unlike the materiality scoring that comes next,
+ * it cannot hide a true positive.
+ *
+ * A group's severity and sort position come from its worst member, so collapsing can never push
+ * a rule further down the list than its most severe occurrence would have reached alone.
+ *
+ * @returns {Array<{key: string, lead: object, findings: object[]}>}
+ */
+function groupFindingsByRule(rows, sortKey, dir) {
+  const byRule = new Map();
+  for (const f of rows) {
+    // Fall back to the title so manually-added findings, which carry no rule, still group
+    // sensibly rather than every one becoming its own singleton key of `null`.
+    const key = f.rule || f.title;
+    const list = byRule.get(key);
+    if (list) list.push(f);
+    else byRule.set(key, [f]);
+  }
+
+  const groups = [...byRule.entries()].map(([key, findings]) => {
+    const lead = findings.reduce(
+      (worst, f) => ((SEV_ORDER_MAP[f.severity] ?? 99) < (SEV_ORDER_MAP[worst.severity] ?? 99) ? f : worst),
+      findings[0],
+    );
+    return { key, lead, findings };
+  });
+
+  groups.sort((a, b) => {
+    const va = findingsSortValue(a.lead, sortKey);
+    const vb = findingsSortValue(b.lead, sortKey);
+    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return dir === 'asc' ? cmp : -cmp;
+  });
+  return groups;
+}
+
 export function renderFindingsTable() {
   const headEl = document.getElementById('findings-table-head');
   const bodyEl = document.getElementById('findings-table-body');
@@ -100,12 +146,7 @@ export function renderFindingsTable() {
 
   const scanScoped = findingsScanScoped();
   const rows = (state.findingsTypeFilter === 'all' ? scanScoped.slice() : scanScoped.filter((f) => f.scanType === state.findingsTypeFilter));
-  rows.sort((a, b) => {
-    const va = findingsSortValue(a, state.findingsSort.key);
-    const vb = findingsSortValue(b, state.findingsSort.key);
-    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-    return state.findingsSort.dir === 'asc' ? cmp : -cmp;
-  });
+  const groups = groupFindingsByRule(rows, state.findingsSort.key, state.findingsSort.dir);
 
   headEl.innerHTML = '';
   const headRow = document.createElement('tr');
@@ -150,9 +191,11 @@ export function renderFindingsTable() {
     return;
   }
 
-  for (const f of rows) {
+  /** A normal finding row — unchanged behaviour, indented when it sits inside a group. */
+  const appendFindingRow = (f, inGroup) => {
     const tr = document.createElement('tr');
     tr.dataset.findingId = f.id;
+    if (inGroup) tr.className = 'ft-grouped-row';
     tr.innerHTML = columns.map((col) => `<td data-col="${col.key}">${findingsCellHtml(f, col.key)}</td>`).join('')
       + `<td class="ft-actions-col"><div class="ft-actions-cell">`
       + `<button class="console-toggle-btn" type="button" data-run-agent-btn title="Run agent…">${icon('more')}</button>`
@@ -171,5 +214,46 @@ export function renderFindingsTable() {
       openFindingContextMenu(e.clientX, e.clientY, f.id, f);
     });
     bodyEl.appendChild(tr);
+  };
+
+  for (const group of groups) {
+    // One occurrence is not a group — render it as an ordinary row so the common case gains no
+    // chrome and no extra click.
+    if (group.findings.length === 1) {
+      appendFindingRow(group.findings[0], false);
+      continue;
+    }
+
+    const expanded = state.findingsExpandedRules.has(group.key);
+    const open = group.findings.filter((f) => f.status !== 'closed').length;
+    const files = new Set(group.findings.map((f) => (f.file || '').split(':')[0]).filter(Boolean));
+
+    const tr = document.createElement('tr');
+    tr.className = 'ft-group-row' + (expanded ? ' expanded' : '');
+    const cells = columns.map((col) => {
+      if (col.key === 'severity') return `<td data-col="severity">${findingsCellHtml(group.lead, 'severity')}</td>`;
+      if (col.key === 'title') {
+        return `<td data-col="title"><div class="ft-title">`
+          + `<span class="ft-group-caret">${expanded ? '▾' : '▸'}</span>`
+          + `${escapeHtml(group.lead.title)}`
+          + `<span class="ft-group-count">${group.findings.length}\u00d7</span>`
+          + `</div>`
+          + `<div class="hint ft-group-sub">${open} open`
+          + `${files.size > 1 ? ` · ${files.size} files` : ''}`
+          + `${group.lead.rule ? ` · ${escapeHtml(group.lead.rule)}` : ''}</div></td>`;
+      }
+      return `<td data-col="${col.key}"></td>`;
+    }).join('');
+    tr.innerHTML = cells + '<td class="ft-actions-col"></td>';
+    // Toggling is the only action on a group row: the per-finding agent menu would be ambiguous
+    // across N findings, and each member row still carries its own.
+    tr.addEventListener('click', () => {
+      if (expanded) state.findingsExpandedRules.delete(group.key);
+      else state.findingsExpandedRules.add(group.key);
+      renderFindingsTable();
+    });
+    bodyEl.appendChild(tr);
+
+    if (expanded) for (const f of group.findings) appendFindingRow(f, true);
   }
 }

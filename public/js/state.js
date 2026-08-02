@@ -17,6 +17,10 @@ export const state = {
   findingsTypeFilter: 'all',   // 'all' | 'reasoning' | 'sca'
   findingsScanFilter: 'all',   // 'all' or a scan id
   findingsSort: { key: 'severity', dir: 'asc' },
+  // Rule keys whose group is expanded in the triage table. Collapsed is the default: one rule
+  // firing 17 times is one issue to decide about, not 17, and it used to push everything else
+  // off the first screen.
+  findingsExpandedRules: new Set(),
   currentFindingDetailId: null,
   currentView: 'dashboard',
 

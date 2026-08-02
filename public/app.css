@@ -692,3 +692,29 @@
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
   [hidden] { display: none !important; }
+
+/* ── Grouped findings ──────────────────────────────────────────────────────
+   One rule firing many times is one decision. The group row is a lid over its
+   occurrences; every finding underneath still renders as an ordinary row. */
+.ft-group-row { cursor: pointer; }
+.ft-group-row:hover { background: var(--row-hover, rgba(255, 255, 255, 0.04)); }
+.ft-group-caret {
+  display: inline-block;
+  width: 12px;
+  margin-right: 6px;
+  opacity: 0.6;
+  font-size: 10px;
+}
+.ft-group-count {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--chip-bg, rgba(255, 255, 255, 0.08));
+  color: var(--text-dim, #9aa0a6);
+}
+.ft-group-sub { margin-top: 2px; font-size: 11px; }
+/* Indented so an expanded group reads as belonging to the row above it. */
+.ft-grouped-row > td:first-child { padding-left: 26px; }
+.ft-grouped-row { background: var(--row-nested, rgba(255, 255, 255, 0.015)); }

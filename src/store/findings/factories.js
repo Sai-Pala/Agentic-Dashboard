@@ -124,6 +124,12 @@ function findingFromSastEngine(f, scan, targetPath, adjudication = null, corrobo
     source: adjVerdict ? 'reasoning-adjudication'
       : corroboration ? 'both-engines'
         : 'sast-engine-verifier',
+    // Recorded separately from `source` because the two answer different questions: `source` is
+    // which pass produced the VERDICT, `corroborated` is whether both engines independently
+    // reported the finding. A merged finding that is then adjudicated has source
+    // 'reasoning-adjudication', which silently hid every merge from any consumer keying off
+    // source alone — including the check written to verify the merge worked.
+    corroborated: Boolean(corroboration),
   }));
   finding.status = deriveStatus(finding);
   return finding;
