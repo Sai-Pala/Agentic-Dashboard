@@ -16,6 +16,19 @@ function menuEl() {
   return document.getElementById('context-menu');
 }
 
+/**
+ * Is there any agent this menu could actually offer?
+ *
+ * The menu exists for agents OUTSIDE the fix flow — the loop boxes on Finding Detail own
+ * Triage/Remediate/Fix/Verify. In the shipped configuration `GET /api/agents` returns exactly
+ * those fix-flow agents, so the answer is no and callers should not render the affordance at
+ * all. It becomes true again the moment someone drops a custom prompts/<name>.md in, which is
+ * why the machinery below stays.
+ */
+export function hasEligibleAgents() {
+  return state.agentsList.some((a) => !FIX_FLOW_AGENTS.includes(a));
+}
+
 /** `finding` is optional — pass it so an SCA finding's empty menu can say why it's empty. */
 export function openFindingContextMenu(x, y, findingId, finding) {
   const el = menuEl();

@@ -44,11 +44,17 @@ function handleCancel(msg, { children }) {
   if (child) child.kill();
 }
 
-function handleClose({ children }) {
-  // Mark every still-running scan cancelled directly rather than per-child: a scan's children
-  // are keyed by synthetic module ids, so the runId-keyed lookups below miss them. (They are
-  // still killed unconditionally by the loop after this one.)
-  for (const [runId, scanIndexed] of scanRunIndex.entries()) {
+function handleClose({ children, ownScanRunIds }) {
+  // Only this connection's scans. scanRunIndex is module-global, so walking all of it cancelled
+  // scans started by other tabs — losing their findings while their `claude` children, which
+  // live in the OTHER connection's `children` map, kept running and billing.
+  //
+  // Marked directly rather than per-child because a scan's children are keyed by synthetic
+  // module ids, so the runId-keyed lookups below miss them. (They are still killed
+  // unconditionally by the loop after this one.)
+  for (const runId of ownScanRunIds) {
+    const scanIndexed = scanRunIndex.get(runId);
+    if (!scanIndexed) continue;
     if (scanIndexed.status === 'running') {
       scanIndexed.status = 'cancelled';
       scanIndexed.finishedAt = Date.now();
@@ -77,12 +83,13 @@ function attachWebSocketServer(server) {
   });
 
   wss.on('connection', (ws) => {
-    const children = new Map(); // runId -> ChildProcess, per connection
+    const children = new Map();      // runId -> ChildProcess, per connection
+    const ownScanRunIds = new Set(); // scans THIS connection started, so close cancels only those
 
     const send = (payload) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
     };
-    const ctx = { children, send };
+    const ctx = { children, send, ownScanRunIds };
 
     ws.on('message', (raw) => {
       let msg;

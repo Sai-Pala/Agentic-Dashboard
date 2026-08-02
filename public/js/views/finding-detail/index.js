@@ -18,7 +18,7 @@ import { wireConsoleToggles, reattachConsoleRefs } from '../../components/consol
 import { findingStageRuns } from '../../components/loop/state.js';
 import { fdLoopBoxesHtml } from '../../components/loop/boxes.js';
 import { onLoopAdvanceClick, onLoopRunAllClick } from '../../components/loop/actions.js';
-import { openMenuUnderButton } from '../../components/menu.js';
+import { hasEligibleAgents, openMenuUnderButton } from '../../components/menu.js';
 import { openFindingsFilteredByScan } from '../findings/index.js';
 import { findingSourceTagHtml } from '../findings/table.js';
 import { runCardHtml } from './run-card.js';
@@ -173,7 +173,7 @@ export function renderFindingDetail(findingId) {
 
 function renderFindingDetailActions(finding) {
   const actionsEl = document.getElementById('fd-header-actions');
-  const hasMenuAgents = state.agentsList.some((a) => !FIX_FLOW_AGENTS.includes(a));
+  const hasMenuAgents = hasEligibleAgents();
   const menuBtnHtml = `<button class="console-toggle-btn" type="button" id="fd-agent-menu-btn"${hasMenuAgents ? '' : ' disabled'} title="${hasMenuAgents ? 'Run agent…' : 'No agent actions apply to this finding'}">${icon('more')}</button>`;
   actionsEl.innerHTML = fdLoopBoxesHtml(finding) + menuBtnHtml;
 

@@ -34,8 +34,10 @@ function applyNavCollapsed(collapsed) {
   const navEl = document.getElementById('global-nav');
   const btn = document.getElementById('nav-collapse-btn');
   navEl.classList.toggle('collapsed', collapsed);
+  // Title only: the button holds a bare <svg>, which app.css rotates 180deg when collapsed.
+  // A previous version also set a <span> label here and threw on every click, which aborted
+  // the handler before it could persist the state.
   btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-  btn.querySelector('span').textContent = collapsed ? 'Expand' : 'Collapse';
 }
 
 /** Kept as the name every call site already uses; it only refreshes the nav badges. */

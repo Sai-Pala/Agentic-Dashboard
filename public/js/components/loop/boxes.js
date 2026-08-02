@@ -28,7 +28,11 @@ export function fdLoopBoxesHtml(f) {
       : boxState === 'attention' ? (stage === 'verify' ? 'Not fixed' : 'Failed')
       : boxState === 'unavailable' ? 'No fix proposed'
       : boxState === 'done' ? 'Done' : 'Not started';
-    const clickable = actionable && !anyRunning;
+    // Every stage past Triage needs a directory to act against, so a finding added by hand —
+    // with no sourceScanId — has nothing any of them could run on. Without hasPath the
+    // Remediate box rendered active, and clicking it only produced an alert, having already
+    // disabled itself.
+    const clickable = actionable && !anyRunning && hasPath;
     const title = clickable ? actionTitle
       : boxState === 'done' ? `${label} complete`
       : boxState === 'unavailable' ? 'Remediate didn’t propose a specific edit for this finding — nothing to apply'

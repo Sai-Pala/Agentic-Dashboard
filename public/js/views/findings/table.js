@@ -13,7 +13,7 @@ import { statusLabel, severityLabel } from '../../lib/format.js';
 import { SCAN_TYPE_META, SEV_ORDER_MAP, STATUS_ORDER_MAP } from '../../lib/meta.js';
 import { findingLoopCellHtml } from '../../components/loop/cell.js';
 import { onViewDiffClick } from '../../components/loop/actions.js';
-import { openMenuUnderButton, openFindingContextMenu } from '../../components/menu.js';
+import { hasEligibleAgents, openMenuUnderButton, openFindingContextMenu } from '../../components/menu.js';
 import { openFindingDetail } from '../finding-detail/index.js';
 import { findingsScanScoped } from './filters.js';
 
@@ -108,6 +108,7 @@ export function renderFindingsTable() {
   const headEl = document.getElementById('findings-table-head');
   const bodyEl = document.getElementById('findings-table-body');
   const columns = FINDINGS_COLUMNS[state.findingsTypeFilter] || FINDINGS_COLUMNS.all;
+  const menuAvailable = hasEligibleAgents();
 
   const scanScoped = findingsScanScoped();
   const rows = (state.findingsTypeFilter === 'all' ? scanScoped.slice() : scanScoped.filter((f) => f.scanType === state.findingsTypeFilter));

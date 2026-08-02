@@ -11,7 +11,7 @@ const { RUN_ID_RE, BRANCH_NAME_RE, SCAN_TYPES, SCAN_SCOPES } = require('../confi
 const { scans, scanRunIndex } = require('../store/scans');
 const { runHybridReasoningScan } = require('../services/scanner');
 
-function handleScanMessage(msg, { children, send }) {
+function handleScanMessage(msg, { children, send, ownScanRunIds }) {
   const runId = String(msg.runId || '').trim();
   if (!RUN_ID_RE.test(runId)) {
     send({ type: 'error', message: 'Invalid or missing runId.' });
@@ -91,6 +91,8 @@ function handleScanMessage(msg, { children, send }) {
   };
   scans.set(scan.id, scan);
   scanRunIndex.set(runId, scan);
+  // Claim it for this connection: closing a socket must not cancel another tab's scan.
+  if (ownScanRunIds) ownScanRunIds.add(runId);
 
   send({ type: 'scan-started', runId, scanId: scan.id, path: targetPath });
 
@@ -113,7 +115,15 @@ function handleScanMessage(msg, { children, send }) {
     scanRunIndex.delete(runId);
   };
 
-  runHybridReasoningScan(scan, targetPath, diffFiles, { children, send, finish, fail });
+  // The pipeline is async, so an unhandled rejection here would take the whole process down
+  // (Node exits on unhandled rejections) and strand the scan at status 'running' forever —
+  // which also makes POST /api/session/clear 409 permanently. Route it to the same failure
+  // sink the engines already use, so the client gets a scan-error instead of silence.
+  // Invoked inside .then() rather than passed to Promise.resolve(): a synchronous throw would
+  // otherwise happen before the promise wraps it and escape the catch entirely.
+  Promise.resolve()
+    .then(() => runHybridReasoningScan(scan, targetPath, diffFiles, { children, send, finish, fail }))
+    .catch((err) => fail(err && err.message ? err.message : String(err)));
 }
 
 module.exports = { handleScanMessage };
