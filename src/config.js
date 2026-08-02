@@ -52,7 +52,6 @@ const DETERMINISTIC_AGENT_TIMEOUT_MS = 180_000;
 const ADJUDICATE_MAX_FINDINGS = 40;
 
 // Shipped with the app and load-bearing for hardcoded UI — editable, not deletable.
-const BUILTIN_AGENTS = ['scan', 'adjudicate', 'remediation', 'verify'];
 // Whole-directory agents — hidden from the per-finding UI.
 const NON_FINDING_AGENTS = ['scan', 'adjudicate'];
 

@@ -675,7 +675,6 @@
   .badge.not_applied { background: var(--warn-soft); color: var(--warn); }
   .badge.new { background: rgba(109,108,104,.18); color: var(--muted); }
   .badge.closed { background: rgba(109,108,104,.18); color: var(--muted); }
-  .badge.whole-app { background: rgba(109,108,104,.18); color: var(--muted); margin-left: 4px; }
 
   #context-menu { position: fixed; z-index: 70; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; box-shadow: 0 8px 20px rgba(0,0,0,.35); min-width: 240px; }
   #context-menu button { display: block; width: 100%; text-align: left; background: none; color: var(--text-dim); border: none; padding: 8px 10px; font-size: 12px; font-weight: 400; border-radius: var(--radius-xs); }

@@ -81,10 +81,10 @@ export function createFinding({
  * An attempt to suppress a floor finding is itself recorded — someone marking a
  * critical finding as safe is a signal, not a no-op.
  */
-const SUPPRESSION_FLOOR_SEVERITIES = new Set(['critical']);
+export const SUPPRESSION_FLOOR_SEVERITIES = new Set(['critical']);
 
 /** Whether a finding of this severity may be silenced by an inline comment. */
-function isSuppressible(severity) {
+export function isSuppressible(severity) {
   return !SUPPRESSION_FLOOR_SEVERITIES.has(String(severity || '').toLowerCase());
 }
 

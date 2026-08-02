@@ -34,6 +34,7 @@ function detectPackageManager(rootPath) {
       name: 'pnpm',
       manifest: 'package.json',
       auditCommand: 'pnpm audit --json',
+      fixCommand: 'pnpm audit --fix',
       type: 'npm-v2'
     };
   }
@@ -43,6 +44,7 @@ function detectPackageManager(rootPath) {
       name: 'yarn',
       manifest: 'package.json',
       auditCommand: 'yarn audit --json',
+      fixCommand: 'yarn upgrade',
       type: 'yarn'
     };
   }
@@ -52,6 +54,7 @@ function detectPackageManager(rootPath) {
       name: 'npm',
       manifest: 'package.json',
       auditCommand: 'npm audit --json',
+      fixCommand: 'npm audit fix',
       type: 'npm-v2'
     };
   }
@@ -62,6 +65,7 @@ function detectPackageManager(rootPath) {
       name: 'pip-audit',
       manifest: 'requirements.txt',
       auditCommand: 'pip-audit --format json -r requirements.txt',
+      fixCommand: 'pip-audit --fix -r requirements.txt',
       type: 'pip',
       installHint: 'pip install pip-audit'
     };
@@ -73,6 +77,7 @@ function detectPackageManager(rootPath) {
       name: 'bundler-audit',
       manifest: 'Gemfile.lock',
       auditCommand: 'bundle-audit check',
+      fixCommand: 'bundle update',
       type: 'bundler',
       installHint: 'gem install bundler-audit'
     };
