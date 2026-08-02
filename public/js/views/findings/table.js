@@ -7,7 +7,7 @@
  */
 
 import { state } from '../../state.js';
-import { escapeHtml } from '../../lib/html.js';
+import { escapeHtml, statusBadgeHtml } from '../../lib/html.js';
 import { icon } from '../../lib/icons.js';
 import { statusLabel, severityLabel } from '../../lib/format.js';
 import { SCAN_TYPE_META, SEV_ORDER_MAP, STATUS_ORDER_MAP } from '../../lib/meta.js';
@@ -96,7 +96,7 @@ export function findingsCellHtml(f, key) {
     case 'method':
       return f.method ? escapeHtml(f.method.toUpperCase()) : '<span class="hint">—</span>';
     case 'status':
-      return `<span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span>`;
+      return statusBadgeHtml(f);
     case 'loop':
       return findingLoopCellHtml(f);
     default:

@@ -7,10 +7,18 @@
  * lets util/format.js stay Node-importable.
  */
 
+import { statusLabel } from './format.js';
+
 export function escapeHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+// Lives here, not in the findings table, so the loop cell can render an SCA finding's status
+// without importing the table that imports it back.
+export function statusBadgeHtml(f) {
+  return `<span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span>`;
 }
 
 // Agent free-text (reasoning/root_cause/evidence/etc.) commonly contains Markdown-ish inline

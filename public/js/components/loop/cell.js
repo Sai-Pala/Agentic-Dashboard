@@ -6,9 +6,8 @@
  * advancing the loop happens on the finding's own detail page.
  */
 
-import { escapeHtml } from '../../lib/html.js';
+import { escapeHtml, statusBadgeHtml } from '../../lib/html.js';
 import { icon } from '../../lib/icons.js';
-import { findingsCellHtml } from '../../views/findings/table.js';
 import { findingLoopState } from './state.js';
 
 export function loopTrackHtml(triaged, remediated, fixed, verified) {
@@ -25,7 +24,7 @@ export function loopTrackHtml(triaged, remediated, fixed, verified) {
 export function findingLoopCellHtml(f) {
   // An SCA finding's fix is a dependency bump, not a code edit — show plain status instead of
   // implying a loop. Only reachable from the "All" tab; the SCA tab uses the 'status' key.
-  if (f.scanType === 'sca') return findingsCellHtml(f, 'status');
+  if (f.scanType === 'sca') return statusBadgeHtml(f);
   if (f.status === 'closed') {
     return `<div class="loop-cell"><span class="hint">Closed — not applicable</span></div>`;
   }
