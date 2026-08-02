@@ -17,6 +17,7 @@ const fs = require('fs');
 const {
   agentFilePath,
   ADJUDICATE_MAX_FINDINGS,
+  ADJUDICATE_MAX_PER_RULE,
   REASONING_ADJUDICATE_BUDGET_USD,
   REASONING_REVIEW_BUDGET_USD,
   REASONING_TOTAL_USD,
@@ -27,7 +28,7 @@ const {
 const { severityRank } = require('../taxonomy');
 const { runReasoningCall } = require('../claude');
 const { loadSastEngine } = require('../sast-engine');
-const { buildCoverageSummary, renderAdjudicationWorklist, planReviewShards } = require('./plan');
+const { buildCoverageSummary, renderAdjudicationWorklist, planReviewShards, selectForAdjudication } = require('./plan');
 const { toRepoRelative } = require('../paths');
 
 /**
@@ -44,6 +45,24 @@ function reportCoverageGaps(scan, surface, shards, send) {
     send({
       type: 'scan-warning', runId: scan.runId, scanId: scan.id,
       message: 'Attack-surface enumeration produced nothing — the review pass will run without a route worklist, which weakens coverage of authorization and business-logic issues.',
+    });
+  }
+  if (surface && shards.totalRoutes === 0) {
+    // Zero routes is ambiguous, and the two readings are not equally likely. A library or worker
+    // genuinely has no HTTP surface; so does a web application written in a language the
+    // enumerator cannot parse — it understands Express-shaped JavaScript and nothing else, so a
+    // Spring or Django app reads as zero. Both fall through to one unscoped call over the whole
+    // tree, which on a large repo reads a handful of files and reports success.
+    //
+    // The route-coverage warning below cannot catch this: with no routes, skippedRoutes is 0 too,
+    // so the worst-coverage case was the one that stayed silent.
+    send({
+      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+      message: 'No HTTP routes were enumerated, so the review pass ran unscoped over the whole '
+        + 'tree instead of endpoint by endpoint — authorization and business-logic coverage is '
+        + 'substantially weaker than a normal scan. If this application does serve HTTP, its '
+        + 'framework is one the attack-surface enumerator does not recognise, and this is '
+        + 'incomplete coverage rather than a clean result.',
     });
   }
   if (shards.skippedRoutes > 0) {
@@ -81,7 +100,10 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
 
   let reviewPrompt;
   try {
-    reviewPrompt = readAgent('scan') + '\n\n' + buildCoverageSummary(engine);
+    reviewPrompt = readAgent('scan') + '\n\n' + buildCoverageSummary(engine, {
+      skipped: scan.agentsSkipped,
+      failed: scan.agentsFailed,
+    });
   } catch (err) {
     return { findings: [], adjudications: new Map(), error: err.message, costUsd: 0 };
   }
@@ -90,7 +112,7 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
 
   const adjudicable = [...detFindings.entries()]
     .sort(([, a], [, b]) => severityRank(a.severity) - severityRank(b.severity));
-  const adjudicating = adjudicable.slice(0, ADJUDICATE_MAX_FINDINGS);
+  const adjudicating = selectForAdjudication(adjudicable, ADJUDICATE_MAX_FINDINGS, ADJUDICATE_MAX_PER_RULE);
   const overflow = adjudicable.length - adjudicating.length;
 
   let adjudicatePrompt = null;

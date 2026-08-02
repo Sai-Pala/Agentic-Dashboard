@@ -11,13 +11,42 @@ const { toRepoRelative } = require('../paths');
  * Tells the reasoning pass what the deterministic half already covers. Built from each agent's
  * own constructor arguments rather than a second hand-maintained list, so it can never drift
  * from what the engine actually checks.
+ *
+ * `skipped` and `failed` are load-bearing, not decoration. This text ends with "do not spend
+ * effort re-deriving these", so every name in the covered list steers the expensive pass AWAY
+ * from a vulnerability class. Listing all built-in agents unconditionally — as this did — tells
+ * the model that injection, XSS and secrets are handled on a codebase where half the agents were
+ * gated out by shouldRun() and the rest matched almost nothing. Neither half then looks, and the
+ * hole is created by the handoff rather than by either engine.
+ *
+ * An agent that was skipped or that errored is therefore reported as an explicit GAP: the
+ * reasoning pass is the only thing that can still cover it.
+ *
+ * @param {object} engine  loaded sast-engine
+ * @param {{skipped?: string[], failed?: string[]}} [coverage]
  */
-function buildCoverageSummary(engine) {
-  const lines = engine.listBuiltInAgents().map((a) => `- ${a.name} (${a.category}): ${a.description}`);
-  return 'Categories already covered by a deterministic pattern-matching engine running in ' +
-    'parallel over this same codebase — do not spend effort re-deriving these from scratch; ' +
-    'focus on business logic, authorization/access-control reasoning, and attack-surface ' +
-    'analysis a fixed rule set structurally cannot do:\n' + lines.join('\n');
+function buildCoverageSummary(engine, coverage = {}) {
+  const skipped = new Set(coverage.skipped || []);
+  // failedAgents entries read "AgentName (reason)" — key on the name alone.
+  const failed = new Set((coverage.failed || []).map((f) => String(f).split(' (')[0]));
+
+  const all = engine.listBuiltInAgents();
+  const ran = all.filter((a) => !skipped.has(a.name) && !failed.has(a.name));
+  const gaps = all.filter((a) => skipped.has(a.name) || failed.has(a.name));
+
+  const covered = 'Categories already covered by a deterministic pattern-matching engine that '
+    + 'ran over this same codebase — do not spend effort re-deriving these from scratch; focus '
+    + 'on business logic, authorization/access-control reasoning, and attack-surface analysis a '
+    + 'fixed rule set structurally cannot do:\n'
+    + ran.map((a) => `- ${a.name} (${a.category}): ${a.description}`).join('\n');
+
+  if (!gaps.length) return covered;
+
+  return covered + '\n\n'
+    + 'NOT covered by the deterministic engine on this codebase — these agents did not run or '
+    + 'did not complete, so nothing has checked these classes. You are the only pass that can. '
+    + 'Treat them as in scope rather than already handled:\n'
+    + gaps.map((a) => `- ${a.name} (${a.category}): ${a.description}`).join('\n');
 }
 
 /**
@@ -49,6 +78,47 @@ function renderAdjudicationWorklist(detFindings, targetPath) {
 const PRIVILEGE_WORD_RE = /admin|role|permission|privileg|acl|rbac|scope|claim|staff|superuser|owner|tenant/i;
 const PRIVILEGE_PREDICATE_RE = /\b(?:can|is|has|may)[A-Z]/;
 const looksPrivileged = (name) => PRIVILEGE_WORD_RE.test(name) || PRIVILEGE_PREDICATE_RE.test(name);
+
+/**
+ * Choose which deterministic findings get an adjudication slot.
+ *
+ * Severity order alone is not a good selector, because severity here is a static per-pattern
+ * constant rather than a judgement about this occurrence. The most prolific rule wins on volume:
+ * twenty `high` unpinned-GitHub-Action findings consumed the budget ahead of everything else
+ * while more interesting findings were displayed unreviewed.
+ *
+ * Two passes. The first takes at most `maxPerRule` of any one rule, in severity order, so the
+ * slots spread across distinct issues. The second spends whatever is left over on the remainder,
+ * still in severity order — an under-filled budget helps nobody, so the cap shapes the priority
+ * without ever shrinking the total.
+ *
+ * @param {Array<[number, object]>} adjudicable  [originalIndex, finding], already severity-sorted
+ * @returns {Array<[number, object]>} the chosen subset, severity order preserved
+ */
+function selectForAdjudication(adjudicable, maxTotal, maxPerRule) {
+  const perRule = new Map();
+  const chosen = [];
+  const deferred = [];
+
+  for (const entry of adjudicable) {
+    const rule = entry[1].rule || entry[1].title || 'unknown';
+    const used = perRule.get(rule) || 0;
+    if (used < maxPerRule && chosen.length < maxTotal) {
+      perRule.set(rule, used + 1);
+      chosen.push(entry);
+    } else {
+      deferred.push(entry);
+    }
+  }
+
+  for (const entry of deferred) {
+    if (chosen.length >= maxTotal) break;
+    chosen.push(entry);
+  }
+
+  // Restore severity order: the deferred tail was appended after the capped head.
+  return chosen.sort((a, b) => adjudicable.indexOf(a) - adjudicable.indexOf(b));
+}
 
 /**
  * Splits the enumerated routes into review shards, riskiest first.
@@ -122,4 +192,4 @@ function planReviewShards(surface, detFindings, targetPath, { maxShards }) {
   return { list, totalRoutes, reviewedRoutes, skippedRoutes: totalRoutes - reviewedRoutes };
 }
 
-module.exports = { buildCoverageSummary, renderAdjudicationWorklist, planReviewShards };
+module.exports = { buildCoverageSummary, renderAdjudicationWorklist, planReviewShards, selectForAdjudication };

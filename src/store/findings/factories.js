@@ -63,8 +63,15 @@ function triageRun(verdict) {
  * than a regex plus a heuristic has. A finding it calls a false positive is still created —
  * deriveStatus maps that to 'closed' so it stays inspectable. A wrong adjudication should cost
  * visibility, not evidence.
+ *
+ * `corroboration` is a reasoning-pass finding at the same location. When present the two are one
+ * finding, not two: the pattern engine supplies rule, CWE, code context and taint span, and the
+ * reasoning pass supplies the title and description, which is the half that explains why the
+ * match matters. Independent agreement raises the verdict to confirmed — but never over an
+ * adjudicator that explicitly called it a false positive, since that pass read the code with
+ * more context than either.
  */
-function findingFromSastEngine(f, scan, targetPath, adjudication = null) {
+function findingFromSastEngine(f, scan, targetPath, adjudication = null, corroboration = null) {
   const relFile = toRepoRelative(targetPath, f.file);
   const severity = normalizeSeverity(f.severity);
   const confidence = CONFIDENCES.includes(f.confidence) ? f.confidence : 'medium';
@@ -77,15 +84,18 @@ function findingFromSastEngine(f, scan, targetPath, adjudication = null) {
   const finalConfidence = adjudication && CONFIDENCES.includes(adjudication.confidence)
     ? adjudication.confidence
     : confidence;
-  const verdictLabel = adjVerdict || (f.verified === true ? 'confirmed' : 'needs_review');
+  const verdictLabel = adjVerdict
+    || (corroboration ? 'confirmed' : (f.verified === true ? 'confirmed' : 'needs_review'));
 
   const finding = baseFinding({
-    title: f.title || f.rule || 'Untitled finding',
+    title: (corroboration && String(corroboration.title || '').trim())
+      || f.title || f.rule || 'Untitled finding',
     severity: finalSeverity,
     scanType: 'reasoning',
     rule: f.rule || null,
     file: relFile ? `${relFile}${f.line ? ':' + f.line : ''}` : null,
-    description: f.description || '',
+    description: (corroboration && String(corroboration.description || '').trim())
+      || f.description || '',
     code: Array.isArray(f.codeContext) && f.codeContext.length
       ? f.codeContext.map((c) => c.text).join('\n')
       : null,
@@ -99,6 +109,9 @@ function findingFromSastEngine(f, scan, targetPath, adjudication = null) {
     confidence: finalConfidence,
     priority: priorityFromSeverityConfidence(finalSeverity, finalConfidence),
     reasoning: (adjudication && adjudication.reasoning)
+      || (corroboration && 'Independently reported by both the pattern engine and the reasoning '
+        + `pass at this location. Pattern rule: ${f.rule || 'n/a'}. Reasoning: `
+        + `${String(corroboration.description || '').trim()}`)
       || f.verifierNote
       || 'Deterministic pattern match; below the verification severity floor, so not independently re-checked against surrounding code.',
     owasp: f.owasp || null,
@@ -108,7 +121,9 @@ function findingFromSastEngine(f, scan, targetPath, adjudication = null) {
     next_agent: verdictLabel === 'confirmed' ? 'remediation' : null,
     // Which pass decided this — Finding Detail badges them differently, and it matters
     // which one closed a finding.
-    source: adjVerdict ? 'reasoning-adjudication' : 'sast-engine-verifier',
+    source: adjVerdict ? 'reasoning-adjudication'
+      : corroboration ? 'both-engines'
+        : 'sast-engine-verifier',
   }));
   finding.status = deriveStatus(finding);
   return finding;

@@ -65,6 +65,9 @@ async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, 
         });
       },
     });
+    // Recorded on the scan for the same reason agentsSkipped is: the reasoning pass needs to
+    // know which classes went unchecked so it does not treat them as already covered.
+    scan.agentsFailed = failedAgents;
     if (failedAgents.length && scan.status !== 'cancelled') {
       send({
         type: 'scan-warning',

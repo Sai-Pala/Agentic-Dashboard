@@ -75,23 +75,43 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
 
   const created = [];
   const adjudications = llmResult.adjudications || new Map();
+
+  // Pair each reasoning finding with a deterministic one at the same place (same file, within a
+  // couple of lines).
+  //
+  // Two engines independently flagging one location is the strongest signal this app produces,
+  // and it used to be the weakest: the reasoning finding was discarded and the pattern hit kept.
+  // That is backwards twice over. The pattern hit carries the structured half — rule, CWE, code
+  // context, taint span — while the reasoning finding carries the explanation of WHY it is
+  // exploitable, which is the half a human actually needs. And a pattern is most likely to fire
+  // near a real bug, so the rule fired precisely where it cost the most.
+  //
+  // They are merged into one finding instead: structured fields from the pattern engine, prose
+  // from the reasoning pass, and a verdict that records that both agreed.
+  const detLine = (f) => ({ file: toRepoRelative(targetPath, f.file), line: f.line });
+  const corroborationByDet = new Map();  // det index -> reasoning finding
+  const mergedLlm = new Set();           // reasoning findings already merged, so not re-created
+  for (const rf of llmResult.findings) {
+    const loc = parseFileLine(rf.file);
+    if (!loc.file || loc.line == null) continue;
+    const idx = collapsedDet.findIndex((f, i) => {
+      if (corroborationByDet.has(i)) return false;  // one reasoning finding per pattern hit
+      const d = detLine(f);
+      return d.file === loc.file && d.line != null && Math.abs(d.line - loc.line) <= 2;
+    });
+    if (idx === -1) continue;
+    corroborationByDet.set(idx, rf);
+    mergedLlm.add(rf);
+  }
+
   for (const [i, f] of collapsedDet.entries()) {
-    const finding = findingFromSastEngine(f, scan, targetPath, adjudications.get(i) || null);
+    const finding = findingFromSastEngine(
+      f, scan, targetPath, adjudications.get(i) || null, corroborationByDet.get(i) || null,
+    );
     findings.set(finding.id, finding);
     scan.findingIds.push(finding.id);
     created.push(toListItem(finding));
   }
-
-  // Drop a reasoning finding landing within a couple of lines of a deterministic one in the
-  // same file. Findings with no resolvable line always survive — there is nothing to compare.
-  const detLocations = collapsedDet
-    .map((f) => ({ file: toRepoRelative(targetPath, f.file), line: f.line }))
-    .filter((l) => l.file);
-  const isDuplicateOfDeterministic = (rf) => {
-    const loc = parseFileLine(rf.file);
-    if (!loc.file || loc.line == null) return false;
-    return detLocations.some((d) => d.file === loc.file && d.line != null && Math.abs(d.line - loc.line) <= 2);
-  };
 
   // Sorted most-severe-first so that when two calls disagree on severity for one issue, the
   // surviving copy is the more severe reading rather than whichever finished first.
@@ -100,7 +120,7 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
     const title = String(rf.title || '').trim();
     const description = String(rf.description || '').trim();
     if (!title || !description) continue; // skip malformed entries rather than fail the scan
-    if (isDuplicateOfDeterministic(rf)) continue;
+    if (mergedLlm.has(rf)) continue;      // already folded into its deterministic counterpart
     if (isDuplicateOfReasoning(rf, keptLlm)) continue;
     keptLlm.push(rf);
     const finding = findingFromLLMScan(rf, scan);

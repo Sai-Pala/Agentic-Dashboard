@@ -59,6 +59,14 @@ const DETERMINISTIC_AGENT_TIMEOUT_MS = 180_000;
 // Past this the adjudication prompt stops being a review and becomes a haystack. Findings over
 // the cap keep their pattern-engine verdict and the shortfall is reported, never dropped.
 const ADJUDICATE_MAX_FINDINGS = 40;
+// How many findings of any ONE rule may take adjudication slots.
+//
+// The slots used to be filled purely by severity, and severity is a static per-pattern constant.
+// One prolific rule therefore ate the budget: 20 unpinned-GitHub-Action findings are all `high`,
+// so they were adjudicated ahead of everything else while 119 other findings were shown without
+// review. The verdict on the 3rd identical Action pin also tells you nothing the 1st did not —
+// spending a slot on it buys no information.
+const ADJUDICATE_MAX_PER_RULE = 3;
 
 // Shipped with the app and load-bearing for hardcoded UI — editable, not deletable.
 // Whole-directory agents — hidden from the per-finding UI.
@@ -89,6 +97,7 @@ module.exports = {
   REVIEW_SHARD_CONCURRENCY,
   DETERMINISTIC_AGENT_TIMEOUT_MS,
   ADJUDICATE_MAX_FINDINGS,
+  ADJUDICATE_MAX_PER_RULE,
   NON_FINDING_AGENTS,
   agentFilePath,
 };
