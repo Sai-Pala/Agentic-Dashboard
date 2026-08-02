@@ -113,7 +113,9 @@ function handleRunMessage(msg, { children, send }) {
       runRecord.finishedAt = Date.now();
     }
     if (finding) finding.status = deriveStatus(finding);
-    send({ type: 'done', runId, findingId, code, verdict, fullText });
+    // fullText stays on the run record; no client reads it off the wire, and a whole
+    // model transcript per run is a lot of socket traffic for nothing.
+    send({ type: 'done', runId, findingId, code, verdict, fullText: '' });
     children.delete(runId);
     runIndex.delete(runId);
   });

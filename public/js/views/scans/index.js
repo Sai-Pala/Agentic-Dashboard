@@ -178,7 +178,7 @@ export function handleScanServerMessage(msg) {
 
   if (msg.type === 'scan-progress') {
     if (msg.engine === 'reasoning') updateReasoningModuleProgress(run, msg.done, msg.total, msg.costUsd);
-    else if (msg.engine === 'sca') updateScaBar(run, msg.done, msg.total);
+    else if (msg.engine === 'sca') updateScaBar(run, msg.done, msg.total, msg.failed);
     else updateDetBar(run, msg.done, msg.total, msg.skipped);
     return;
   }

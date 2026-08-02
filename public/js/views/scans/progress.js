@@ -111,12 +111,15 @@ export function updateDetBar(run, done, total, skipped) {
 }
 
 /** One atomic audit call, so this only ever jumps from 0% to 100%. */
-export function updateScaBar(run, done, total) {
+export function updateScaBar(run, done, total, failed) {
   if (!run.scaFillEl) return;
+  const complete = done >= total && total > 0;
   const pct = total ? Math.round((done / total) * 100) : 0;
   run.scaFillEl.style.width = pct + '%';
-  run.scaFillEl.classList.toggle('done', done >= total && total > 0);
-  run.scaStatEl.textContent = total ? (done >= total ? 'Done' : 'Starting…') : 'Starting…';
+  // A failed audit must never render as done — the accompanying scan-warning says what broke.
+  run.scaFillEl.classList.toggle('done', complete && !failed);
+  run.scaFillEl.classList.toggle('failed', !!failed);
+  run.scaStatEl.textContent = failed ? 'Failed' : (total && complete ? 'Done' : 'Starting…');
 }
 
 /** Real aggregated spend, reported by the server — not a token-count estimate. */

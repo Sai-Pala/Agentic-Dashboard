@@ -50,10 +50,6 @@ function handleScanMessage(msg, { children, send, ownScanRunIds }) {
 
   let diffFiles = null;
   if (scope === 'diff') {
-    if (scanType === 'sca') {
-      send({ type: 'scan-error', runId, message: 'Diff-only scope does not apply to a dependency audit — it always reviews the full manifest/lockfile.' });
-      return;
-    }
     if (!baseBranch || !BRANCH_NAME_RE.test(baseBranch)) {
       send({ type: 'scan-error', runId, message: `A valid base branch is required for diff-only scope (got "${baseBranch}").` });
       return;

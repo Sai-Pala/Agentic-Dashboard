@@ -44,7 +44,7 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
 
   const readAgent = (name) => {
     const p = agentFilePath(name);
-    if (!fs.existsSync(p)) throw new Error(`agents/${name}.md is not available.`);
+    if (!fs.existsSync(p)) throw new Error(`prompts/${name}.md is not available.`);
     return fs.readFileSync(p, 'utf8');
   };
 
@@ -135,9 +135,16 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
     });
   }
   if (shards.skippedRoutes > 0) {
+    // Report the ceiling that actually applied, and only suggest the cap toggle when it is on.
+    // This message exists to state how much was NOT reviewed; naming the wrong limit, or
+    // advising a change already in effect, undermines the one job it has.
+    const appliedMaxShards = scan.budgetEnabled ? REVIEW_MAX_SHARDS : REVIEW_MAX_SHARDS_UNCAPPED;
+    const remedy = scan.budgetEnabled
+      ? 'Turn off the budget cap, or scan a narrower directory, for full coverage.'
+      : 'The budget cap is already off — scan a narrower directory for full coverage.';
     send({
       type: 'scan-warning', runId: scan.runId, scanId: scan.id,
-      message: `${shards.totalRoutes} routes exceeded what ${REVIEW_MAX_SHARDS} review shards can cover — the ${shards.reviewedRoutes} highest-risk were reviewed (unguarded mounts and authenticated-but-not-authorized surfaces first); ${shards.skippedRoutes} were NOT reviewed for authorization or business-logic issues. Turn off the budget cap, or scan a narrower directory, for full coverage.`,
+      message: `${shards.totalRoutes} routes exceeded what ${appliedMaxShards} review shards can cover — the ${shards.reviewedRoutes} highest-risk were reviewed (unguarded mounts and authenticated-but-not-authorized surfaces first); ${shards.skippedRoutes} were NOT reviewed for authorization or business-logic issues. ${remedy}`,
     });
   }
 

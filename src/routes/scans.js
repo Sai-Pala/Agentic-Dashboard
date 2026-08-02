@@ -38,7 +38,10 @@ router.get('/api/scans/:id/surface', (req, res) => {
     return;
   }
   if (!scan.surface) {
-    res.status(404).json({ error: 'This scan has no attack-surface map. Only scans run after the feature was added carry one.' });
+    // Deliberately does not name a cause. A missing map means the scan predates the feature OR
+    // enumeration failed during the run, and this route cannot tell which — the previous wording
+    // asserted the first, so an engine failure was reported to the user as an age problem.
+    res.status(404).json({ error: 'No attack-surface map was stored for this scan. It either ran before this feature existed, or enumeration did not complete.' });
     return;
   }
   res.json({ scanId: scan.id, path: scan.path, app: scan.app, startedAt: scan.startedAt, ...scan.surface });

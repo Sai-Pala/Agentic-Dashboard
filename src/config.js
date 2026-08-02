@@ -17,10 +17,17 @@ const PROMPTS_DIR = path.join(ROOT_DIR, 'prompts');
 // Agent names are joined into a filesystem path; run ids are used as Map keys and echoed back.
 const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 const RUN_ID_RE = /^[a-zA-Z0-9_-]+$/;
-const BRANCH_NAME_RE = /^[\w./-]+$/;
+// A branch name is interpolated into a git argument (`${baseBranch}...HEAD`). execFileSync means
+// no shell, but a value starting with `-` is still read by git as an OPTION rather than a ref, so
+// the leading dash is excluded explicitly. `..` is excluded too: it is illegal in a refname and
+// path-traversal-shaped. Neither is a legal branch name, so nothing valid is lost.
+const BRANCH_NAME_RE = /^(?!-)(?!.*\.\.)[\w./-]+$/;
 
 const PRIORITIES = ['p0', 'p1', 'p2', 'p3'];
-const SCAN_TYPES = ['reasoning', 'sca'];
+// Scan RECORDS are all hybrid now — the standalone SCA page is gone and there is one dispatch.
+// Leaving 'sca' here let a hand-crafted WebSocket message run both paid reasoning passes under
+// an "SCA scan" label. Findings are a separate axis and still have an 'sca' kind, below.
+const SCAN_TYPES = ['reasoning'];
 const FINDING_SCAN_TYPES = ['reasoning', 'sca'];
 const SCAN_SCOPES = ['full', 'diff'];
 

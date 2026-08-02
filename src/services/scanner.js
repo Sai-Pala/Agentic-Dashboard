@@ -36,7 +36,12 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   // resolves rather than waiting for the others.
   const scaPromise = runDeterministicScaScan(engine, scan, targetPath, { send }).then((result) => {
     if (scan.status !== 'cancelled') {
-      send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'sca', done: 1, total: 1 });
+      // `failed` matters: a bar reading "Done" after a broken audit is the one confusion a
+      // scanner cannot afford — "found nothing" shown where "couldn't look" is the truth.
+      send({
+        type: 'scan-progress', runId: scan.runId, scanId: scan.id,
+        engine: 'sca', done: 1, total: 1, failed: !!result.error,
+      });
     }
     return result;
   });

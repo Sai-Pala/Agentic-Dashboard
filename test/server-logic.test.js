@@ -990,3 +990,59 @@ describe('renderAdjudicationWorklist', () => {
     assert.doesNotMatch(out, /Dataflow:/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Input validation on the scan message.
+//
+// These are NOT characterization tests — they assert intended behaviour for two fixes, and both
+// failed against the code as it stood before them.
+// ---------------------------------------------------------------------------
+const { BRANCH_NAME_RE, SCAN_TYPES } = require('../src/config.js');
+
+describe('BRANCH_NAME_RE', () => {
+  // baseBranch is interpolated into a git argument as `${baseBranch}...HEAD`. execFileSync means
+  // no shell, but git still reads a leading `-` as an OPTION rather than a ref.
+  test('accepts the branch names people actually use', () => {
+    for (const b of ['main', 'develop', 'feature/add-auth', 'release-1.2.3', 'a_b.c', 'v2', 'user/x.y-z']) {
+      assert.equal(BRANCH_NAME_RE.test(b), true, `${b} is a legal branch name and must be accepted`);
+    }
+  });
+
+  test('rejects anything git would read as an option', () => {
+    for (const b of ['-O/tmp/pwned', '--exit-code', '-', '--output', '-p']) {
+      assert.equal(BRANCH_NAME_RE.test(b), false, `${b} must not reach git as an argument`);
+    }
+  });
+
+  test('rejects traversal-shaped values', () => {
+    // `..` is illegal in a refname anyway, so nothing valid is lost by excluding it.
+    for (const b of ['..', 'a/../b', '../../etc/passwd']) {
+      assert.equal(BRANCH_NAME_RE.test(b), false, `${b} must be rejected`);
+    }
+  });
+
+  test('rejects empty', () => {
+    assert.equal(BRANCH_NAME_RE.test(''), false);
+  });
+});
+
+describe('SCAN_TYPES', () => {
+  test("is reasoning-only — every scan is the hybrid, there is one dispatch", () => {
+    // Leaving 'sca' here let a hand-crafted WebSocket message run both PAID reasoning passes
+    // while the UI labelled the result an "SCA scan".
+    assert.deepEqual(SCAN_TYPES, ['reasoning']);
+  });
+
+  test("an 'sca' scanType therefore falls back to reasoning rather than being honoured", () => {
+    // Mirrors src/ws/scan.js: SCAN_TYPES.includes(msg.scanType) ? msg.scanType : 'reasoning'
+    const resolve = (t) => (SCAN_TYPES.includes(t) ? t : 'reasoning');
+    assert.equal(resolve('sca'), 'reasoning');
+    assert.equal(resolve('reasoning'), 'reasoning');
+    assert.equal(resolve(undefined), 'reasoning');
+  });
+
+  test('findings keep their own sca kind — a different axis from scan records', () => {
+    const { FINDING_SCAN_TYPES } = require('../src/config.js');
+    assert.ok(FINDING_SCAN_TYPES.includes('sca'), 'the dependency audit still produces sca findings');
+  });
+});

@@ -343,6 +343,8 @@
   .scan-engine-bar-track { height: 5px; border-radius: var(--radius-xs); background: var(--panel-3); overflow: hidden; }
   .scan-engine-bar-fill { height: 100%; border-radius: var(--radius-xs); transition: width .3s ease; }
   .scan-engine-bar-fill.done { opacity: .55; }
+  /* A failed engine reads red, never as a completed pass. The scan-warning says what broke. */
+  .scan-engine-bar-fill.failed { background: var(--crit); opacity: 1; }
   .scan-engine-bar-stat { font-size: 11px; color: var(--muted); }
   .stage-agent .path-text { font-size: 12.5px; }
   .scan-meta-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); }
