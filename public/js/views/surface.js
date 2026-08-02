@@ -23,7 +23,7 @@ export function openSurfaceView() {
   else renderSurfaceView();
 }
 
-export async function loadSurface(scanId) {
+async function loadSurface(scanId) {
   const el = document.getElementById('surface-content');
   if (el) el.innerHTML = '<div class="placeholder-panel">Loading the map…</div>';
   try {
@@ -36,7 +36,7 @@ export async function loadSurface(scanId) {
   renderSurfaceScanPicker();
 }
 
-export function renderSurfaceScanPicker() {
+function renderSurfaceScanPicker() {
   const btn = document.getElementById('surface-scan-btn');
   const menu = document.getElementById('surface-scan-menu');
   if (!btn || !menu) return;
@@ -63,7 +63,7 @@ function surfaceRouteRowsHtml(list) {
     </div>`).join('');
 }
 
-export function renderSurfaceView() {
+function renderSurfaceView() {
   const el = document.getElementById('surface-content');
   if (!el) return;
 

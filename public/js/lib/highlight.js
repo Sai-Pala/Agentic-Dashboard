@@ -12,7 +12,7 @@
 
 import { escapeHtml } from './html.js';
 
-export const HL_KEYWORDS = new Set([
+const HL_KEYWORDS = new Set([
   'function', 'const', 'let', 'var', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue',
   'import', 'export', 'from', 'as', 'default', 'class', 'extends', 'implements', 'interface', 'new', 'delete', 'typeof',
   'instanceof', 'try', 'catch', 'finally', 'throw', 'async', 'await', 'yield', 'static', 'public', 'private', 'protected',
@@ -24,7 +24,7 @@ export const HL_KEYWORDS = new Set([
   'int', 'string', 'bool', 'float', 'double', 'char', 'long', 'short', 'unsigned', 'const', 'include', 'define',
 ]);
 
-export const HL_TOKEN_RE = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_$][A-Za-z0-9_$]*\b)/g;
+const HL_TOKEN_RE = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_$][A-Za-z0-9_$]*\b)/g;
 
 export function highlightCode(code) {
   let out = '';

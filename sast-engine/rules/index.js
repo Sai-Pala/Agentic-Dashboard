@@ -82,8 +82,6 @@ const BUILT_IN_AGENTS = () => [
   new UnusedGuardAgent(),
 ];
 
-export const BUILT_IN_AGENT_COUNT = BUILT_IN_AGENTS().length;
-
 /**
  * Lists each built-in agent's own declared name/description/category — the exact strings
  * passed to super() in each agent file's constructor, not a separately maintained summary.

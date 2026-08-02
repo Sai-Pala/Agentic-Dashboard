@@ -12,14 +12,14 @@ import { icon } from '../lib/icons.js';
 import { agentMeta } from '../lib/meta.js';
 import { truncate, formatRelativeTime, dateGroupLabel } from '../lib/format.js';
 
-export function renderDashboardHeader() {
+function renderDashboardHeader() {
   document.getElementById('dash-greeting').textContent = 'Dashboard';
   document.getElementById('dash-date').textContent = new Date().toLocaleDateString(undefined, {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
 }
 
-export function statTile(iconName, value, label, sub, accent) {
+function statTile(iconName, value, label, sub, accent) {
   const div = document.createElement('div');
   div.className = 'stat-tile' + (accent ? ' accent-' + accent : '');
   div.innerHTML = `
@@ -31,7 +31,7 @@ export function statTile(iconName, value, label, sub, accent) {
   return div;
 }
 
-export function computeBriefing() {
+function computeBriefing() {
   const runningScans = state.scansList.filter((s) => s.status === 'running');
   const running = state.findings.filter((f) => f.latestRun && f.latestRun.status === 'running');
   const notTriaged = state.findings.filter((f) => f.status === 'new').length;

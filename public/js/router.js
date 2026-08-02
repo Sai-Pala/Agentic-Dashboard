@@ -30,7 +30,7 @@ export function showView(view, opts = {}) {
   if (view === 'settings') renderSettings();
 }
 
-export function applyNavCollapsed(collapsed) {
+function applyNavCollapsed(collapsed) {
   const navEl = document.getElementById('global-nav');
   const btn = document.getElementById('nav-collapse-btn');
   navEl.classList.toggle('collapsed', collapsed);

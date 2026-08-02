@@ -11,7 +11,7 @@ import { truncate, formatElapsed, formatTokenCount } from '../../lib/format.js';
 import { SEV_VAR, SEV_ORDER } from '../../lib/meta.js';
 import { trackConsoleText } from '../../components/console.js';
 
-export const SEV_TAG_RE = /\[(critical|high|medium|low|informational)\]\s+([^\[]*)/gi;
+const SEV_TAG_RE = /\[(critical|high|medium|low|informational)\]\s+([^\[]*)/gi;
 
 export function updateScanElapsed(run) {
   if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);
@@ -25,7 +25,7 @@ export function stopScanElapsedTimer(run) {
   updateScanElapsed(run);
 }
 
-export function renderScanSevChips(run) {
+function renderScanSevChips(run) {
   if (!run.chipsEl) return;
   const total = SEV_ORDER.reduce((n, s) => n + run.sevCounts[s], 0);
   if (!total) {
@@ -39,7 +39,7 @@ export function renderScanSevChips(run) {
 }
 
 /** Parses `[severity] message` lines out of assistant text — real narration or synthesized. */
-export function trackScanCandidates(run, event) {
+function trackScanCandidates(run, event) {
   if (event.type !== 'assistant' || !event.message || !Array.isArray(event.message.content)) return;
   let found = false;
   for (const block of event.message.content) {
@@ -65,7 +65,7 @@ export function trackScanCandidates(run, event) {
 }
 
 /** Written against a run object's field names, not against one surface. */
-export function trackRunToolActivity(run, event) {
+function trackRunToolActivity(run, event) {
   if (event.type !== 'assistant' || !event.message || !Array.isArray(event.message.content)) return;
   let sawTool = false;
   for (const block of event.message.content) {
@@ -79,7 +79,7 @@ export function trackRunToolActivity(run, event) {
   if (run.filesEl) run.filesEl.textContent = String(run.fileCount);
 }
 
-export function trackRunTokens(run, event) {
+function trackRunTokens(run, event) {
   if (event.type !== 'assistant' || !event.message || !event.message.usage) return;
   const u = event.message.usage;
   run.tokenCount += (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
@@ -128,7 +128,7 @@ function reasoningCostSuffix(run) {
  * Fallback display for when only one reasoning pass runs: an indeterminate fill driven by
  * tool-call count. With both passes running, updateReasoningModuleProgress() owns this bar.
  */
-export function updateReasoningBar(run) {
+function updateReasoningBar(run) {
   if (!run.reasoningFillEl) return;
   if (run.reasoningModulesTotal > 1) return;
   const pct = Math.min(90, run.toolCount * 8);

@@ -23,14 +23,14 @@ function knownAgentsAvailableCount() {
   return KNOWN_AGENTS.filter((a) => state.agentsList.includes(a)).length;
 }
 
-export function applyTheme(theme) {
+function applyTheme(theme) {
   if (theme === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
   try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
   renderThemeToggle();
 }
 
-export function renderThemeToggle() {
+function renderThemeToggle() {
   const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
   document.getElementById('nav-theme-label').textContent = current === 'light' ? 'Light theme' : 'Dark theme';
   const btn = document.getElementById('nav-theme-btn');
@@ -48,7 +48,7 @@ export function renderSettings() {
   `;
 }
 
-export async function clearSession() {
+async function clearSession() {
   if (!confirm('Clear this session? This permanently deletes every finding and scan on the server. This cannot be undone.')) return;
   const res = await postSessionClear();
   if (!res.ok) {

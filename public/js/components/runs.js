@@ -94,7 +94,7 @@ export function startStage(findingId, agent, context, instruction) {
   return runId;
 }
 
-export async function refreshFindingAfterRun(findingId) {
+async function refreshFindingAfterRun(findingId) {
   const finding = await getFinding(findingId);
   if (!finding) return;
   state.findingCache.set(findingId, finding);

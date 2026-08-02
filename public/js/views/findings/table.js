@@ -17,7 +17,7 @@ import { openMenuUnderButton, openFindingContextMenu } from '../../components/me
 import { openFindingDetail } from '../finding-detail/index.js';
 import { findingsScanScoped } from './filters.js';
 
-export const FINDINGS_COLUMNS = {
+const FINDINGS_COLUMNS = {
   all: [
     { key: 'severity', label: 'Severity', sortable: true },
     { key: 'type', label: 'Type' },
@@ -69,7 +69,7 @@ export function findingSourceTagHtml(f) {
   return '';
 }
 
-export function findingsCellHtml(f, key) {
+function findingsCellHtml(f, key) {
   switch (key) {
     case 'severity':
       return `<div class="ft-sev-cell"><span class="sev-dot ${f.severity}"></span>${escapeHtml(severityLabel(f.severity))}</div>`;

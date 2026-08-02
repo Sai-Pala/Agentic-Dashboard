@@ -143,7 +143,7 @@ function beginScanRun(targetPath, instruction, scanMeta, containerEl) {
   return runId;
 }
 
-export function startScan() {
+function startScan() {
   const targetPath = document.getElementById('scan-path-input').value.trim();
   if (!targetPath) {
     alert('Enter a target directory path.');

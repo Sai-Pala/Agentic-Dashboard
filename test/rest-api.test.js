@@ -103,26 +103,10 @@ test('GET /api/agents?all=1 is unfiltered and a superset of the filtered list', 
   assert.ok(all.length > filtered.length);
 });
 
-test('GET /api/agents/:name returns {name, content, isBuiltIn}', async () => {
-  const { status, json } = await get('/api/agents/remediation');
-  assert.equal(status, 200);
-  assert.equal(json.name, 'remediation');
-  assert.equal(typeof json.content, 'string');
-  assert.ok(json.content.length > 0);
-  assert.equal(json.isBuiltIn, true);
-});
-
-test('GET /api/agents/:name rejects an unknown name (404) and an invalid name (400)', async () => {
-  const missing = await get('/api/agents/definitely_not_an_agent');
-  assert.equal(missing.status, 404);
-  assert.equal(missing.json.error, 'Agent not found.');
-
-  // AGENT_NAME_RE is ^[a-zA-Z0-9_-]+$ — the name is joined into a filesystem
-  // path, so this validation is load-bearing, not cosmetic.
-  const invalid = await get('/api/agents/bad%20name');
-  assert.equal(invalid.status, 400);
-  assert.equal(invalid.json.error, 'Invalid agent name.');
-});
+// GET /api/agents/:name and the POST/PUT/DELETE writes were removed with the browser admin
+// screen that used them. AGENT_NAME_RE still guards the WebSocket `run` path, where a bad name
+// would be joined into a filesystem path — see ws-scan-protocol.test.js, which covers
+// '../../etc/passwd' directly.
 
 test('GET /api/scans returns an array (empty on a fresh boot)', async () => {
   const { status, json } = await get('/api/scans');

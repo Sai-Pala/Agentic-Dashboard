@@ -21,7 +21,7 @@ const $ = (id) => document.getElementById(id);
  * Verify's behaviour depends on the cwd it gets spawned with, which isn't visible in the
  * editable context — spell it out so starting one isn't a black box.
  */
-export function updateStageModalVerifyHint() {
+function updateStageModalVerifyHint() {
   const hintEl = $('stage-modal-verify-hint');
   if ($('stage-modal-agent').value !== 'verify' || !state.stageModalState) { hintEl.hidden = true; return; }
   const finding = state.findingCache.get(state.stageModalState.findingId);
@@ -35,6 +35,9 @@ export function updateStageModalVerifyHint() {
 export function openFreshStageModal(findingId, agent, context) {
   state.stageModalState = { findingId };
   $('stage-modal-title').textContent = `Run ${agentMeta(agent).label} with instructions`;
+  // Rebuild the options every open. Setting .value on an empty <select> silently does nothing,
+  // so skipping this sends an empty agent name to the server.
+  renderStageModalAgents();
   $('stage-modal-agent').value = state.agentsList.includes(agent) ? agent : state.agentsList[0];
   $('stage-modal-context').value = context;
   $('stage-modal-instruction').value = '';
@@ -49,7 +52,7 @@ export function closeStageModal() {
 }
 
 /** Populates the stage modal's agent dropdown from the loaded agent list. */
-export function renderStageModalAgents() {
+function renderStageModalAgents() {
   const sel = $('stage-modal-agent');
   sel.innerHTML = '';
   for (const a of state.agentsList) {
@@ -67,7 +70,7 @@ function updateFindingModalTypeFields() {
   $('fm-fields-sca').hidden = type !== 'sca';
 }
 
-export function openFindingModal() {
+function openFindingModal() {
   for (const id of ['finding-modal-title', 'finding-modal-rule', 'finding-modal-file', 'finding-modal-code',
     'finding-modal-package', 'finding-modal-package-version', 'finding-modal-fixed-version',
     'finding-modal-endpoint', 'finding-modal-method', 'finding-modal-description']) {

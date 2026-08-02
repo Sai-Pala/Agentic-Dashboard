@@ -9,12 +9,10 @@
  * Note this is a deliberately separate, simpler implementation from the engine's own privilege
  * check — it is a display-time classification over an already-computed manifest, not a
  * detection rule, so the two are not kept in sync.
- *
- * Moved verbatim out of the single inline <script> during the Phase 4 split.
  */
 
 /** Split a middleware name into lowercase words: requireAdmin -> [require, admin]. */
-export function guardNameSegments(name) {
+function guardNameSegments(name) {
   return String(name)
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .split(/[^A-Za-z0-9]+/)
@@ -74,15 +72,8 @@ export function surfaceGuardBadge(kind) {
   return '<span class="surface-badge ok">guarded</span>';
 }
 
-/**
- * Is this guard chain doing authorization, only authentication, or nothing at all?
- *
- * Takes anything carrying a `middleware` array — a mount OR a single route. Both matter: the
- * stat tiles count ROUTES, because an app that registers everything on `app` with no router
- * would otherwise report zero unguarded endpoints while all of them were unauthenticated.
- */
 // Words that indicate a middleware decides WHETHER YOU MAY (authorization).
-export const AUTHZ_WORDS = new Set([
+const AUTHZ_WORDS = new Set([
   'admin', 'role', 'roles', 'permission', 'permissions', 'privilege', 'privileged',
   'acl', 'rbac', 'abac', 'scope', 'scopes', 'claim', 'claims', 'owner', 'ownership',
   'tenant', 'grant', 'grants', 'policy', 'policies', 'authorize', 'authorized',
@@ -90,7 +81,7 @@ export const AUTHZ_WORDS = new Set([
 ]);
 
 // Words that indicate a middleware decides WHO YOU ARE (authentication).
-export const AUTHN_WORDS = new Set([
+const AUTHN_WORDS = new Set([
   'auth', 'authenticate', 'authenticated', 'authentication', 'login', 'logged',
   'session', 'jwt', 'token', 'bearer', 'identity', 'passport', 'oidc', 'saml',
   'user', 'account', 'signin', 'signed', 'apikey', 'credentials',

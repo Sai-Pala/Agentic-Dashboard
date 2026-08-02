@@ -77,7 +77,7 @@ export function onViewDiffClick(findingId) {
 }
 
 /** Read-only propose. Tracked in precheckRunIds since "is this a real directory" can still fail. */
-export function startRemediatePreview(findingId, finding, targetPath) {
+function startRemediatePreview(findingId, finding, targetPath) {
   const runId = uid();
   state.stages.set(runId, findingId);
   state.stageConsoles.set(runId, { runId, consoleText: '', consoleOpen: false, consoleEl: null });
@@ -96,7 +96,7 @@ export function startRemediatePreview(findingId, finding, targetPath) {
 }
 
 /** The write step. No console tracking: it makes no `claude` call, so there is no narration. */
-export function startRemediateFix(findingId, finding, targetPath) {
+function startRemediateFix(findingId, finding, targetPath) {
   const runId = uid();
   state.stages.set(runId, findingId);
   state.precheckRunIds.add(runId);
@@ -116,7 +116,7 @@ export function startRemediateFix(findingId, finding, targetPath) {
  * Only Remediate gets an optimistic placeholder — the chain doesn't yet know whether Fix and
  * Verify will run at all, so their placeholders arrive with the server's own `started` message.
  */
-export function startRemediateAll(findingId, finding, targetPath) {
+function startRemediateAll(findingId, finding, targetPath) {
   const remediationRunId = uid();
   const fixRunId = uid();
   const verifyRunId = uid();

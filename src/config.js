@@ -63,7 +63,6 @@ function agentFilePath(name) {
 module.exports = {
   PORT,
   HOST,
-  ROOT_DIR,
   PUBLIC_DIR,
   PROMPTS_DIR,
   AGENT_NAME_RE,
@@ -82,7 +81,6 @@ module.exports = {
   REVIEW_SHARD_CONCURRENCY,
   DETERMINISTIC_AGENT_TIMEOUT_MS,
   ADJUDICATE_MAX_FINDINGS,
-  BUILTIN_AGENTS,
   NON_FINDING_AGENTS,
   agentFilePath,
 };

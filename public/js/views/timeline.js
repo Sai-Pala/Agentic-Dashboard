@@ -25,7 +25,7 @@ export async function loadTimeline() {
 }
 
 /** presetKind scopes the drawer on open; the pills inside still let the user broaden it. */
-export function openTimelineDrawer(presetKind) {
+function openTimelineDrawer(presetKind) {
   if (presetKind !== undefined) state.timelineFilter = presetKind;
   state.timelineDrawerOpen = true;
   document.getElementById('timeline-drawer-backdrop').hidden = false;

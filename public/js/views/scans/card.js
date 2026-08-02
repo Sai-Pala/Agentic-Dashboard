@@ -132,14 +132,14 @@ export function updateScanCardActions(run) {
   }
 }
 
-export function cancelScanRun(run) {
+function cancelScanRun(run) {
   if (run.status !== 'running') return;
   send({ type: 'cancel', runId: run.runId });
   setStageStatus(run, 'cancelled', 'Cancelling…');
   updateScanCardActions(run);
 }
 
-export async function deleteScanRun(run) {
+async function deleteScanRun(run) {
   if (run.scanId) await deleteScan(run.scanId);
   stopScanElapsedTimer(run);
   state.scanRuns.delete(run.runId);

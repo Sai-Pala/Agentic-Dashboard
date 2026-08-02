@@ -68,7 +68,6 @@ function placeholderTriageRun(severity) {
 
 module.exports = {
   SEVERITIES,
-  SEVERITY_RANK,
   severityRank,
   priorityFromSeverityConfidence,
   normalizeSeverity,

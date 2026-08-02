@@ -46,7 +46,7 @@ export function openFindingContextMenu(x, y, findingId, finding) {
   positionAndShowMenu(x, y);
 }
 
-export function positionAndShowMenu(x, y) {
+function positionAndShowMenu(x, y) {
   const el = menuEl();
   el.hidden = false;
   const rect = el.getBoundingClientRect();
