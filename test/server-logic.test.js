@@ -3,9 +3,8 @@
  *
  * These lock in CURRENT behaviour, not desired behaviour. A failure here means the
  * behaviour changed — which is only OK if that change was the point of the edit. They exist so
- * a later refactor (splitting server.js into modules, collapsing the four duplicated
- * scans/findings/app-threat-model/control-assessment store families into one factory) can prove
- * it changed nothing.
+ * a later refactor (splitting server.js into modules, collapsing duplicated store families)
+ * can prove it changed nothing.
  *
  * Where the recorded behaviour looks like a latent bug, it is asserted AS-IS with a
  * `CONCERN:` comment. Do not "fix" a failing assertion by changing server.js unless the
@@ -33,8 +32,6 @@ const {
   planReviewShards,
   renderAdjudicationWorklist,
   toScanListItem,
-  toAppThreatModelListItem,
-  toControlAssessmentListItem,
   isAllowedWsOrigin,
 } = require('../server.js');
 
@@ -855,29 +852,6 @@ describe('toScanListItem', () => {
     assert.deepEqual(toScanListItem({}).agentsSkipped, []);
     assert.deepEqual(toScanListItem({ agentsSkipped: ['a'] }).agentsSkipped, ['a']);
     assert.equal(toScanListItem({}).agentsRun, undefined);
-  });
-});
-
-describe('toAppThreatModelListItem / toControlAssessmentListItem', () => {
-  const KEYS = ['id', 'runId', 'path', 'app', 'branch', 'instruction', 'status', 'verdict', 'error', 'startedAt', 'finishedAt'];
-
-  test('the app-threat-model projection has its documented key set', () => {
-    assert.deepEqual(Object.keys(toAppThreatModelListItem({})), KEYS);
-  });
-
-  test('the control-assessment projection has the identical key set', () => {
-    // These two are byte-identical projections over identically-shaped records — the pair a
-    // store-factory refactor is most likely to collapse. Locked so that collapse is provably
-    // behaviour-preserving.
-    assert.deepEqual(Object.keys(toControlAssessmentListItem({})), KEYS);
-  });
-
-  test('both pass every field straight through without normalization', () => {
-    const rec = { id: 'x', runId: 'r', path: '/t', app: 'a', branch: 'b', instruction: 'i', status: 'done', verdict: { summary: 's' }, error: null, startedAt: 1, finishedAt: 2, extra: 'dropped' };
-    const expected = { ...rec };
-    delete expected.extra;
-    assert.deepEqual(toAppThreatModelListItem(rec), expected);
-    assert.deepEqual(toControlAssessmentListItem(rec), expected);
   });
 });
 

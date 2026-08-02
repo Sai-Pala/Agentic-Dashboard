@@ -50,8 +50,8 @@ const { extract } = require('./helpers/extract-client-fns.js');
 // the functions close over them (SEV_ORDER_MAP / STATUS_ORDER_MAP / AGENT_META).
 const TARGETS = [
   // NOTE: guardKindOf / guardNameSegments / AUTHZ_WORDS / AUTHN_WORDS moved to
-  // views/surface-guards.js, and worstOfList / agentMeta / SEV_ORDER_MAP / STATUS_ORDER_MAP /
-  // AGENT_META moved to ui/heatmap.js and data/meta.js. All are real imports below now.
+  // views/surface-guards.js, and agentMeta / SEV_ORDER_MAP / STATUS_ORDER_MAP / AGENT_META
+  // moved to data/meta.js. All are real imports below now.
   'findingStageRuns',
   'findingLoopState',
   'findingLoopNextAction',
@@ -70,7 +70,6 @@ const TARGETS = [
 // Node can require() an ES module as long as it has no top-level await, which these do not.
 const format = require('../public/js/util/format.js');
 const meta = require('../public/js/data/meta.js');
-const heatmap = require('../public/js/ui/heatmap.js');
 const guards = require('../public/js/views/surface-guards.js');
 
 // scanFilterLabel is still extracted from app.js but calls formatRelativeTime, which now lives
@@ -86,7 +85,7 @@ const extracted = extract(TARGETS, {
 });
 
 // __meta is non-enumerable, so an object spread silently drops it — carry it across explicitly.
-const C = { ...extracted, ...format, ...meta, ...heatmap, ...guards, __meta: extracted.__meta };
+const C = { ...extracted, ...format, ...meta, ...guards, __meta: extracted.__meta };
 
 /**
  * Objects created inside the vm context carry that realm's Object.prototype, not the host's,
@@ -329,7 +328,6 @@ describe('findingStageRuns — normalizing both finding shapes', () => {
 
   test('non-pipeline agents are ignored entirely', () => {
     const got = C.findingStageRuns(mkRuns([
-      { agent: 'threat_model', status: 'done', verdict: { owasp: 'A01' } },
       { agent: 'scan', status: 'done', verdict: {} },
     ]));
     assert.deepEqual(plain(got), NO_STAGES);
@@ -652,32 +650,6 @@ describe('findingsSortValue and the order maps', () => {
   });
 });
 
-describe('worstOfList', () => {
-  test('returns the most severe entry regardless of list order', () => {
-    const sev = (i) => i.s;
-    assert.equal(C.worstOfList([{ s: 'low' }, { s: 'critical' }, { s: 'medium' }], sev), 'critical');
-    assert.equal(C.worstOfList([{ s: 'critical' }, { s: 'low' }], sev), 'critical');
-  });
-
-  test('falsy severities are skipped, not treated as a level', () => {
-    assert.equal(C.worstOfList([{ s: null }, { s: 'high' }, { s: undefined }, { s: '' }], (i) => i.s), 'high');
-  });
-
-  test('an empty list, or one with no usable severities, falls back to informational', () => {
-    assert.equal(C.worstOfList([], (i) => i.s), 'informational');
-    assert.equal(C.worstOfList([{ s: null }], (i) => i.s), 'informational');
-  });
-
-  test('CURRENT BEHAVIOUR: an unrecognised severity string is returned verbatim if it is first', () => {
-    // CONCERN: unknown values rank 99 (worst-last) but the first item always seats itself as
-    // the running worst, so a single junk value is echoed straight back out as if it were a
-    // real severity level.
-    assert.equal(C.worstOfList([{ s: 'bogus' }], (i) => i.s), 'bogus');
-    // ...yet any known severity beats it, because 99 loses every comparison.
-    assert.equal(C.worstOfList([{ s: 'bogus' }, { s: 'informational' }], (i) => i.s), 'informational');
-  });
-});
-
 describe('label and format helpers', () => {
   test('verdictFieldLabel title-cases snake_case verdict keys', () => {
     assert.equal(C.verdictFieldLabel('root_cause'), 'Root Cause');
@@ -755,7 +727,6 @@ describe('label and format helpers', () => {
       label: 'Fix', icon: 'edit', color: 'var(--text-dim)', role: 'Writes the proposed fix directly to your code',
     });
     assert.equal(C.agentMeta('remediation').label, 'Remediate');
-    assert.equal(C.agentMeta('controls_assist').label, 'Control Scan');
   });
 
   test('agentMeta falls back to the raw name for an unregistered custom agent', () => {

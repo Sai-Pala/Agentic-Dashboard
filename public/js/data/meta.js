@@ -13,19 +13,16 @@
 // 'triage' deliberately excluded — agents/triage.md no longer exists (Triage is a synthetic
 // verdict now, not a live agent stage, see CLAUDE.md), so GET /api/agents can never return it;
 // including it here permanently capped knownAgentsAvailableCount() at 3/4 on a healthy install.
-export const KNOWN_AGENTS = ['threat_model', 'remediation', 'verify'];
+export const KNOWN_AGENTS = ['remediation', 'verify'];
 
 // Kind is differentiated by icon + label text only, not hue — color in this app is reserved
 // for real signal (severity, running/done/error state), not decorative category-tagging.
 export const AGENT_META = {
   scan: { label: 'Scan', icon: 'radar', color: 'var(--text-dim)', role: 'Reads a directory and creates findings' },
   triage: { label: 'Triage', icon: 'search', color: 'var(--text-dim)', role: 'First pass: real finding or noise, how urgent' },
-  threat_model: { label: 'Threat Model', icon: 'target', color: 'var(--text-dim)', role: 'Exploit path, preconditions, blast radius' },
   remediation: { label: 'Remediate', icon: 'wrench', color: 'var(--text-dim)', role: 'Proposes a fix for review — writes nothing' },
   fix: { label: 'Fix', icon: 'edit', color: 'var(--text-dim)', role: 'Writes the proposed fix directly to your code' },
   verify: { label: 'Verify', icon: 'checkCircle', color: 'var(--text-dim)', role: 'Re-checks the live code to confirm a fix actually landed' },
-  app_threat_model: { label: 'App Threat Model', icon: 'shield', color: 'var(--text-dim)', role: 'Whole-app architecture-level threat model' },
-  controls_assist: { label: 'Control Scan', icon: 'clipboard', color: 'var(--text-dim)', role: 'Whole-app NIST 800-53 control identification for SSP drafting' },
 };
 
 export function agentMeta(name) {
@@ -55,18 +52,6 @@ export const STATUS_ORDER_MAP = { new: 0, in_review: 1, remediation_ready: 2, re
 
 export const FINDINGS_TYPE_LABEL = { all: 'All', reasoning: 'Hybrid', sca: 'SCA' };
 
-export const APPLICABILITY_LABELS = {
-  app_addressed: 'App addressed', partially_addressed: 'Partially addressed',
-  inherited: 'Inherited', not_applicable: 'Not applicable',
-};
-
-export const IMPLEMENTATION_STATUS_LABELS = {
-  implemented: 'Implemented', partially_implemented: 'Partially implemented',
-  planned: 'Planned', not_applicable: 'Not applicable',
-};
-
-export const HEATMAP_SEVERITY_COLS = ['critical', 'high', 'medium', 'low', 'informational'];
-
 export const VERDICT_BADGE_FIELDS = ['verdict', 'severity_confirmed', 'confidence', 'priority'];
 
 // corrected_code and edit_plan get their own dedicated renderers (a syntax-highlighted code
@@ -76,13 +61,7 @@ export const VERDICT_BADGE_FIELDS = ['verdict', 'severity_confirmed', 'confidenc
 // (a wrapped code paragraph with no monospacing, and literally "[object Object]").
 export const VERDICT_SKIP_FIELDS = new Set([...VERDICT_BADGE_FIELDS, 'reasoning', 'next_agent', 'applied_diff', 'corrected_code', 'edit_plan']);
 
-// Triage/Remediation/Verify each have their own dedicated control now — the Remediation Loop
-// column's step arrow and "run all stages" button (see findingLoopCellHtml()) — so this menu no
-// longer lists them; it's just Threat Model (a separate, optional deep-dive that deliberately
-// doesn't sit on that path — see CLAUDE.md's Pipeline shape) plus whatever custom agents exist.
+// Triage/Remediate/Fix/Verify each have their own dedicated control now — the Finding Detail
+// loop boxes and "run all stages" button — so the per-finding agent menu no longer lists them;
+// what's left there is whatever custom agents exist beyond the built-ins.
 export const FIX_FLOW_AGENTS = ['triage', 'remediation', 'fix', 'verify'];
-
-// SCA findings additionally lose Threat Model too — none of the four per-finding code-analysis
-// agents apply to a dependency version bump (already named in the Package/Fixed-in columns), so
-// nothing in FIX_FLOW_AGENTS or Threat Model is offered, leaving only custom agents (if any).
-export const SCA_EXCLUDED_AGENTS = [...FIX_FLOW_AGENTS, 'threat_model'];

@@ -33,19 +33,10 @@
     <span>Hybrid Scan</span>
     <span class="nav-badge" id="nav-badge-scans" hidden></span>
   </button>
-  <button class="nav-item" data-view="controls-assist">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M9.5 3.5h5a1 1 0 0 1 1 1V6h-7V4.5a1 1 0 0 1 1-1Z"/><path d="m9.5 11 1.5 1.5L14 9M9.5 15.5h5"/></svg>
-    <span>Control Scan</span>
-    <span class="nav-badge" id="nav-badge-controls-assist" hidden></span>
-  </button>
   <button class="nav-item" data-view="findings">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9.5h16M9.5 9.5V20"/></svg>
     <span>Agent Triage</span>
     <span class="nav-badge alert" id="nav-badge-findings" hidden></span>
-  </button>
-  <button class="nav-item" data-view="threatmodel">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/></svg>
-    <span>Threat Model</span>
   </button>
   <button class="nav-item" data-view="surface">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="12" width="18" height="8" rx="1"/><path d="M7 16h4"/></svg>
@@ -205,7 +196,7 @@
       <div class="danger-zone-body">
         <div>
           <div class="danger-zone-title">Clear session</div>
-          <div class="hint">Permanently wipes every finding, scan, app-level threat model, and control assessment on the server — a full reset back to empty, no reseed. Refused while anything is still running.</div>
+          <div class="hint">Permanently wipes every finding and scan on the server — a full reset back to empty, no reseed. Refused while anything is still running.</div>
         </div>
         <button class="danger-btn" id="clear-session-btn" type="button">Clear session</button>
       </div>
@@ -258,89 +249,6 @@
   </div>
 </div>
 
-<div id="view-threatmodel" class="view" hidden>
-  <div class="view-header">
-    <div>
-      <h1>Threat Model</h1>
-      <div class="view-subtitle">A heat map of every threat-modeled finding by OWASP category and severity — click a cell for its report</div>
-      <div class="view-subtitle viewing-label" id="tm-viewing-label" hidden></div>
-    </div>
-    <div class="view-header-actions">
-      <button class="clock-btn" id="tm-clock-btn" type="button" title="View Threat Model timeline">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2.5"/></svg>
-        <span class="clock-btn-dot" id="tm-clock-dot" hidden></span>
-      </button>
-    </div>
-  </div>
-  <div class="view-body">
-    <div class="scan-form">
-      <div class="scan-form-title">New app threat model</div>
-
-      <div>
-        <label for="atm-path-input">Target directory</label>
-        <input id="atm-path-input" class="path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
-      </div>
-
-      <div class="scan-field-row">
-        <div style="flex:1; min-width:0;">
-          <label for="atm-branch-input">Branch <span class="label-optional">optional</span></label>
-          <input id="atm-branch-input" class="path-input" placeholder="e.g. main" />
-        </div>
-        <div style="flex:1; min-width:0;">
-          <label for="atm-app-input">App / service <span class="label-optional">optional</span></label>
-          <input id="atm-app-input" placeholder="e.g. Payments API" />
-        </div>
-      </div>
-
-      <div>
-        <label for="atm-instruction-input">Focus areas <span class="label-optional">optional</span></label>
-        <textarea id="atm-instruction-input" placeholder="e.g. Focus on the payment and auth flows, skip the admin dashboard." style="min-height:44px;"></textarea>
-      </div>
-
-      <button id="atm-start-btn" class="scan-start-btn atm-start-btn" style="width:100%;">Start app threat model</button>
-    </div>
-    <div id="tm-content"></div>
-  </div>
-</div>
-
-<div id="view-controls-assist" class="view" hidden>
-  <div class="view-header">
-    <div>
-      <h1>Control Scan</h1>
-      <div class="view-subtitle">Identifies NIST 800-53 controls this codebase provides evidence for and drafts SSP-ready narratives — RMF staff still need to confirm inherited/platform controls separately</div>
-    </div>
-  </div>
-  <div class="view-body">
-    <div class="scan-form">
-      <div class="scan-form-title">New control scan</div>
-
-      <div>
-        <label for="ca-path-input">Target directory</label>
-        <input id="ca-path-input" class="path-input" placeholder="e.g. C:\Users\you\project or /home/you/project" />
-      </div>
-
-      <div class="scan-field-row">
-        <div style="flex:1; min-width:0;">
-          <label for="ca-branch-input">Branch <span class="label-optional">optional</span></label>
-          <input id="ca-branch-input" class="path-input" placeholder="e.g. main" />
-        </div>
-        <div style="flex:1; min-width:0;">
-          <label for="ca-app-input">System / app name <span class="label-optional">optional</span></label>
-          <input id="ca-app-input" placeholder="e.g. Payments API" />
-        </div>
-      </div>
-
-      <div>
-        <label for="ca-instruction-input">Focus areas <span class="label-optional">optional</span></label>
-        <textarea id="ca-instruction-input" placeholder="e.g. Focus on authentication and audit logging, skip the admin CLI tool." style="min-height:44px;"></textarea>
-      </div>
-
-      <button id="ca-start-btn" class="scan-start-btn atm-start-btn" style="width:100%;">Start control scan</button>
-    </div>
-    <div id="ca-content"></div>
-  </div>
-</div>
-
 <div id="view-surface" class="view" hidden>
   <div class="view-header">
     <div>
@@ -368,7 +276,7 @@
     <div class="placeholder-panel">
       <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h9L19.5 8v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M9 12v4M12 9.5v6.5M15 13v3"/></svg>
       <div class="placeholder-title">Coming soon</div>
-      <div class="placeholder-sub">Exportable reports across findings, scans, and threat models will live here.</div>
+      <div class="placeholder-sub">Exportable reports across findings and scans will live here.</div>
     </div>
   </div>
 </div>

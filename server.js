@@ -113,15 +113,14 @@ const ADJUDICATE_MAX_FINDINGS = 40;
 // synthetic verdict assigned at finding-creation time instead of a live agent stage — see
 // CLAUDE.md. 'scan' is back (agents/scan.md exists again, invoked by handleScanMessage's
 // reasoning-pass half, not the generic per-finding run path — see NON_FINDING_AGENTS below).
-const BUILTIN_AGENTS = ['scan', 'adjudicate', 'threat_model', 'remediation', 'verify', 'app_threat_model', 'controls_assist'];
-// Agent .md files that operate on a whole directory via their own dedicated flow
-// (Scans, App Threat Model, Controls Assist) rather than the per-finding stage/branch
-// UI — excluded from the per-finding agent dropdown and the SCA "run after scan" pill
-// row, but still editable in Agent Configuration (see the `all` query flag below).
+const BUILTIN_AGENTS = ['scan', 'adjudicate', 'remediation', 'verify'];
+// Agent .md files that operate on a whole directory via their own dedicated flow (Scans)
+// rather than the per-finding stage/branch UI — excluded from the per-finding agent
+// dropdown and the SCA "run after scan" pill row (see the `all` query flag below).
 // 'adjudicate' joins these: it runs as the reasoning half's first pass over a whole scan's
 // deterministic findings, not as a stage a user starts against one finding, so it must not
 // appear in the per-finding agent menu or the stage modal's dropdown.
-const NON_FINDING_AGENTS = ['scan', 'adjudicate', 'app_threat_model', 'controls_assist'];
+const NON_FINDING_AGENTS = ['scan', 'adjudicate'];
 
 // Lazily loads the vendored deterministic scanning engine (sast-engine/, ported from the
 // MIT-licensed ship-safe project — see CLAUDE.md's Reasoning Scan / SCA Scan bullets). It's a
@@ -227,7 +226,7 @@ app.delete('/api/agents/:name', (req, res) => {
 // ---------- in-memory findings store ----------
 // Session-lifetime only — lost on restart. No CSV ingestion/persistence yet
 // (see CLAUDE.md "Not yet built"). Each finding owns a list of agent runs,
-// which is how the pipeline chains (triage -> threat_model -> remediation).
+// which is how the pipeline chains (triage -> remediation -> fix -> verify).
 
 const findings = new Map(); // id -> finding record
 const runIndex = new Map(); // runId -> { findingId, run } for O(1) lookup on done/error/cancel
@@ -590,23 +589,6 @@ app.delete('/api/scans/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- whole-directory run stores ----------
-// App-level threat models and control assessments share one implementation; see
-// lib/directory-run-store.js for the factory and for what is deliberately NOT collapsed
-// into it (the scans store and the findings store).
-const { appThreatModelStore, controlAssessmentStore } = require('./lib/directory-run-store')({
-  app, fs, crypto, spawn, RUN_ID_RE, agentFilePath, extractVerdict,
-});
-
-// Kept as named bindings so the call sites below (cancel bookkeeping, WS close cleanup,
-// session clear) read the same as before rather than reaching through a store object.
-const appThreatModels = appThreatModelStore.records;
-const appThreatModelRunIndex = appThreatModelStore.runIndex;
-const controlAssessments = controlAssessmentStore.records;
-const controlAssessmentRunIndex = controlAssessmentStore.runIndex;
-const toAppThreatModelListItem = appThreatModelStore.toListItem;
-const toControlAssessmentListItem = controlAssessmentStore.toListItem;
-
 app.get('/api/findings', (req, res) => {
   const list = [...findings.values()]
     .sort((a, b) => b.createdAt - a.createdAt)
@@ -706,7 +688,7 @@ app.get('/api/timeline', (req, res) => {
   for (const finding of findings.values()) {
     for (const run of finding.runs) {
       entries.push({
-        kind: run.agent, // 'triage' | 'threat_model' | 'remediation'
+        kind: run.agent, // 'triage' | 'remediation' | 'fix' | 'verify'
         runId: run.runId,
         findingId: finding.id,
         findingTitle: finding.title,
@@ -796,32 +778,12 @@ wss.on('connection', (ws) => {
           if (modChild) modChild.kill();
         }
       }
-      const atmIndexed = appThreatModelRunIndex.get(runId);
-      if (atmIndexed && atmIndexed.status === 'running') {
-        atmIndexed.status = 'cancelled';
-        atmIndexed.finishedAt = Date.now();
-      }
-      const caIndexed = controlAssessmentRunIndex.get(runId);
-      if (caIndexed && caIndexed.status === 'running') {
-        caIndexed.status = 'cancelled';
-        caIndexed.finishedAt = Date.now();
-      }
       if (child) child.kill();
       return;
     }
 
     if (msg.type === 'scan') {
       handleScanMessage(msg, { children, send });
-      return;
-    }
-
-    if (msg.type === 'app_threat_model') {
-      appThreatModelStore.handleMessage(msg, { children, send });
-      return;
-    }
-
-    if (msg.type === 'controls_assist') {
-      controlAssessmentStore.handleMessage(msg, { children, send });
       return;
     }
 
@@ -1017,16 +979,6 @@ wss.on('connection', (ws) => {
       if (indexed && indexed.run.status === 'running') {
         indexed.run.status = 'cancelled';
         indexed.run.finishedAt = Date.now();
-      }
-      const atmIndexed = appThreatModelRunIndex.get(runId);
-      if (atmIndexed && atmIndexed.status === 'running') {
-        atmIndexed.status = 'cancelled';
-        atmIndexed.finishedAt = Date.now();
-      }
-      const caIndexed = controlAssessmentRunIndex.get(runId);
-      if (caIndexed && caIndexed.status === 'running') {
-        caIndexed.status = 'cancelled';
-        caIndexed.finishedAt = Date.now();
       }
       child.kill();
     }
@@ -1933,7 +1885,7 @@ async function runDeterministicScaScan(engine, scan, targetPath, { send }) {
   return { findings: result.vulns, error: null };
 }
 
-// Wipes every in-memory store (findings, scans, app-level threat models) back to empty — a
+// Wipes every in-memory store (findings, scans) back to empty — a
 // full reset for this session, no reseed. Refuses while anything is running: the per-connection
 // `children` map (inside wss.on('connection')) isn't reachable from a plain REST route, so a
 // still-running child process couldn't be killed here even if we wanted to; a completed run's
@@ -1942,8 +1894,7 @@ async function runDeterministicScaScan(engine, scan, targetPath, { send }) {
 app.post('/api/session/clear', (req, res) => {
   const anyRunning = [...findings.values()].some((f) => f.runs.some((r) => r.status === 'running'))
     || [...scans.values()].some((s) => s.status === 'running')
-    || [...appThreatModels.values()].some((r) => r.status === 'running')
-    || [...controlAssessments.values()].some((r) => r.status === 'running');
+;
   if (anyRunning) {
     res.status(409).json({ error: 'Cancel or wait for running scans/agent runs to finish before clearing the session.' });
     return;
@@ -1952,10 +1903,6 @@ app.post('/api/session/clear', (req, res) => {
   runIndex.clear();
   scans.clear();
   scanRunIndex.clear();
-  appThreatModels.clear();
-  appThreatModelRunIndex.clear();
-  controlAssessments.clear();
-  controlAssessmentRunIndex.clear();
   res.json({ ok: true });
 });
 
@@ -1996,7 +1943,5 @@ module.exports = {
   planReviewShards,
   renderAdjudicationWorklist,
   toScanListItem,
-  toAppThreatModelListItem,
-  toControlAssessmentListItem,
   isAllowedWsOrigin,
 };

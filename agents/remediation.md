@@ -6,16 +6,15 @@ applied — and in this pipeline you are usually the *first* agent to actually
 reason about a finding: most reasoning-scan findings arrive already carrying
 a deterministic triage verdict (from the scanner's own verification pass, or
 a neutral placeholder for a manually-added finding), not a prior LLM
-analysis. Threat Model is available as optional, on-demand deeper analysis a
-human can still ask for on any finding, not a required gate in front of you.
+analysis.
 (Verify can run after you, but only once the fix has actually been applied to
 the real repository — it's not another analysis pass on the same snapshot
 you already looked at.)
 
 Because of that, check your context before you start:
 
-- **A prior verdict is present** (from the scan's deterministic triage, or a
-  human-run Threat Model): treat `verdict`/`severity_confirmed`/`confidence`/
+- **A prior verdict is present** (from the scan's deterministic triage, or an
+  earlier agent run): treat `verdict`/`severity_confirmed`/`confidence`/
   `priority` as settled. Your job is concrete, actionable fix guidance, not
   further analysis of whether the finding is real. If you think the prior
   verdict is wrong, say so in `reasoning` but still produce the best
@@ -88,8 +87,8 @@ queries") — but stay to one line per point, not a paragraph.
 ## Taxonomy
 
 Use these definitions exactly as given below — every other agent in this
-pipeline that assigns them (threat_model, verify's confidence scale) reuses
-the same scale, so do not redefine it here either.
+pipeline that assigns them (verify's confidence scale) reuses the same scale,
+so do not redefine it here either.
 
 **Severity** (`severity_confirmed`) — reflects real-world impact if
 exploited, not just the scanner's default rating:

@@ -79,13 +79,13 @@ test('GET /api/agents returns the per-finding agent names only', async () => {
   for (const name of json) assert.equal(typeof name, 'string');
 
   // Included: the per-finding pipeline agents.
-  for (const name of ['remediation', 'threat_model', 'verify']) {
+  for (const name of ['remediation', 'verify']) {
     assert.ok(json.includes(name), `expected /api/agents to include "${name}"`);
   }
   // Excluded: NON_FINDING_AGENTS — whole-directory agents that are never run as
   // a per-finding stage. Asserted in both directions on purpose: a refactor that
   // drops the filter would otherwise pass.
-  for (const name of ['scan', 'adjudicate', 'app_threat_model', 'controls_assist']) {
+  for (const name of ['scan', 'adjudicate']) {
     assert.ok(!json.includes(name), `expected /api/agents to exclude "${name}"`);
   }
 });
@@ -94,7 +94,7 @@ test('GET /api/agents?all=1 is unfiltered and a superset of the filtered list', 
   const { status, json: all } = await get('/api/agents?all=1');
   assert.equal(status, 200);
   assert.ok(Array.isArray(all));
-  for (const name of ['scan', 'adjudicate', 'app_threat_model', 'controls_assist', 'remediation', 'threat_model', 'verify']) {
+  for (const name of ['scan', 'adjudicate', 'remediation', 'verify']) {
     assert.ok(all.includes(name), `expected /api/agents?all=1 to include "${name}"`);
   }
 
@@ -154,28 +154,6 @@ test('DELETE /api/scans/:id 404s for an unknown id', async () => {
   const { status, json } = await get('/api/scans/no-such-scan', { method: 'DELETE' });
   assert.equal(status, 404);
   assert.deepEqual(json, { error: 'not found' });
-});
-
-test('GET /api/app-threat-models returns an array; /:id 404s for an unknown id', async () => {
-  const list = await get('/api/app-threat-models');
-  assert.equal(list.status, 200);
-  assert.ok(Array.isArray(list.json));
-  assert.equal(list.json.length, 0);
-
-  const one = await get('/api/app-threat-models/no-such-record');
-  assert.equal(one.status, 404);
-  assert.deepEqual(one.json, { error: 'not found' });
-});
-
-test('GET /api/control-assessments returns an array; /:id 404s for an unknown id', async () => {
-  const list = await get('/api/control-assessments');
-  assert.equal(list.status, 200);
-  assert.ok(Array.isArray(list.json));
-  assert.equal(list.json.length, 0);
-
-  const one = await get('/api/control-assessments/no-such-record');
-  assert.equal(one.status, 404);
-  assert.deepEqual(one.json, { error: 'not found' });
 });
 
 test('the findings store starts EMPTY on boot (seedFindings() is gone)', async () => {
@@ -395,12 +373,6 @@ test('POST /api/session/clear returns {ok:true} and empties every store', async 
 
   const scans = await get('/api/scans');
   assert.deepEqual(scans.json, []);
-
-  const atms = await get('/api/app-threat-models');
-  assert.deepEqual(atms.json, []);
-
-  const controls = await get('/api/control-assessments');
-  assert.deepEqual(controls.json, []);
 
   // Export drops back to a bare header row — no reseed.
   const csv = await get('/api/findings/export.csv');

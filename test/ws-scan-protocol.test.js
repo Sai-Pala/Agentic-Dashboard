@@ -1,17 +1,17 @@
 'use strict';
 
 /**
- * CHARACTERIZATION TESTS — WebSocket protocol (scan / app_threat_model / controls_assist).
+ * CHARACTERIZATION TESTS — WebSocket protocol.
  *
  * These tests describe what the server DOES today, not what it SHOULD do. A failure here means
  * observable WebSocket behaviour changed — that is the signal, not a bug report. Several things
  * asserted below are arguably wrong (see the `CONCERN:` comments); they are pinned deliberately
  * so the upcoming refactor — which collapses the four near-identical in-memory store families
- * (scans / appThreatModels / controlAssessments / per-finding runs) and their per-family WS
+ * (scans / per-finding runs) and their per-family WS
  * message names into one factory — can prove it changed nothing, including the warts.
  *
  * *** COST CONSTRAINT — DO NOT "IMPROVE" THESE TESTS INTO STARTING A REAL RUN ***
- * A successful `scan`, `app_threat_model` or `controls_assist` spawns a real `claude -p` CLI
+ * A successful `scan` spawns a real `claude -p` CLI
  * process: roughly $5 and ~6 minutes of wall clock per full scan, charged to a human. Every
  * message sent from this file is therefore chosen to hit a validation branch that `return`s
  * BEFORE `spawn('claude', ...)` is ever reached:
@@ -22,8 +22,8 @@
  *   - a `run` whose agent name is invalid/unknown  -> error, returns before spawn
  * NEVER send one of these message types with a real directory. If you are adding a case and are
  * not certain it returns early, read the handler in server.js and confirm first.
- * The suite also asserts, at the end, that no scan / app-threat-model / control-assessment
- * record was created at all — which is the cheap tripwire for "something actually started".
+ * The suite also asserts, at the end, that no scan record was created at all — the cheap
+ * tripwire for "something actually started".
  *
  * Run: node --test test/ws-scan-protocol.test.js
  */
@@ -311,94 +311,6 @@ describe('scan message validation (returns before any claude process is spawned)
     assert.equal(second[0].message, `Path not found: ${MISSING_DIR}`);
   });
 });
-
-describe('app_threat_model message validation (returns before any claude process is spawned)', () => {
-  let client;
-  before(async () => { client = await connectOk(); });
-  after(async () => { if (client) await client.close(); });
-
-  test('a missing path answers app-threat-model-error, not the scan family\'s type', async () => {
-    client.send({ type: 'app_threat_model', runId: 'atm-missing-1', path: MISSING_DIR });
-    const msg = await client.waitFor(byRunId('app-threat-model-error', 'atm-missing-1'), { label: 'app-threat-model-error' });
-    assert.deepEqual(msg, {
-      type: 'app-threat-model-error',
-      runId: 'atm-missing-1',
-      message: `Path not found: ${MISSING_DIR}`,
-    });
-    // Nothing from another family leaked out under this runId.
-    assert.equal(client.messages.some((m) => m.type === 'scan-error' && m.runId === 'atm-missing-1'), false);
-  });
-
-  test('a file rather than a directory answers app-threat-model-error', async () => {
-    client.send({ type: 'app_threat_model', runId: 'atm-file-1', path: A_FILE });
-    const msg = await client.waitFor(byRunId('app-threat-model-error', 'atm-file-1'), { label: 'app-threat-model-error' });
-    assert.deepEqual(msg, {
-      type: 'app-threat-model-error',
-      runId: 'atm-file-1',
-      message: `Not a directory: ${A_FILE}`,
-    });
-  });
-
-  test('an empty path answers app-threat-model-error asking for one', async () => {
-    client.send({ type: 'app_threat_model', runId: 'atm-empty-1', path: '' });
-    const msg = await client.waitFor(byRunId('app-threat-model-error', 'atm-empty-1'), { label: 'app-threat-model-error' });
-    assert.equal(msg.message, 'A target directory path is required.');
-  });
-});
-
-describe('controls_assist message validation (returns before any claude process is spawned)', () => {
-  let client;
-  before(async () => { client = await connectOk(); });
-  after(async () => { if (client) await client.close(); });
-
-  test('a missing path answers controls-assist-error, not another family\'s type', async () => {
-    client.send({ type: 'controls_assist', runId: 'ca-missing-1', path: MISSING_DIR });
-    const msg = await client.waitFor(byRunId('controls-assist-error', 'ca-missing-1'), { label: 'controls-assist-error' });
-    assert.deepEqual(msg, {
-      type: 'controls-assist-error',
-      runId: 'ca-missing-1',
-      message: `Path not found: ${MISSING_DIR}`,
-    });
-  });
-
-  test('a file rather than a directory answers controls-assist-error', async () => {
-    client.send({ type: 'controls_assist', runId: 'ca-file-1', path: A_FILE });
-    const msg = await client.waitFor(byRunId('controls-assist-error', 'ca-file-1'), { label: 'controls-assist-error' });
-    assert.deepEqual(msg, {
-      type: 'controls-assist-error',
-      runId: 'ca-file-1',
-      message: `Not a directory: ${A_FILE}`,
-    });
-  });
-
-  test('an empty path answers controls-assist-error asking for one', async () => {
-    client.send({ type: 'controls_assist', runId: 'ca-empty-1', path: '' });
-    const msg = await client.waitFor(byRunId('controls-assist-error', 'ca-empty-1'), { label: 'controls-assist-error' });
-    assert.equal(msg.message, 'A target directory path is required.');
-  });
-
-  test('the three families use three distinct error type names for the identical condition', async () => {
-    // The whole point of the naming split: one runId reused across families must not let one
-    // family's reply be consumed by another family's client-side handler.
-    client.send({ type: 'scan', runId: 'triple-1', path: MISSING_DIR });
-    client.send({ type: 'app_threat_model', runId: 'triple-1', path: MISSING_DIR });
-    client.send({ type: 'controls_assist', runId: 'triple-1', path: MISSING_DIR });
-
-    const scanErr = await client.waitFor(byRunId('scan-error', 'triple-1'), { label: 'scan-error' });
-    const atmErr = await client.waitFor(byRunId('app-threat-model-error', 'triple-1'), { label: 'app-threat-model-error' });
-    const caErr = await client.waitFor(byRunId('controls-assist-error', 'triple-1'), { label: 'controls-assist-error' });
-
-    const same = `Path not found: ${MISSING_DIR}`;
-    assert.equal(scanErr.message, same);
-    assert.equal(atmErr.message, same);
-    assert.equal(caErr.message, same);
-    assert.deepEqual(
-      new Set([scanErr.type, atmErr.type, caErr.type]),
-      new Set(['scan-error', 'app-threat-model-error', 'controls-assist-error']),
-    );
-  });
-});
-
 // ---------------------------------------------------------------------------
 // 3. runId validation
 // ---------------------------------------------------------------------------
@@ -428,7 +340,6 @@ describe('runId validation (^[a-zA-Z0-9_-]+$)', () => {
       // `scan-error` (which is what the distinct-type-name design tells it to do) sees the scan
       // simply never respond. It also carries no `runId` — necessarily, since the runId is the
       // thing that was invalid — so it cannot be correlated back to the request that caused it.
-      // Both app_threat_model and controls_assist get this right (see the next tests), so this
       // is an inconsistency between the three near-identical handlers, not a deliberate rule.
       assert.deepEqual(got[0], { type: 'error', message: 'Invalid or missing runId.' });
     });
@@ -440,22 +351,6 @@ describe('runId validation (^[a-zA-Z0-9_-]+$)', () => {
     await sleep(350);
     const got = client.messages.slice(before);
     assert.deepEqual(got, [{ type: 'error', message: 'Invalid or missing runId.' }]);
-  });
-
-  test('app_threat_model refuses an invalid runId with its OWN error type but no runId field', async () => {
-    const before = client.messages.length;
-    client.send({ type: 'app_threat_model', runId: '../etc', path: MISSING_DIR });
-    await sleep(350);
-    const got = client.messages.slice(before);
-    assert.deepEqual(got, [{ type: 'app-threat-model-error', message: 'Invalid or missing runId.' }]);
-  });
-
-  test('controls_assist refuses an invalid runId with its OWN error type but no runId field', async () => {
-    const before = client.messages.length;
-    client.send({ type: 'controls_assist', runId: 'a b', path: MISSING_DIR });
-    await sleep(350);
-    const got = client.messages.slice(before);
-    assert.deepEqual(got, [{ type: 'controls-assist-error', message: 'Invalid or missing runId.' }]);
   });
 
   test('the run message refuses an invalid runId before it even looks at the agent name', async () => {
@@ -527,8 +422,8 @@ describe('agent-name validation on the run message (the name is joined into a fi
     });
   });
 
-  // NOTE: there is deliberately NO test here for a VALID agent name (verify / remediation /
-  // threat_model / ...). That path spawns `claude -p` and costs real money. Do not add one.
+  // NOTE: there is deliberately NO test here for a VALID agent name (verify / remediation).
+  // That path spawns `claude -p` and costs real money. Do not add one.
 });
 
 // ---------------------------------------------------------------------------
@@ -576,8 +471,8 @@ describe('cancel', () => {
     assert.equal(msg.type, 'scan-error');
   });
 
-  // NOT COVERED, deliberately: cancel's actual bookkeeping (flipping a run/scan/app-threat-model/
-  // control-assessment record to status 'cancelled', deleting the scanRunIndex entry, killing
+  // NOT COVERED, deliberately: cancel's actual bookkeeping (flipping a run/scan
+  // record to status 'cancelled', deleting the scanRunIndex entry, killing
   // `children` entries and a scan's `moduleRunIds` module children). Every one of those requires
   // a record to exist in the relevant index first, and the ONLY way to create one is to get past
   // the validation gates above — which immediately spawns a real `claude -p` run costing ~$5 and
@@ -682,13 +577,9 @@ describe('two concurrent connections', () => {
   test('each socket receives only its own errors, keyed to its own runIds', async () => {
     a.send({ type: 'scan', runId: 'sockA-scan', path: MISSING_DIR });
     b.send({ type: 'scan', runId: 'sockB-scan', path: MISSING_DIR });
-    a.send({ type: 'app_threat_model', runId: 'sockA-atm', path: MISSING_DIR });
-    b.send({ type: 'controls_assist', runId: 'sockB-ca', path: MISSING_DIR });
 
     await a.waitFor(byRunId('scan-error', 'sockA-scan'), { label: 'A scan-error' });
-    await a.waitFor(byRunId('app-threat-model-error', 'sockA-atm'), { label: 'A atm-error' });
     await b.waitFor(byRunId('scan-error', 'sockB-scan'), { label: 'B scan-error' });
-    await b.waitFor(byRunId('controls-assist-error', 'sockB-ca'), { label: 'B ca-error' });
 
     // Nothing addressed to the other socket ever arrived here.
     assert.equal(a.messages.some((m) => String(m.runId || '').startsWith('sockB-')), false,
@@ -725,18 +616,12 @@ describe('two concurrent connections', () => {
 // ---------------------------------------------------------------------------
 
 describe('cost tripwire', () => {
-  test('no scan, app-threat-model or control-assessment record was created by this entire suite', async () => {
+  test('no scan record was created by this entire suite', async () => {
     // Every message above is supposed to fail validation before its store record is written and
-    // before `spawn('claude', ...)`. If any of these arrays is non-empty, a real (paid) run was
-    // started by this test file and the offending test must be fixed, not this assertion.
-    const [scans, atms, cas] = await Promise.all([
-      fetch(`${server.baseUrl}/api/scans`).then((r) => r.json()),
-      fetch(`${server.baseUrl}/api/app-threat-models`).then((r) => r.json()),
-      fetch(`${server.baseUrl}/api/control-assessments`).then((r) => r.json()),
-    ]);
+    // before `spawn('claude', ...)`. A non-empty array means a real (paid) run was started by
+    // this test file, and the offending test must be fixed — not this assertion.
+    const scans = await fetch(`${server.baseUrl}/api/scans`).then((r) => r.json());
     assert.deepEqual(scans, [], 'a scan record exists — something started a real scan');
-    assert.deepEqual(atms, [], 'an app-threat-model record exists — something started a real run');
-    assert.deepEqual(cas, [], 'a control-assessment record exists — something started a real run');
   });
 
   test('no finding and no agent run was created — the store is still empty', async () => {

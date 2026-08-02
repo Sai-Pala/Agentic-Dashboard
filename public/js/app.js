@@ -1,9 +1,8 @@
 import { guardNameSegments, guardKindOf, surfaceGuardBadge, AUTHZ_WORDS, AUTHN_WORDS } from './views/surface-guards.js';
-import { buildThreatHeatmap, worstOfList } from './ui/heatmap.js';
 import { HL_KEYWORDS, HL_TOKEN_RE, highlightCode, diffLineHtml } from './ui/highlight.js';
-import { KNOWN_AGENTS, AGENT_META, agentMeta, SCAN_TYPE_META, SEV_VAR, SEV_ORDER, SEV_ORDER_MAP, STATUS_ORDER_MAP, FINDINGS_TYPE_LABEL, APPLICABILITY_LABELS, IMPLEMENTATION_STATUS_LABELS, HEATMAP_SEVERITY_COLS, VERDICT_BADGE_FIELDS, VERDICT_SKIP_FIELDS, FIX_FLOW_AGENTS, SCA_EXCLUDED_AGENTS } from './data/meta.js';
+import { KNOWN_AGENTS, AGENT_META, agentMeta, SCAN_TYPE_META, SEV_VAR, SEV_ORDER, SEV_ORDER_MAP, STATUS_ORDER_MAP, FINDINGS_TYPE_LABEL, VERDICT_BADGE_FIELDS, VERDICT_SKIP_FIELDS, FIX_FLOW_AGENTS } from './data/meta.js';
 import { uid, truncate, formatRelativeTime, dateGroupLabel, formatElapsed, formatTokenCount, statusLabel, severityLabel, verdictFieldLabel } from './util/format.js';
-import { escapeHtml, formatInlineText, downloadTextFile } from './util/html.js';
+import { escapeHtml, formatInlineText } from './util/html.js';
 import { ICONS, icon } from './ui/icons.js';
 
 // ---------- icon system (hand-drawn monoline SVGs, no emoji anywhere in the UI) ----------
@@ -41,19 +40,6 @@ const scanStartBtn = document.getElementById('scan-start-btn');
 const scanLiveContainer = document.getElementById('scan-live-container');
 const scanBaseBranchWrap = document.getElementById('scan-base-branch-wrap');
 const scanBaseBranchInput = document.getElementById('scan-base-branch-input');
-
-const atmPathInput = document.getElementById('atm-path-input');
-const atmBranchInput = document.getElementById('atm-branch-input');
-const atmAppInput = document.getElementById('atm-app-input');
-const atmInstructionInput = document.getElementById('atm-instruction-input');
-const atmStartBtn = document.getElementById('atm-start-btn');
-
-const caPathInput = document.getElementById('ca-path-input');
-const caBranchInput = document.getElementById('ca-branch-input');
-const caAppInput = document.getElementById('ca-app-input');
-const caInstructionInput = document.getElementById('ca-instruction-input');
-const caStartBtn = document.getElementById('ca-start-btn');
-const caContentEl = document.getElementById('ca-content');
 
 const scanType = 'reasoning';
 let scanScope = 'full';
@@ -95,7 +81,7 @@ let currentFindingDetailId = null;
 let currentView = 'dashboard';
 const findingCache = new Map();  // findingId -> full finding record (from GET /api/findings/:id)
 const stages = new Map();        // runId -> findingId, just enough to correlate incoming WS messages
-const stageConsoles = new Map(); // runId -> live console tracking object for per-finding runs (Triage/Threat Model/Remediation), mirrors scanRuns/appThreatModelRuns/controlAssistRuns but only holds the console fields since that's the only live thing these runs track
+const stageConsoles = new Map(); // runId -> live console tracking object for per-finding runs (Triage/Remediation/Verify), mirrors scanRuns but only holds the console fields since that's the only live thing these runs track
 
 let timelineEntries = [];        // flattened run history, newest first
 let timelineLoaded = false;
@@ -105,10 +91,6 @@ let timelineDrawerOpen = false;
 
 let scansList = [];              // list-item shape from GET /api/scans
 let scansLoaded = false;
-let appThreatModelsList = [];    // list-item shape from GET /api/app-threat-models
-let appThreatModelsLoaded = false;
-let controlAssessmentsList = [];  // list-item shape from GET /api/control-assessments
-let controlAssessmentsLoaded = false;
 const scanRuns = new Map();      // runId -> live scan run state (mirrors a stage's shape)
 const scanDetailCache = new Map(); // scanId -> full scan detail (with findings)
 
@@ -151,58 +133,6 @@ document.querySelectorAll('#scan-budget-toggle .group-toggle-btn').forEach((btn)
     document.getElementById('scan-budget-hint').hidden = scanBudgetEnabled;
   });
 });
-
-function startAppThreatModel() {
-  const targetPath = atmPathInput.value.trim();
-  if (!targetPath) {
-    alert('Enter a target directory path.');
-    return;
-  }
-  const branch = atmBranchInput.value.trim();
-  const app = atmAppInput.value.trim();
-  const instruction = atmInstructionInput.value.trim();
-  const runId = uid();
-  const startTime = Date.now();
-
-  const run = {
-    runId, toolCount: 0, fileCount: 0, tokenCount: 0, startTime,
-    toolsEl: null, filesEl: null, tokensEl: null, elapsedEl: null,
-    elapsedTimer: null,
-  };
-  appThreatModelRuns.set(runId, run);
-  run.elapsedTimer = setInterval(() => updateAppThreatModelElapsed(run), 1000);
-
-  upsertAppThreatModel({ id: null, runId, path: targetPath, app: app || null, branch: branch || null, instruction, status: 'running', verdict: null, error: null, startedAt: startTime, finishedAt: null });
-  ws.send(JSON.stringify({ type: 'app_threat_model', runId, path: targetPath, app, branch, instruction }));
-}
-
-atmStartBtn.addEventListener('click', startAppThreatModel);
-
-function startControlsAssist() {
-  const targetPath = caPathInput.value.trim();
-  if (!targetPath) {
-    alert('Enter a target directory path.');
-    return;
-  }
-  const branch = caBranchInput.value.trim();
-  const app = caAppInput.value.trim();
-  const instruction = caInstructionInput.value.trim();
-  const runId = uid();
-  const startTime = Date.now();
-
-  const run = {
-    runId, toolCount: 0, fileCount: 0, tokenCount: 0, startTime,
-    toolsEl: null, filesEl: null, tokensEl: null, elapsedEl: null,
-    elapsedTimer: null,
-  };
-  controlAssistRuns.set(runId, run);
-  run.elapsedTimer = setInterval(() => updateControlsAssistElapsed(run), 1000);
-
-  upsertControlAssessment({ id: null, runId, path: targetPath, app: app || null, branch: branch || null, instruction, status: 'running', verdict: null, error: null, startedAt: startTime, finishedAt: null });
-  ws.send(JSON.stringify({ type: 'controls_assist', runId, path: targetPath, app, branch, instruction }));
-}
-
-caStartBtn.addEventListener('click', startControlsAssist);
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -251,8 +181,6 @@ function showView(view, opts = {}) {
   document.getElementById('view-settings').hidden = view !== 'settings';
   document.getElementById('view-findings').hidden = view !== 'findings';
   document.getElementById('view-finding-detail').hidden = view !== 'finding-detail';
-  document.getElementById('view-threatmodel').hidden = view !== 'threatmodel';
-  document.getElementById('view-controls-assist').hidden = view !== 'controls-assist';
   document.getElementById('view-surface').hidden = view !== 'surface';
   document.getElementById('view-reports').hidden = view !== 'reports';
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === view));
@@ -261,8 +189,6 @@ function showView(view, opts = {}) {
 
   if (view === 'dashboard') renderDashboard();
   if (view === 'findings') renderFindingsView();
-  if (view === 'threatmodel') openThreatModelView();
-  if (view === 'controls-assist') renderControlsAssistView();
   if (view === 'surface') openSurfaceView();
   if (view === 'settings') renderSettings();
 }
@@ -354,8 +280,8 @@ function renderNavStatus() {
   renderNavBadges();
 }
 
-// ---------- timeline (a slide-in drawer, opened from a clock-icon button on Hybrid Scan and
-// Threat Model — not a top-level nav destination) ----------
+// ---------- timeline (a slide-in drawer, opened from the clock-icon button on Hybrid Scan —
+// not a top-level nav destination) ----------
 
 async function loadTimeline() {
   const res = await fetch('/api/timeline');
@@ -389,7 +315,6 @@ function closeTimelineDrawer() {
 document.getElementById('timeline-drawer-close').addEventListener('click', closeTimelineDrawer);
 document.getElementById('timeline-drawer-backdrop').addEventListener('click', closeTimelineDrawer);
 document.getElementById('scans-clock-btn').addEventListener('click', () => openTimelineDrawer('scan'));
-document.getElementById('tm-clock-btn').addEventListener('click', () => openTimelineDrawer('threat_model'));
 
 function renderTimelineFilters() {
   const el = document.getElementById('timeline-filters');
@@ -531,7 +456,6 @@ function upsertTimelineEntry(entry) {
   }
 
   if (timelineDrawerOpen) renderTimeline();
-  if (currentView === 'threatmodel') renderThreatModelView();
   renderNavBadges();
 }
 
@@ -550,7 +474,6 @@ function updateTimelineClockDots() {
     else { el.hidden = true; }
   };
   setDot('scans-clock-dot', scansList.some((s) => s.status === 'running'));
-  setDot('tm-clock-dot', findings.some((f) => f.latestRun && f.latestRun.agent === 'threat_model' && f.latestRun.status === 'running'));
 }
 
 function renderNavBadges() {
@@ -576,620 +499,13 @@ function renderNavBadges() {
     scansBadge.hidden = true;
   }
 
-  const caBadge = document.getElementById('nav-badge-controls-assist');
-  const runningCaCount = controlAssessmentsList.filter((r) => r.status === 'running').length;
-  if (runningCaCount > 0) {
-    caBadge.hidden = false;
-    caBadge.className = 'nav-badge running';
-    caBadge.title = `${runningCaCount} control scan${runningCaCount === 1 ? '' : 's'} running`;
-  } else {
-    caBadge.hidden = true;
-  }
-}
-
-// ---------- threat model (category x severity heat map + per-finding attack-path report) ----------
-// Read-only, cross-finding view derived entirely from timelineEntries (no dedicated
-// endpoint) — every finding with a completed Threat Model run, grouped by verdict.owasp
-// and laid out as a heat map instead of a card grid: rows = OWASP categories (sorted by
-// finding count), columns = the fixed severity scale, each cell shaded by how many findings
-// land in that category+severity combo. Clicking a cell renders the matching finding's (or,
-// for a cell with more than one, a picker followed by the chosen finding's) attack path as a
-// 4-box flow (Attacker -> Preconditions -> Attack Path -> Blast Radius) using the exact prose
-// the Threat Model agent wrote — no new agent capability needed, this is purely a different
-// way to look at data the agent already produces.
-
-async function openThreatModelView() {
-  if (!timelineLoaded) await loadTimeline();
-  renderThreatModelView();
-}
-
-function latestThreatModelEntries() {
-  const byFinding = new Map(); // findingId -> most recent threat_model entry (list is newest-first)
-  for (const e of timelineEntries) {
-    if (e.kind !== 'threat_model' || !e.findingId) continue;
-    if (!byFinding.has(e.findingId)) byFinding.set(e.findingId, e);
-  }
-  return [...byFinding.values()].filter((e) => e.verdict && ['confirmed', 'needs_review'].includes(e.verdict.verdict));
-}
-
-
-
-function allThreatModelEntriesForFinding(findingId) {
-  // timelineEntries is newest-first already, so this stays newest-first too.
-  return timelineEntries.filter((e) => e.kind === 'threat_model' && e.findingId === findingId && e.verdict);
-}
-
-// Which findingIds the per-finding heat map currently represents (its cells only aggregate the
-// *latest* confirmed/needs_review run per finding) — used by renderThreatModelDetail() to decide
-// whether the run being viewed is actually reflected in the map above it, without re-querying
-// the DOM for a specific finding's cell (a cell is a whole category+severity bucket, not a
-// per-finding element).
-let tmMapFindingIds = new Set();
-
-function renderThreatModelView() {
-  const entries = latestThreatModelEntries();
-  tmMapFindingIds = new Set(entries.map((e) => e.findingId));
-  const contentEl = document.getElementById('tm-content');
-
-  const groups = new Map();
-  for (const e of entries) {
-    const key = e.verdict.owasp || null;
-    const label = key || 'Unclassified';
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label).push(e);
-  }
-  const categories = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
-
-  const diagramHtml = entries.length
-    ? `<div class="tm-diagram-wrap tm-main-diagram">${buildThreatHeatmap(categories, (e) => e.verdict.severity_confirmed || 'informational')}</div>`
-    : '<div class="hint" style="padding:30px 4px;">No findings have a confirmed Threat Model run yet — open a finding and use its "…" agent menu to run Threat Model.</div>';
-
-  contentEl.innerHTML = `
-    ${renderAppThreatModelSection()}
-    ${diagramHtml}
-    <div id="tm-cell-findings" class="tm-cell-findings" hidden></div>
-    <div id="tm-detail-panel" class="tm-detail-panel"><div class="hint">Click a cell above to see the report for its findings.</div></div>
-  `;
-
-  contentEl.querySelectorAll('.tm-main-diagram .tm-heat-cell.has-findings').forEach((el) => {
-    el.addEventListener('click', () => {
-      const cellEntries = entries.filter((e) => (e.verdict.owasp || 'Unclassified') === el.dataset.category && (e.verdict.severity_confirmed || 'informational') === el.dataset.sev);
-      contentEl.querySelectorAll('.tm-main-diagram .tm-heat-cell').forEach((c) => c.classList.toggle('selected', c === el));
-      renderTmCellFindings(cellEntries);
-    });
-  });
-  // Only the summary bar toggles the accordion — the expanded body is a child of .atm-row,
-  // but risk cards/heat cells inside it aren't listening on .atm-row-summary so they never
-  // trigger a collapse when clicked.
-  contentEl.querySelectorAll('.atm-row-summary').forEach((el) => {
-    el.addEventListener('click', () => toggleAppThreatModelRow(el.closest('.atm-row').dataset.atmRunId));
-  });
-  contentEl.querySelectorAll('.atm-risk-card').forEach((el) => {
-    el.addEventListener('click', () => {
-      const scope = el.closest('.atm-row-body');
-      if (!scope) return;
-      scope.querySelectorAll('.atm-risk-card').forEach((c) => c.classList.toggle('selected', c === el));
-    });
-  });
-  contentEl.querySelectorAll('.atm-row-body .tm-heat-cell.has-findings').forEach((el) => {
-    el.addEventListener('click', () => {
-      const scope = el.closest('.atm-row-body');
-      if (!scope) return;
-      scope.querySelectorAll('.tm-heat-cell').forEach((c) => c.classList.toggle('selected', c === el));
-      let first = null;
-      scope.querySelectorAll('.atm-risk-card').forEach((card) => {
-        const match = card.dataset.owasp === el.dataset.category && card.dataset.severity === el.dataset.sev;
-        card.classList.toggle('selected', match);
-        if (match && !first) first = card;
-      });
-      if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  });
-  wireConsoleToggles(contentEl, appThreatModelRuns, renderThreatModelView);
-  reattachAppThreatModelLiveRefs();
-  updateTmViewingLabel();
-}
-
-// A heat map cell aggregates every finding in one category+severity bucket — for the common
-// case of exactly one, jump straight to its attack-path report; otherwise show a small picker
-// of finding titles (the "report" the cell represents) so the user chooses which one to read.
-function renderTmCellFindings(cellEntries) {
-  const listEl = document.getElementById('tm-cell-findings');
-  if (!cellEntries.length) return;
-  if (cellEntries.length === 1) {
-    listEl.hidden = true;
-    listEl.innerHTML = '';
-    selectThreatModelFinding(cellEntries[0].findingId);
-    return;
-  }
-  listEl.hidden = false;
-  listEl.innerHTML = cellEntries.map((e, i) => `<button type="button" class="tm-cell-finding-item${i === 0 ? ' active' : ''}" data-finding-id="${escapeHtml(e.findingId)}">${escapeHtml(e.findingTitle)}</button>`).join('');
-  listEl.querySelectorAll('[data-finding-id]').forEach((el) => {
-    el.addEventListener('click', () => {
-      listEl.querySelectorAll('.tm-cell-finding-item').forEach((b) => b.classList.toggle('active', b === el));
-      selectThreatModelFinding(el.dataset.findingId);
-    });
-  });
-  selectThreatModelFinding(cellEntries[0].findingId);
-}
-
-// ---------- app-level (whole-directory) threat models ----------
-// Independent of the per-finding heat map above: these are holistic, architecture-level
-// runs (agents/app_threat_model.md) fired from the "New app threat model" form on this same
-// page. Not tied to any finding, so they get their own list + accordion detail (with its own
-// heat map built from top_risks) rather than a cell on the per-finding map above.
-//
-// Live stats: like scan cards, a running row shows tool/file/token counts, elapsed time, and
-// a context-window fill bar (`appThreatModelRuns`, runId -> tracking object, mirrors
-// `scanRuns`). The tricky part is that `renderThreatModelView()` can rebuild `#tm-content`
-// from scratch at any time (e.g. any timeline update while this view is open, per
-// upsertTimelineEntry) — including while a run is live. Rather than avoid that rebuild
-// entirely, `appThreatModelRowHtml()` bakes the tracking object's *current* counters directly
-// into the fresh HTML string (so a rebuild never visually resets progress to zero), and
-// `reattachAppThreatModelLiveRefs()` (called at the end of every renderThreatModelView()) then
-// re-queries the fresh DOM and re-points the tracking object's cached element refs at it, so
-// the next stream-json event's direct DOM mutation (handleAppThreatModelRawEvent, no
-// re-render) lands on the currently-attached node instead of a stale detached one.
-const appThreatModelRuns = new Map(); // runId -> { toolCount, fileCount, tokenCount, startTime, elapsedTimer, ...cached DOM refs }
-
-function updateAppThreatModelElapsed(run) {
-  if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);
-}
-
-function stopAppThreatModelElapsedTimer(run) {
-  if (run.elapsedTimer) {
-    clearInterval(run.elapsedTimer);
-    run.elapsedTimer = null;
-  }
-  updateAppThreatModelElapsed(run);
-}
-
-function handleAppThreatModelRawEvent(run, event) {
-  trackRunToolActivity(run, event);
-  trackRunTokens(run, event);
-  trackConsoleText(run, event);
-}
-
-// Which app-level run's row is expanded — a real accordion (one at a time), not a separate
-// detail panel elsewhere on the page. Persists across renderThreatModelView() rebuilds since
-// appThreatModelRowHtml() reads it directly when building each row's markup.
-let expandedAtmRunId = null;
-
-function toggleAppThreatModelRow(runId) {
-  expandedAtmRunId = expandedAtmRunId === runId ? null : runId;
-  renderThreatModelView();
-}
-
-// Shows which run's content is currently expanded in the view header, since two rows for the
-// same path (a re-run) look identical at a glance otherwise — easy to lose track of which one
-// you're looking at.
-function updateTmViewingLabel() {
-  const label = document.getElementById('tm-viewing-label');
-  const record = expandedAtmRunId ? appThreatModelsList.find((r) => r.runId === expandedAtmRunId) : null;
-  if (!record) {
-    label.hidden = true;
-    return;
-  }
-  label.hidden = false;
-  label.textContent = `Viewing scan: ${record.path}${record.app ? ' · ' + record.app : ''} — ${formatRelativeTime(record.startedAt)}`;
-}
-
-function appThreatModelRowHtml(r) {
-  const statusCls = r.status === 'running' ? 'in_review' : r.status === 'error' ? 'high' : r.status === 'cancelled' ? 'high' : 'closed';
-  const statusText = r.status === 'running' ? 'Running' : r.status === 'error' ? 'Error' : r.status === 'cancelled' ? 'Cancelled' : 'Done';
-  const topRisks = r.verdict && Array.isArray(r.verdict.top_risks) ? r.verdict.top_risks : [];
-  let worstSev = null;
-  for (const risk of topRisks) {
-    if (!risk.severity) continue;
-    if (worstSev === null || (SEV_ORDER_MAP[risk.severity] ?? 99) < (SEV_ORDER_MAP[worstSev] ?? 99)) worstSev = risk.severity;
-  }
-
-  const run = appThreatModelRuns.get(r.runId);
-  let liveStatsHtml = '';
-  if (r.status === 'running' && run) {
-    liveStatsHtml = `
-      <div class="scan-stats atm-live-stats">
-        <span class="stat"><b class="atm-tools">${run.toolCount}</b> checks</span>
-        <span class="stat"><b class="atm-files">${run.fileCount}</b> files read</span>
-        <span class="stat"><b class="atm-tokens">${formatTokenCount(run.tokenCount)}</b> tokens</span>
-        <span class="stat"><b class="atm-elapsed">${formatElapsed(Date.now() - run.startTime)}</b> elapsed</span>
-      </div>
-    `;
-  }
-
-  const isExpanded = r.runId === expandedAtmRunId;
-  const bodyHtml = isExpanded ? `<div class="atm-row-body">${renderAppThreatModelDetail(r)}</div>` : '';
-
-  return `
-    <div class="atm-row${isExpanded ? ' expanded' : ''}" data-atm-run-id="${escapeHtml(r.runId)}">
-      <div class="atm-row-summary">
-        <span class="sev-dot ${escapeHtml(worstSev || 'informational')}"${worstSev ? '' : ' style="opacity:.3;"'}></span>
-        <div class="atm-row-main">
-          <div class="atm-row-title">${escapeHtml(truncate(r.path, 56))}${r.app ? ' · ' + escapeHtml(r.app) : ''}</div>
-          <div class="atm-row-sub">${escapeHtml(formatRelativeTime(r.startedAt))}</div>
-          ${liveStatsHtml}
-        </div>
-        <span class="badge ${statusCls}">${escapeHtml(statusText)}</span>
-        ${run ? consoleToggleButtonHtml(run) : ''}
-      </div>
-      ${run ? consolePanelHtml(run, 'atm-console') : ''}
-      ${bodyHtml}
-    </div>
-  `;
-}
-
-function reattachAppThreatModelLiveRefs() {
-  for (const run of appThreatModelRuns.values()) {
-    const rowEl = document.querySelector(`.atm-row[data-atm-run-id="${run.runId}"]`);
-    if (!rowEl) continue;
-    run.toolsEl = rowEl.querySelector('.atm-tools');
-    run.filesEl = rowEl.querySelector('.atm-files');
-    run.tokensEl = rowEl.querySelector('.atm-tokens');
-    run.elapsedEl = rowEl.querySelector('.atm-elapsed');
-    run.consoleEl = rowEl.querySelector('.atm-console');
-  }
-}
-
-function renderAppThreatModelSection() {
-  if (!appThreatModelsList.length) return '';
-  const sorted = appThreatModelsList.slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
-  const rows = sorted.map((r) => appThreatModelRowHtml(r)).join('');
-
-  return `
-    <div class="atm-section">
-      <div class="atm-section-title">App-level Threat Models</div>
-      <div class="atm-list">${rows}</div>
-    </div>
-  `;
-}
-
-function renderAppThreatModelDetail(record) {
-  if (record.status === 'running') {
-    return '<div class="hint" style="padding:14px 4px;">Still running…</div>';
-  }
-  if (record.status === 'cancelled') {
-    return '<div class="fd-verdict-reasoning" style="padding:14px 4px;">Cancelled — no report produced.</div>';
-  }
-  if (record.status === 'error' || !record.verdict) {
-    return `<div class="fd-verdict-reasoning" style="padding:14px 4px;">${escapeHtml(record.error || 'Run failed — no report produced.')}</div>`;
-  }
-  const v = record.verdict;
-  const trustBoundariesHtml = (v.trust_boundaries || []).map((b) => `
-    <div class="atm-detail-item"><b>${escapeHtml(b.name || '')}</b><div>${escapeHtml(b.description || '')}</div></div>
-  `).join('') || '<div class="hint">None identified.</div>';
-  const dataFlowsHtml = (v.data_flows || []).map((d) => `
-    <div class="atm-detail-item"><b>${escapeHtml(d.name || '')}</b><div>${escapeHtml(d.description || '')}</div></div>
-  `).join('') || '<div class="hint">None identified.</div>';
-  const risks = v.top_risks || [];
-  const risksHtml = risks.map((risk, i) => `
-    <div class="atm-risk-card" id="atm-risk-${i}" data-risk-index="${i}" data-owasp="${escapeHtml(risk.owasp || 'Unclassified')}" data-severity="${escapeHtml(risk.severity || 'informational')}">
-      <div class="atm-risk-top">
-        <span class="badge ${escapeHtml(risk.severity || 'informational')}">${escapeHtml(risk.severity || 'informational')}</span>
-        <b>${escapeHtml(risk.title || '')}</b>
-      </div>
-      <div class="fd-verdict-reasoning">${escapeHtml(risk.description || '')}</div>
-      ${risk.owasp || risk.cwe ? `<div class="tm-detail-badges" style="margin-top:6px;">${risk.owasp ? `<span class="scan-type-chip scope-chip">${escapeHtml(risk.owasp)}</span>` : ''}${risk.cwe ? `<span class="scan-type-chip scope-chip">${escapeHtml(risk.cwe)}</span>` : ''}</div>` : ''}
-    </div>
-  `).join('') || '<div class="hint">No structural risks flagged.</div>';
-  const recommendationsHtml = (v.recommendations || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('') || '<li class="hint">None given.</li>';
-  const riskCategories = [...risks.reduce((groups, risk) => {
-    const key = risk.owasp || 'Unclassified';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(risk);
-    return groups;
-  }, new Map()).entries()].sort((a, b) => b[1].length - a[1].length);
-  const diagramHtml = risks.length ? `<div class="tm-diagram-wrap">${buildThreatHeatmap(riskCategories, (r) => r.severity || 'informational')}</div>` : '';
-
-  return `
-    ${diagramHtml}
-    <div class="fd-section-title">Summary</div>
-    <div class="fd-prose" style="margin-bottom:14px;">${escapeHtml(v.summary || '—')}</div>
-    <div class="fd-section-title">Trust boundaries</div>
-    <div style="margin-bottom:14px;">${trustBoundariesHtml}</div>
-    <div class="fd-section-title">Data flows</div>
-    <div style="margin-bottom:14px;">${dataFlowsHtml}</div>
-    <div class="fd-section-title">Top risks</div>
-    <div style="margin-bottom:14px;">${risksHtml}</div>
-    <div class="fd-section-title">Recommendations</div>
-    <ul class="atm-recs">${recommendationsHtml}</ul>
-  `;
-}
-
-// ---------- control assessments (whole-directory NIST 800-53 control identification) ----------
-// Same shape and same independent-from-findings relationship as the app-level threat models
-// above (agents/controls_assist.md, fired from the "New control scan" form on the
-// dedicated Control Scan page) — reuses the identical live-stats/accordion/reattach
-// pattern, just with its own tracking map and its own detail renderer since the report shape
-// (controls grouped by NIST family, no severity scale) genuinely differs from a threat
-// model's risk cards.
-const controlAssistRuns = new Map(); // runId -> { toolCount, fileCount, tokenCount, startTime, elapsedTimer, ...cached DOM refs }
-
-function updateControlsAssistElapsed(run) {
-  if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);
-}
-
-function stopControlsAssistElapsedTimer(run) {
-  if (run.elapsedTimer) {
-    clearInterval(run.elapsedTimer);
-    run.elapsedTimer = null;
-  }
-  updateControlsAssistElapsed(run);
-}
-
-function handleControlsAssistRawEvent(run, event) {
-  trackRunToolActivity(run, event);
-  trackRunTokens(run, event);
-  trackConsoleText(run, event);
-}
-
-// Which control-assessment row is expanded — a real accordion (one at a time), mirrors
-// expandedAtmRunId. Persists across renderControlsAssistView() rebuilds since caRowHtml()
-// reads it directly when building each row's markup.
-let expandedCaRunId = null;
-
-function toggleControlsAssistRow(runId) {
-  expandedCaRunId = expandedCaRunId === runId ? null : runId;
-  renderControlsAssistView();
-}
-
-function caRowHtml(r) {
-  const statusCls = r.status === 'running' ? 'in_review' : r.status === 'error' ? 'high' : r.status === 'cancelled' ? 'high' : 'closed';
-  const statusText = r.status === 'running' ? 'Running' : r.status === 'error' ? 'Error' : r.status === 'cancelled' ? 'Cancelled' : 'Done';
-
-  const run = controlAssistRuns.get(r.runId);
-  let liveStatsHtml = '';
-  if (r.status === 'running' && run) {
-    liveStatsHtml = `
-      <div class="scan-stats atm-live-stats">
-        <span class="stat"><b class="ca-tools">${run.toolCount}</b> checks</span>
-        <span class="stat"><b class="ca-files">${run.fileCount}</b> files read</span>
-        <span class="stat"><b class="ca-tokens">${formatTokenCount(run.tokenCount)}</b> tokens</span>
-        <span class="stat"><b class="ca-elapsed">${formatElapsed(Date.now() - run.startTime)}</b> elapsed</span>
-      </div>
-    `;
-  }
-
-  const isExpanded = r.runId === expandedCaRunId;
-  const bodyHtml = isExpanded ? `<div class="atm-row-body">${renderControlsAssistDetail(r)}</div>` : '';
-
-  return `
-    <div class="atm-row${isExpanded ? ' expanded' : ''}" data-ca-run-id="${escapeHtml(r.runId)}">
-      <div class="atm-row-summary">
-        <div class="atm-row-main">
-          <div class="atm-row-title">${escapeHtml(truncate(r.path, 56))}${r.app ? ' · ' + escapeHtml(r.app) : ''}</div>
-          <div class="atm-row-sub">${escapeHtml(formatRelativeTime(r.startedAt))}</div>
-          ${liveStatsHtml}
-        </div>
-        <span class="badge ${statusCls}">${escapeHtml(statusText)}</span>
-        ${run ? consoleToggleButtonHtml(run) : ''}
-      </div>
-      ${run ? consolePanelHtml(run, 'ca-console') : ''}
-      ${bodyHtml}
-    </div>
-  `;
-}
-
-function reattachControlsAssistLiveRefs() {
-  for (const run of controlAssistRuns.values()) {
-    const rowEl = document.querySelector(`.atm-row[data-ca-run-id="${run.runId}"]`);
-    if (!rowEl) continue;
-    run.toolsEl = rowEl.querySelector('.ca-tools');
-    run.filesEl = rowEl.querySelector('.ca-files');
-    run.tokensEl = rowEl.querySelector('.ca-tokens');
-    run.elapsedEl = rowEl.querySelector('.ca-elapsed');
-    run.consoleEl = rowEl.querySelector('.ca-console');
-  }
-}
-
-function renderControlsAssistSection() {
-  if (!controlAssessmentsList.length) return '<div class="hint">No control scans yet — start one above.</div>';
-  const sorted = controlAssessmentsList.slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
-  return `<div class="atm-list">${sorted.map((r) => caRowHtml(r)).join('')}</div>`;
-}
-
-
-function renderControlsAssistDetail(record) {
-  if (record.status === 'running') {
-    return '<div class="hint" style="padding:14px 4px;">Still running…</div>';
-  }
-  if (record.status === 'cancelled') {
-    return '<div class="fd-verdict-reasoning" style="padding:14px 4px;">Cancelled — no report produced.</div>';
-  }
-  if (record.status === 'error' || !record.verdict) {
-    return `<div class="fd-verdict-reasoning" style="padding:14px 4px;">${escapeHtml(record.error || 'Run failed — no report produced.')}</div>`;
-  }
-  const v = record.verdict;
-  const controls = v.controls || [];
-  const families = [...controls.reduce((groups, c) => {
-    const key = c.family || 'Unclassified';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(c);
-    return groups;
-  }, new Map()).entries()].sort((a, b) => b[1].length - a[1].length);
-
-  const familiesHtml = families.map(([family, list]) => `
-    <div class="ca-family-group">
-      <div class="ca-family-header">${escapeHtml(family)} <span class="hint">(${list.length})</span></div>
-      ${list.map((c) => `
-        <div class="ca-control-card">
-          <div class="ca-control-top">
-            <b>${escapeHtml(c.control_id || '')}</b> ${escapeHtml(c.control_name || '')}
-          </div>
-          <div class="tm-detail-badges" style="margin:4px 0 6px;">
-            ${c.applicability ? `<span class="badge ${escapeHtml(c.applicability)}">${escapeHtml(APPLICABILITY_LABELS[c.applicability] || c.applicability)}</span>` : ''}
-            ${c.implementation_status ? `<span class="badge ${escapeHtml(c.implementation_status)}">${escapeHtml(IMPLEMENTATION_STATUS_LABELS[c.implementation_status] || c.implementation_status)}</span>` : ''}
-          </div>
-          <div class="fd-verdict-reasoning">${escapeHtml(c.narrative || '')}</div>
-          ${(c.evidence || []).length ? `<div class="tm-detail-badges" style="margin-top:6px;">${(c.evidence || []).map((e) => `<span class="scan-type-chip scope-chip">${escapeHtml(e)}</span>`).join('')}</div>` : ''}
-          ${c.gaps ? `<div class="hint" style="margin-top:6px;">Gap: ${escapeHtml(c.gaps)}</div>` : ''}
-        </div>
-      `).join('')}
-    </div>
-  `).join('') || '<div class="hint">No controls identified.</div>';
-
-  const recommendationsHtml = (v.recommendations || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('') || '<li class="hint">None given.</li>';
-
-  return `
-    <div class="fd-section-title">System description</div>
-    <div class="fd-prose" style="margin-bottom:14px;">${escapeHtml(v.system_description || '—')}</div>
-    <div class="fd-section-title">Summary</div>
-    <div class="fd-prose" style="margin-bottom:14px;">${escapeHtml(v.summary || '—')}</div>
-    <div class="fd-section-title">Controls</div>
-    <div style="margin-bottom:14px;">${familiesHtml}</div>
-    <div class="fd-section-title">Inherited controls</div>
-    <div class="fd-prose" style="margin-bottom:14px;">${escapeHtml(v.inherited_note || '—')}</div>
-    <div class="fd-section-title">Recommendations</div>
-    <ul class="atm-recs" style="margin-bottom:14px;">${recommendationsHtml}</ul>
-    <button class="secondary" type="button" data-action="download-ssp-draft">Download SSP draft (.md)</button>
-  `;
-}
-
-
-function buildControlAssessmentMarkdown(record) {
-  const v = record.verdict;
-  const lines = [];
-  lines.push(`# SSP draft: ${record.app || record.path}`);
-  lines.push('');
-  lines.push(`Generated by Control Scan — ${new Date(record.startedAt).toISOString()}`);
-  lines.push('');
-  lines.push('## System description');
-  lines.push(v.system_description || '—');
-  lines.push('');
-  lines.push('## Summary');
-  lines.push(v.summary || '—');
-  lines.push('');
-  lines.push('## Controls');
-  const controls = v.controls || [];
-  const families = [...controls.reduce((groups, c) => {
-    const key = c.family || 'Unclassified';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(c);
-    return groups;
-  }, new Map()).entries()];
-  for (const [family, list] of families) {
-    lines.push('');
-    lines.push(`### ${family}`);
-    for (const c of list) {
-      lines.push('');
-      lines.push(`**${c.control_id || ''} — ${c.control_name || ''}**`);
-      lines.push(`- Applicability: ${APPLICABILITY_LABELS[c.applicability] || c.applicability || '—'}`);
-      lines.push(`- Implementation status: ${IMPLEMENTATION_STATUS_LABELS[c.implementation_status] || c.implementation_status || '—'}`);
-      lines.push(`- Narrative: ${c.narrative || '—'}`);
-      if ((c.evidence || []).length) lines.push(`- Evidence: ${c.evidence.join(', ')}`);
-      if (c.gaps) lines.push(`- Gap: ${c.gaps}`);
-    }
-  }
-  lines.push('');
-  lines.push('## Inherited controls');
-  lines.push(v.inherited_note || '—');
-  lines.push('');
-  lines.push('## Recommendations');
-  for (const r of (v.recommendations || [])) lines.push(`- ${r}`);
-  return lines.join('\n');
-}
-
-function renderControlsAssistView() {
-  caContentEl.innerHTML = renderControlsAssistSection();
-  caContentEl.querySelectorAll('.atm-row-summary').forEach((el) => {
-    el.addEventListener('click', () => toggleControlsAssistRow(el.closest('.atm-row').dataset.caRunId));
-  });
-  caContentEl.querySelectorAll('[data-action="download-ssp-draft"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const runId = btn.closest('.atm-row').dataset.caRunId;
-      const record = controlAssessmentsList.find((r) => r.runId === runId);
-      if (!record || !record.verdict) return;
-      downloadTextFile(`ssp-draft-${runId}.md`, buildControlAssessmentMarkdown(record));
-    });
-  });
-  wireConsoleToggles(caContentEl, controlAssistRuns, renderControlsAssistView);
-  reattachControlsAssistLiveRefs();
-}
-
-// findingId: which finding's attack path to show. runId: optional, defaults to its latest run.
-function selectThreatModelFinding(findingId, runId) {
-  const runs = allThreatModelEntriesForFinding(findingId);
-  if (!runs.length) return;
-  renderThreatModelDetail(findingId, runId || runs[0].runId);
-}
-
-function renderThreatModelDetail(findingId, runId) {
-  const runs = allThreatModelEntriesForFinding(findingId);
-  const entry = runs.find((e) => e.runId === runId) || runs[0];
-  if (!entry) return;
-  const inMap = tmMapFindingIds.has(findingId);
-  document.getElementById('tm-detail-panel').innerHTML = renderAttackPathFlow(entry, runs, inMap);
-  document.getElementById('tm-run-select')?.addEventListener('change', (e) => renderThreatModelDetail(findingId, e.target.value));
-  document.getElementById('tm-view-finding-btn')?.addEventListener('click', () => openFindingDetail(findingId));
-}
-
-// Navigates to the Threat Model screen and opens one finding's attack path directly —
-// used from a finding's "View in Threat Model" run-card link, which may point at an
-// older run than the one currently shown on the map (or one whose verdict fell out of
-// the map entirely, e.g. a later false_positive re-run superseded it).
-async function openThreatModelForFinding(findingId, runId) {
-  showView('threatmodel', { skipInit: true });
-  if (!timelineLoaded) await loadTimeline();
-  renderThreatModelView();
-  selectThreatModelFinding(findingId, runId);
-}
-
-function renderAttackPathFlow(entry, runs, inMap) {
-  const v = entry.verdict;
-  const badges = [
-    v.severity_confirmed ? `<span class="badge ${escapeHtml(v.severity_confirmed)}">${escapeHtml(v.severity_confirmed)}</span>` : '',
-    v.confidence ? `<span class="badge ${escapeHtml(v.confidence)}">${escapeHtml(v.confidence)}</span>` : '',
-    v.priority ? `<span class="badge ${escapeHtml(v.priority)}">${escapeHtml(v.priority)}</span>` : '',
-    v.asvs ? `<span class="scan-type-chip scope-chip">${escapeHtml(v.asvs)}</span>` : '',
-    v.cwe ? `<span class="scan-type-chip scope-chip">${escapeHtml(v.cwe)}</span>` : '',
-  ].filter(Boolean).join('');
-
-  const runSelectHtml = runs.length > 1 ? `
-    <div class="tm-run-select-wrap">
-      <label for="tm-run-select">Run</label>
-      <select id="tm-run-select">
-        ${runs.map((r) => `<option value="${escapeHtml(r.runId)}" ${r.runId === entry.runId ? 'selected' : ''}>${escapeHtml(r.startedAt ? formatRelativeTime(r.startedAt) : 'unknown time')} — ${escapeHtml(r.verdict.verdict || 'unknown')}</option>`).join('')}
-      </select>
-    </div>
-  ` : '';
-
-  const notInMapHtml = inMap ? '' : `<div class="hint tm-not-in-map-hint">Not shown on the map above — this run's verdict is "${escapeHtml(v.verdict)}".</div>`;
-
-  return `
-    <div class="tm-detail-title">${escapeHtml(entry.findingTitle)}</div>
-    ${notInMapHtml}
-    ${runSelectHtml}
-    <div class="tm-detail-badges">${badges}</div>
-    <div class="tm-flow">
-      <div class="tm-flow-box" style="--box-color:var(--muted);">
-        <div class="tm-flow-label">Attacker</div>
-        <div class="tm-flow-text">Anyone able to reach the vulnerable code path below</div>
-      </div>
-      <div class="tm-flow-arrow">→</div>
-      <div class="tm-flow-box" style="--box-color:var(--accent);">
-        <div class="tm-flow-label">Preconditions</div>
-        <div class="tm-flow-text">${escapeHtml(v.preconditions || '—')}</div>
-      </div>
-      <div class="tm-flow-arrow">→</div>
-      <div class="tm-flow-box" style="--box-color:var(--warn);">
-        <div class="tm-flow-label">Attack Path</div>
-        <div class="tm-flow-text">${escapeHtml(v.attack_narrative || '—')}</div>
-      </div>
-      <div class="tm-flow-arrow">→</div>
-      <div class="tm-flow-box" style="--box-color:var(--err);">
-        <div class="tm-flow-label">Blast Radius</div>
-        <div class="tm-flow-text">${escapeHtml(v.blast_radius || '—')}</div>
-      </div>
-    </div>
-    <button class="secondary tm-view-finding-btn" id="tm-view-finding-btn" type="button">View finding →</button>
-  `;
 }
 
 // ---------- scans ----------
 // A scan runs sast-engine's deterministic pattern agents (reasoning) or dependency audit
 // (sca) against a whole directory and, on completion, creates zero or more new findings
 // server-side, each already carrying a triage verdict. It's the entry point of the workflow:
-// Scan -> Agent Triage -> Remediation, with Threat Model available afterward as an optional
-// deeper-analysis action rather than a gate in front of Remediation.
+// Scan -> Agent Triage -> Remediation.
 
 async function loadScans() {
   const res = await fetch('/api/scans');
@@ -1197,39 +513,6 @@ async function loadScans() {
   scansLoaded = true;
   renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
-}
-
-async function loadAppThreatModels() {
-  const res = await fetch('/api/app-threat-models');
-  appThreatModelsList = await res.json();
-  appThreatModelsLoaded = true;
-  if (currentView === 'threatmodel') renderThreatModelView();
-}
-
-async function loadControlAssessments() {
-  const res = await fetch('/api/control-assessments');
-  controlAssessmentsList = await res.json();
-  controlAssessmentsLoaded = true;
-  if (currentView === 'controls-assist') renderControlsAssistView();
-}
-
-// Patches an in-flight or newly-started control assessment record by runId, adding it if
-// this is the first message seen for it (mirrors upsertAppThreatModel).
-function upsertControlAssessment(patch) {
-  const idx = controlAssessmentsList.findIndex((r) => r.runId === patch.runId);
-  if (idx >= 0) controlAssessmentsList[idx] = { ...controlAssessmentsList[idx], ...patch };
-  else controlAssessmentsList.unshift(patch);
-  renderNavBadges();
-  if (currentView === 'controls-assist') renderControlsAssistView();
-}
-
-// Patches an in-flight or newly-started app-level threat model record by runId, adding it
-// if this is the first message seen for it (mirrors upsertTimelineEntry's find-or-unshift).
-function upsertAppThreatModel(patch) {
-  const idx = appThreatModelsList.findIndex((r) => r.runId === patch.runId);
-  if (idx >= 0) appThreatModelsList[idx] = { ...appThreatModelsList[idx], ...patch };
-  else appThreatModelsList.unshift(patch);
-  if (currentView === 'threatmodel') renderThreatModelView();
 }
 
 // `detail` is the full scan record from GET /api/scans/:id — used for the coverage line, which
@@ -1485,11 +768,10 @@ function trackScanCandidates(run, event) {
   if (found) renderScanSevChips(run);
 }
 
-// Shared by scan cards and app-level threat model rows — both invoke `claude -p` against a
-// whole directory and want the same live stats, unlike per-finding runs (deliberately quiet,
-// see "No live per-finding streaming view" in CLAUDE.md). Both kinds of `run` tracking objects
-// use the same field names (toolCount/toolsEl/fileCount/filesEl/tokenCount/tokensEl) so these
-// functions don't need to know which kind they're updating.
+// Used by scan cards, which invoke `claude -p` against a whole directory and want live stats,
+// unlike per-finding runs (deliberately quiet, see "No live per-finding streaming view" in
+// CLAUDE.md). Written against a `run` tracking object's field names
+// (toolCount/toolsEl/fileCount/filesEl/tokenCount/tokensEl) rather than against one surface.
 function trackRunToolActivity(run, event) {
   if (event.type !== 'assistant' || !event.message || !Array.isArray(event.message.content)) return;
   let sawTool = false;
@@ -1544,10 +826,10 @@ function consolePanelHtml(run, panelClass) {
   return `<pre class="console-panel ${panelClass}" data-run-id="${escapeHtml(run.runId)}"${run.consoleOpen ? '' : ' hidden'}>${escapeHtml(run.consoleText || '')}</pre>`;
 }
 
-// Wires every console-toggle button inside a just-rebuilt container. Used by the surfaces
-// whose rows get fully torn down and re-rendered on every update (App Threat Model, Control
-// Scan, Finding Detail) — scan cards are created once and never rebuilt, so they wire their
-// single button directly at creation time instead (see beginScanRun).
+// Wires every console-toggle button inside a just-rebuilt container. Used by Finding Detail,
+// whose run cards get fully torn down and re-rendered on every update — scan cards are created
+// once and never rebuilt, so they wire their single button directly at creation time instead
+// (see beginScanRun).
 function wireConsoleToggles(containerEl, runsMap, rerender) {
   containerEl.querySelectorAll('[data-console-toggle]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -1561,8 +843,7 @@ function wireConsoleToggles(containerEl, runsMap, rerender) {
 }
 
 // Re-points each run's consoleEl at its freshly-rendered panel node after a container's
-// innerHTML has been rebuilt (App Threat Model/Control Scan already do this inline alongside
-// their other live-stat refs; Finding Detail's stage runs have no other live refs to reattach
+// innerHTML has been rebuilt (Finding Detail's stage runs have no other live refs to reattach,
 // so this is the only one they need).
 function reattachConsoleRefs(containerEl, runsMap, panelClass) {
   for (const run of runsMap.values()) {
@@ -1839,66 +1120,6 @@ function handleScanServerMessage(msg) {
   }
 }
 
-// App-level threat models have no dedicated live-feed card (unlike scans) — they're a
-// lightweight background action fired from a single toggle, so all we do here is keep
-// appThreatModelsList in sync; the Threat Model screen's "App-level Threat Models" section
-// is the only place that renders them, and only re-renders while it's the active view.
-function handleAppThreatModelServerMessage(msg) {
-  const run = appThreatModelRuns.get(msg.runId);
-
-  if (msg.type === 'app-threat-model-started') {
-    upsertAppThreatModel({ runId: msg.runId, id: msg.id });
-    return;
-  }
-  // The hot path — fires many times per run. Mutate the live row's cached DOM refs directly,
-  // no upsertAppThreatModel()/re-render here, or the list would flicker/reflow constantly.
-  if (msg.type === 'app-threat-model-event') {
-    if (run) handleAppThreatModelRawEvent(run, msg.event);
-    return;
-  }
-  if (msg.type === 'app-threat-model-stderr') {
-    return;
-  }
-  if (msg.type === 'app-threat-model-error') {
-    if (run) stopAppThreatModelElapsedTimer(run);
-    upsertAppThreatModel({ runId: msg.runId, id: msg.id, status: 'error', error: msg.message, finishedAt: Date.now() });
-    return;
-  }
-  if (msg.type === 'app-threat-model-done') {
-    if (run) stopAppThreatModelElapsedTimer(run);
-    upsertAppThreatModel({ runId: msg.runId, id: msg.id, status: msg.code === 0 && msg.verdict ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
-    return;
-  }
-}
-
-function handleControlsAssistServerMessage(msg) {
-  const run = controlAssistRuns.get(msg.runId);
-
-  if (msg.type === 'controls-assist-started') {
-    upsertControlAssessment({ runId: msg.runId, id: msg.id });
-    return;
-  }
-  // The hot path — fires many times per run. Mutate the live row's cached DOM refs directly,
-  // no upsertControlAssessment()/re-render here, or the list would flicker/reflow constantly.
-  if (msg.type === 'controls-assist-event') {
-    if (run) handleControlsAssistRawEvent(run, msg.event);
-    return;
-  }
-  if (msg.type === 'controls-assist-stderr') {
-    return;
-  }
-  if (msg.type === 'controls-assist-error') {
-    if (run) stopControlsAssistElapsedTimer(run);
-    upsertControlAssessment({ runId: msg.runId, id: msg.id, status: 'error', error: msg.message, finishedAt: Date.now() });
-    return;
-  }
-  if (msg.type === 'controls-assist-done') {
-    if (run) stopControlsAssistElapsedTimer(run);
-    upsertControlAssessment({ runId: msg.runId, id: msg.id, status: msg.code === 0 && msg.verdict ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
-    return;
-  }
-}
-
 // ---------- findings: type tabs + table ----------
 
 async function loadFindings() {
@@ -2026,8 +1247,7 @@ function renderFindingsTypeTabs(scanScoped) {
 // Reduces the finding down to where it stands in the Found -> Triaged -> Fixed -> Verified
 // pipeline (the same shape documented in CLAUDE.md's "Pipeline shape": Scan -> Agent Triage ->
 // Remediation -> Verify), rather than a status-taxonomy badge the user has to already know how
-// to read. Threat Model is a separate, optional deep-dive and deliberately doesn't touch this
-// (see the Agent Triage context-menu bullet). SCA findings don't get this loop at all (see
+// to read. SCA findings don't get this loop at all (see
 // findingLoopCellHtml()) — their fix is "bump the dependency," not a code edit this app's
 // agents reason about.
 // findingStageRuns() needs each stage's own latest run independently, not just the single
@@ -2089,10 +1309,10 @@ function findingLoopState(f) {
   if (stageRuns.verify) {
     if (stageRuns.verify.status === 'running') verified = 'running';
     else if (stageRuns.verify.status === 'error' || stageRuns.verify.status === 'cancelled') verified = 'attention';
-    // Read the latest verify run's OWN verdict, not the finding's overall f.status — a later,
-    // unrelated Threat Model run also changes f.status (via deriveStatus() in server.js), which
-    // used to silently regress "Verified fixed" back to "Not fixed yet" the moment Threat Model
-    // was run on an already-verified finding, even though nothing about the fix itself changed.
+    // Read the latest verify run's OWN verdict, not the finding's overall f.status — any later
+    // unrelated run also changes f.status (via deriveStatus() in server.js), which used to
+    // silently regress "Verified fixed" back to "Not fixed yet" on an already-verified finding,
+    // even though nothing about the fix itself had changed.
     else if (stageRuns.verify.verdict && stageRuns.verify.verdict.verdict === 'verified_fixed') verified = 'done';
     else verified = 'attention'; // still_vulnerable / partially_fixed / inconclusive
   }
@@ -2636,10 +1856,6 @@ function renderFindingDetail(findingId) {
     viewSourceScanBtn.addEventListener('click', () => openFindingsFilteredByScan(finding.sourceScanId));
   }
 
-  fdBodyEl.querySelectorAll('[data-action="view-threat-model"]').forEach((btn) => {
-    btn.addEventListener('click', () => openThreatModelForFinding(findingId, btn.dataset.runId));
-  });
-
   wireConsoleToggles(fdBodyEl, stageConsoles, () => renderFindingDetail(findingId));
   reattachConsoleRefs(fdBodyEl, stageConsoles, 'stage-console');
 
@@ -2743,10 +1959,6 @@ function runCardHtml(run) {
     verdictHtml = '<div class="fd-verdict-reasoning">Still running…</div>';
   }
 
-  const viewInThreatModelHtml = (run.agent === 'threat_model' && run.verdict && typeof run.verdict === 'object')
-    ? `<button class="secondary fd-view-tm-btn" type="button" data-action="view-threat-model" data-run-id="${escapeHtml(run.runId)}">View in Threat Model →</button>`
-    : '';
-
   // Only rendered for runs started this browser session — stageConsoles has nothing for
   // seeded/historical runs, so there's no live text to show for them.
   const consoleRun = stageConsoles.get(run.runId);
@@ -2761,7 +1973,6 @@ function runCardHtml(run) {
       </div>
       ${consoleRun ? consolePanelHtml(consoleRun, 'stage-console') : ''}
       ${verdictHtml}
-      ${viewInThreatModelHtml}
     </div>
   `;
 }
@@ -2826,8 +2037,7 @@ function fdLoopBoxesHtml(f) {
 
 function renderFindingDetailActions(finding) {
   const actionsEl = document.getElementById('fd-header-actions');
-  const excluded = finding.scanType === 'sca' ? SCA_EXCLUDED_AGENTS : FIX_FLOW_AGENTS;
-  const hasMenuAgents = agentsList.some((a) => !excluded.includes(a));
+  const hasMenuAgents = agentsList.some((a) => !FIX_FLOW_AGENTS.includes(a));
   const menuBtnHtml = `<button class="console-toggle-btn" type="button" id="fd-agent-menu-btn"${hasMenuAgents ? '' : ' disabled'} title="${hasMenuAgents ? 'Run agent…' : 'No agent actions apply to this finding'}">${icon('more')}</button>`;
   actionsEl.innerHTML = fdLoopBoxesHtml(finding) + menuBtnHtml;
 
@@ -3134,14 +2344,6 @@ function startStage(findingId, agent, context, instruction) {
 // ---------- websocket message handling ----------
 
 function handleServerMessage(msg) {
-  if (msg.type && msg.type.indexOf('app-threat-model') === 0) {
-    handleAppThreatModelServerMessage(msg);
-    return;
-  }
-  if (msg.type && msg.type.indexOf('controls-assist') === 0) {
-    handleControlsAssistServerMessage(msg);
-    return;
-  }
   if (msg.type && msg.type.indexOf('scan') === 0) {
     handleScanServerMessage(msg);
     return;
@@ -3233,8 +2435,7 @@ function setStageStatus(stage, status, text) {
 
 
 // `finding` is optional — pass it when the caller already has one (a table row's own object, or
-// Finding Detail's cached object) so SCA findings can have Threat Model filtered out of the menu
-// without an extra fetch. Omit it and the menu falls back to showing every eligible agent.
+// Finding Detail's cached object) so an SCA finding's empty menu can say so specifically.
 function openFindingContextMenu(x, y, findingId, finding) {
   contextMenuEl.innerHTML = '';
   const addItem = (label, disabled, onClick) => {
@@ -3252,14 +2453,13 @@ function openFindingContextMenu(x, y, findingId, finding) {
   };
 
   // One menu item per agent declared on the Agents screen (agentsList — built-in plus any
-  // custom agents; 'scan' is already filtered out server-side), minus the fix-flow agents
-  // (always) and Threat Model (SCA findings only). Every path here opens the stage modal rather
+  // custom agents; 'scan' is already filtered out server-side), minus the fix-flow agents,
+  // which have their own dedicated controls. Every path here opens the stage modal rather
   // than running an agent immediately — the AppSec tester reviews context/instructions and
   // explicitly clicks "Start stage" before anything executes, so there's always a deliberate
   // action behind a run, not an implicit auto-fix.
   const isSca = finding && finding.scanType === 'sca';
-  const excluded = isSca ? SCA_EXCLUDED_AGENTS : FIX_FLOW_AGENTS;
-  const eligibleAgents = agentsList.filter((a) => !excluded.includes(a));
+  const eligibleAgents = agentsList.filter((a) => !FIX_FLOW_AGENTS.includes(a));
 
   if (!eligibleAgents.length) {
     addItem(isSca ? 'No agent actions apply — update the package instead' : 'No agents available', true, () => {});
@@ -3458,7 +2658,7 @@ function renderSettings() {
 }
 
 async function clearSession() {
-  if (!confirm('Clear this session? This permanently deletes every finding, scan, app-level threat model, and control assessment on the server. This cannot be undone.')) return;
+  if (!confirm('Clear this session? This permanently deletes every finding and scan on the server. This cannot be undone.')) return;
   const res = await fetch('/api/session/clear', { method: 'POST' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -3470,27 +2670,17 @@ async function clearSession() {
   findings = [];
   findingCache.clear();
   scansList = [];
-  appThreatModelsList = [];
-  controlAssessmentsList = [];
   timelineEntries = [];
   timelineLoaded = false;
   scanDetailCache.clear();
   for (const run of scanRuns.values()) stopScanElapsedTimer(run);
   scanRuns.clear();
-  for (const run of appThreatModelRuns.values()) stopAppThreatModelElapsedTimer(run);
-  appThreatModelRuns.clear();
-  for (const run of controlAssistRuns.values()) stopControlsAssistElapsedTimer(run);
-  controlAssistRuns.clear();
   scanLiveContainer.innerHTML = '';
-  expandedAtmRunId = null;
-  expandedCaRunId = null;
   timelineUnseenDone = 0;
   renderNavStatus();
   if (currentView === 'dashboard') renderDashboard();
   if (currentView === 'findings') renderFindingsView();
   if (timelineDrawerOpen) renderTimeline();
-  if (currentView === 'threatmodel') renderThreatModelView();
-  if (currentView === 'controls-assist') renderControlsAssistView();
 }
 
 document.getElementById('clear-session-btn').addEventListener('click', clearSession);
@@ -3501,8 +2691,6 @@ async function init() {
   await loadAgents();
   await loadFindings();
   await loadScans();
-  await loadAppThreatModels();
-  await loadControlAssessments();
   await loadTimeline();
   showView('dashboard');
   connect();
