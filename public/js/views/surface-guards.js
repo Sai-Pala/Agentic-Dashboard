@@ -77,10 +77,9 @@ export function surfaceGuardBadge(kind) {
 /**
  * Is this guard chain doing authorization, only authentication, or nothing at all?
  *
- * Takes anything carrying a `middleware` array — a mount OR a single route — so the same
- * three-way classification drives both the mounted-router rows and the per-route rollup in
- * the stat tiles. It used to take a mount only, which is what made the tiles lie about an
- * app with no routers: see renderSurfaceView().
+ * Takes anything carrying a `middleware` array — a mount OR a single route. Both matter: the
+ * stat tiles count ROUTES, because an app that registers everything on `app` with no router
+ * would otherwise report zero unguarded endpoints while all of them were unauthenticated.
  */
 // Words that indicate a middleware decides WHETHER YOU MAY (authorization).
 export const AUTHZ_WORDS = new Set([

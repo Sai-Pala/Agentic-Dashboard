@@ -330,15 +330,15 @@ identical in a naive scanner and are the most dangerous thing a security tool ca
 
 ## Reference: how to add things
 
-**A pattern rule** — find the right agent in `sast-engine/rules/`, add
+**A pattern rule** — find the right agent under `sast-engine/rules/<domain>/`, add
 `{ rule, title, regex, severity, cwe, owasp, description, fix }`. The regex is tested against
 **one line**. Then self-scan and confirm it produces no noise on real code.
 
-**A whole agent** — new file in `sast-engine/rules/` extending `BaseAgent`; implement
+**A whole agent** — new file under `sast-engine/rules/<domain>/` extending `BaseAgent`; implement
 `shouldRun(recon)` and `analyze(context)`; register it in `sast-engine/rules/index.js`.
 `context` gives you `rootPath`, `files`, `recon`, `options`, `surface`.
 
-**A taint sink or source** — `sast-engine/rules/taint-flow-agent.js`: `SINKS[]` for a new
+**A taint sink or source** — `sast-engine/rules/web/taint-flow-agent.js`: `SINKS[]` for a new
 dangerous operation, `TAINT_SOURCE` for a new way untrusted data enters.
 
 **What the AI is asked** — `prompts/scan.md` is the system prompt; the per-call user prompt is

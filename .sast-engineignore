@@ -1,5 +1,5 @@
 # Excluded from the deterministic pattern engine's file discovery.
-# Read by BaseAgent._loadIgnorePatterns() (sast-engine/rules/base-agent.js).
+# Read by BaseAgent._loadIgnorePatterns() (sast-engine/rules/core/base-agent.js).
 #
 # Why: the pattern rules are made of the strings they look for, so scanning this repo with
 # itself makes every rule report itself. In auth-bypass-agent.js the regex /\bDEBUG\s*=\s*True\b/

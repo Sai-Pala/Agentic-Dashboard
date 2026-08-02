@@ -8,9 +8,8 @@
  * imports, so this is a leaf every view can depend on without creating a cycle.
  */
 
-// 'triage' deliberately excluded — agents/triage.md no longer exists (Triage is a synthetic
-// verdict now, not a live agent stage, see CLAUDE.md), so GET /api/agents can never return it;
-// including it here permanently capped knownAgentsAvailableCount() at 3/4 on a healthy install.
+// Only agents with a prompts/*.md file. Triage and Fix are synthetic — GET /api/agents can
+// never return them, so listing them here would cap the "N available" count below 100%.
 export const KNOWN_AGENTS = ['remediation', 'verify'];
 
 // Kind is differentiated by icon + label text only, not hue — color in this app is reserved
