@@ -26,6 +26,7 @@ import path from 'path';
 import { ReconAgent } from './recon-agent.js';
 import { VerifierAgent } from './verifier-agent.js';
 import { enumerateSurface } from '../../enumerate.js';
+import { clearFileCache } from './base-agent.js';
 
 // =============================================================================
 // CONSTANTS
@@ -84,6 +85,10 @@ export class Orchestrator {
    * @returns {Promise<object>} — { recon, findings[], agentResults[], suppression }
    */
   async runAll(rootPath, options = {}) {
+    // Per-scan, never across scans: this engine runs in a long-lived server, and stale bytes
+    // would report a vulnerability the user has already fixed.
+    clearFileCache();
+
     const absolutePath = path.resolve(rootPath);
     const timeout = options.timeout || DEFAULT_TIMEOUT;
     const concurrency = options.concurrency || DEFAULT_CONCURRENCY;

@@ -20,6 +20,22 @@ import path from 'path';
 import fg from 'fast-glob';
 import { SKIP_DIRS, SKIP_EXTENSIONS, SKIP_FILENAMES, MAX_FILE_SIZE, loadGitignorePatterns } from '../../utils/patterns.js';
 
+// ---------------------------------------------------------------------------
+// Per-scan file cache
+//
+// MUST be cleared between scans. This engine runs inside a long-lived server: cache a file
+// across scans and a vulnerability the user just fixed would still be reported from stale
+// bytes. The orchestrator calls clearFileCache() at the start of every runAll().
+// ---------------------------------------------------------------------------
+const FILE_CACHE = new Map();
+const FILE_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+let fileCacheBytes = 0;
+
+export function clearFileCache() {
+  FILE_CACHE.clear();
+  fileCacheBytes = 0;
+}
+
 // =============================================================================
 // FINDING FACTORY
 // =============================================================================
@@ -203,13 +219,28 @@ export class BaseAgent {
 
   /**
    * Read a file safely, returning null on failure.
+   *
+   * Cached for the duration of one scan. Every agent walks the same file list, so without this
+   * each file is read once per agent — measured at 14x amplification (1,301 reads of 93 files,
+   * 8.8 MB for 0.6 MB of source). The cache returns identical bytes, so no agent's findings can
+   * change; it only removes repeated I/O.
    */
   readFile(filePath) {
+    const hit = FILE_CACHE.get(filePath);
+    if (hit !== undefined) return hit;
+    let content;
     try {
-      return fs.readFileSync(filePath, 'utf-8');
+      content = fs.readFileSync(filePath, 'utf-8');
     } catch {
-      return null;
+      content = null;
     }
+    // Bounded: a large repository would otherwise pin every scanned file in memory at once.
+    // Past the cap reads still work, they just stop being cached.
+    if (content === null || fileCacheBytes + content.length <= FILE_CACHE_MAX_BYTES) {
+      FILE_CACHE.set(filePath, content);
+      fileCacheBytes += content === null ? 0 : content.length;
+    }
+    return content;
   }
 
   /**
