@@ -7,14 +7,14 @@
  */
 
 import { state } from '../../state.js';
+import { emit, EVENTS } from '../../events.js';
 import { escapeHtml, statusBadgeHtml } from '../../lib/html.js';
 import { icon } from '../../lib/icons.js';
-import { statusLabel, severityLabel } from '../../lib/format.js';
-import { SCAN_TYPE_META, SEV_ORDER_MAP, STATUS_ORDER_MAP } from '../../lib/meta.js';
+import { severityLabel } from '../../lib/format.js';
+import { SCAN_TYPE_META, SEV_ORDER_MAP, STATUS_ORDER_MAP, findingSourceTagHtml } from '../../lib/meta.js';
 import { findingLoopCellHtml } from '../../components/loop/cell.js';
 import { onViewDiffClick } from '../../components/loop/actions.js';
-import { hasEligibleAgents, openMenuUnderButton, openFindingContextMenu } from '../../components/menu.js';
-import { openFindingDetail } from '../finding-detail/index.js';
+import { openMenuUnderButton, openFindingContextMenu } from '../../components/menu.js';
 import { findingsScanScoped } from './filters.js';
 
 const FINDINGS_COLUMNS = {
@@ -58,17 +58,6 @@ export function findingsSortValue(f, key) {
  * Which of Hybrid Scan's two code-analysis engines found this, read off the synthetic triage
  * verdict's `source`. Absent for manually-added and SCA findings.
  */
-export function findingSourceTagHtml(f) {
-  const source = f.stageRuns && f.stageRuns.triage && f.stageRuns.triage.verdict && f.stageRuns.triage.verdict.source;
-  if (source === 'sast-engine-verifier') {
-    return `<span class="finding-source-tag" title="Found by the deterministic pattern-matching engine">Pattern match</span>`;
-  }
-  if (source === 'reasoning-scan') {
-    return `<span class="finding-source-tag" title="Found by the LLM reasoning pass">Reasoning</span>`;
-  }
-  return '';
-}
-
 function findingsCellHtml(f, key) {
   switch (key) {
     case 'severity':
@@ -108,7 +97,6 @@ export function renderFindingsTable() {
   const headEl = document.getElementById('findings-table-head');
   const bodyEl = document.getElementById('findings-table-body');
   const columns = FINDINGS_COLUMNS[state.findingsTypeFilter] || FINDINGS_COLUMNS.all;
-  const menuAvailable = hasEligibleAgents();
 
   const scanScoped = findingsScanScoped();
   const rows = (state.findingsTypeFilter === 'all' ? scanScoped.slice() : scanScoped.filter((f) => f.scanType === state.findingsTypeFilter));
@@ -177,7 +165,7 @@ export function renderFindingsTable() {
         onViewDiffClick(f.id);
       });
     }
-    tr.addEventListener('click', () => openFindingDetail(f.id));
+    tr.addEventListener('click', () => emit(EVENTS.DETAIL_OPEN, f.id));
     tr.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       openFindingContextMenu(e.clientX, e.clientY, f.id, f);

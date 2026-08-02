@@ -14,9 +14,9 @@ import { escapeHtml } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { agentMeta, SCAN_TYPE_META } from '../lib/meta.js';
 import { truncate, formatRelativeTime, dateGroupLabel } from '../lib/format.js';
-import { renderNavBadges } from '../router.js';
+import { renderNavBadges } from '../nav.js';
+import { on, EVENTS, emit } from '../events.js';
 import { renderScanFindingsBody } from './scans/index.js';
-import { openFindingDetail } from './finding-detail/index.js';
 
 export async function loadTimeline() {
   state.timelineEntries = await getTimeline();
@@ -165,7 +165,7 @@ export function renderTimeline() {
         renderScanFindingsBody(body, detail.findings, entry.scanId, detail);
       });
     } else {
-      row.addEventListener('click', () => openFindingDetail(entry.findingId));
+      row.addEventListener('click', () => emit(EVENTS.DETAIL_OPEN, entry.findingId));
     }
     listEl.appendChild(row);
   }
@@ -204,6 +204,8 @@ export function updateTimelineClockDots() {
 }
 
 export function wireTimeline() {
+  on(EVENTS.TIMELINE_UPSERT, upsertTimelineEntry);
+
   document.getElementById('timeline-refresh').addEventListener('click', loadTimeline);
   document.getElementById('timeline-drawer-close').addEventListener('click', closeTimelineDrawer);
   document.getElementById('timeline-drawer-backdrop').addEventListener('click', closeTimelineDrawer);

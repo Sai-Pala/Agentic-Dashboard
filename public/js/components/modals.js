@@ -10,8 +10,7 @@ import { state } from '../state.js';
 import { postFinding } from '../api.js';
 import { agentMeta } from '../lib/meta.js';
 import { startStage, findingSourcePath } from './runs.js';
-import { loadFindings } from '../views/findings/index.js';
-import { openFindingDetail } from '../views/finding-detail/index.js';
+import { emitAsync, EVENTS } from '../events.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -114,8 +113,8 @@ async function saveFinding() {
   }
   state.findingCache.set(res.finding.id, res.finding);
   closeFindingModal();
-  await loadFindings();
-  await openFindingDetail(res.finding.id);
+  await emitAsync(EVENTS.FINDINGS_RELOAD);
+  await emitAsync(EVENTS.DETAIL_OPEN, res.finding.id);
 }
 
 export function wireModals() {

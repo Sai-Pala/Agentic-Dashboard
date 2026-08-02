@@ -7,6 +7,7 @@
  */
 
 import { state } from '../state.js';
+import { on, EVENTS } from '../events.js';
 import { escapeHtml } from '../lib/html.js';
 import { icon } from '../lib/icons.js';
 import { agentMeta } from '../lib/meta.js';
@@ -89,4 +90,11 @@ export function renderDashboard() {
     `;
     agentsEl.appendChild(row);
   }
+}
+
+/** The dashboard shows connection state, so it redraws when the socket flips. */
+export function wireDashboard() {
+  on(EVENTS.WS_STATUS, () => {
+    if (state.currentView === 'dashboard') renderDashboard();
+  });
 }

@@ -34,6 +34,19 @@ const JS_DIR = path.join(__dirname, '..', 'public', 'js');
  */
 const KNOWN_CYCLE_COUNT = 25;
 
+/**
+ * Size of the largest mutually-dependent cluster (strongly-connected component).
+ *
+ * This is the metric that actually tracks coupling, and the cycle count above does not. A cycle
+ * count can fall while the tangle stays exactly as bad — 25 cycles over 16 modules that all reach
+ * each other is one blob, not 25 separate problems. What matters to a reader is "how many files
+ * must I hold in my head to understand this one", and that is the SCC size.
+ *
+ * Splitting a monolith into many small files does not by itself reduce this number, which is why
+ * it is guarded separately: it is the difference between modular and merely subdivided.
+ */
+const MAX_SCC_SIZE = 3;
+
 /** Modules that legitimately need a document at import time and so cannot load in bare Node. */
 const NEEDS_DOM = new Set(['main.js']);
 
@@ -81,6 +94,50 @@ function findCycles(graph) {
   return [...found];
 }
 
+/**
+ * Tarjan's algorithm: every maximal set of modules that can all reach each other.
+ * Singletons are dropped — a module with no cycle is a component of size 1 and says nothing.
+ */
+function stronglyConnectedComponents(graph) {
+  let index = 0;
+  const indices = new Map();
+  const lowlinks = new Map();
+  const stack = [];
+  const onStack = new Set();
+  const components = [];
+
+  const strongConnect = (v) => {
+    indices.set(v, index);
+    lowlinks.set(v, index);
+    index++;
+    stack.push(v);
+    onStack.add(v);
+
+    for (const w of graph.get(v) || []) {
+      if (!indices.has(w)) {
+        strongConnect(w);
+        lowlinks.set(v, Math.min(lowlinks.get(v), lowlinks.get(w)));
+      } else if (onStack.has(w)) {
+        lowlinks.set(v, Math.min(lowlinks.get(v), indices.get(w)));
+      }
+    }
+
+    if (lowlinks.get(v) === indices.get(v)) {
+      const component = [];
+      let w;
+      do {
+        w = stack.pop();
+        onStack.delete(w);
+        component.push(w);
+      } while (w !== v);
+      if (component.length > 1) components.push(component);
+    }
+  };
+
+  for (const v of graph.keys()) if (!indices.has(v)) strongConnect(v);
+  return components;
+}
+
 describe('client module graph', () => {
   const modules = allModules(JS_DIR);
 
@@ -94,6 +151,18 @@ describe('client module graph', () => {
       cycles.length <= KNOWN_CYCLE_COUNT,
       `import cycles went from ${KNOWN_CYCLE_COUNT} to ${cycles.length}. New cycle(s):\n` +
         cycles.map((c) => '  ' + c.split('|').join(' <-> ')).join('\n'),
+    );
+  });
+
+  test('no large mutually-dependent cluster', () => {
+    const components = stronglyConnectedComponents(buildGraph(modules))
+      .sort((a, b) => b.length - a.length);
+    const largest = components.length ? components[0].length : 0;
+    assert.ok(
+      largest <= MAX_SCC_SIZE,
+      `largest mutually-dependent cluster is ${largest} modules (limit ${MAX_SCC_SIZE}).\n` +
+        `Every module below can reach every other, so none can be read, tested or moved alone:\n` +
+        (components[0] || []).map((f) => '  ' + path.relative(JS_DIR, f)).join('\n'),
     );
   });
 

@@ -62,3 +62,19 @@ export const VERDICT_SKIP_FIELDS = new Set([...VERDICT_BADGE_FIELDS, 'reasoning'
 // loop boxes and "run all stages" button — so the per-finding agent menu no longer lists them;
 // what's left there is whatever custom agents exist beyond the built-ins.
 export const FIX_FLOW_AGENTS = ['triage', 'remediation', 'fix', 'verify'];
+
+/**
+ * Which engine found a finding, as a badge. Pure function of the finding, and needed by both the
+ * findings table and the detail page — it lives here so the detail page does not have to import
+ * the table (which imports the list, which imports the detail page).
+ */
+export function findingSourceTagHtml(f) {
+  const source = f.stageRuns && f.stageRuns.triage && f.stageRuns.triage.verdict && f.stageRuns.triage.verdict.source;
+  if (source === 'sast-engine-verifier') {
+    return `<span class="finding-source-tag" title="Found by the deterministic pattern-matching engine">Pattern match</span>`;
+  }
+  if (source === 'reasoning-scan') {
+    return `<span class="finding-source-tag" title="Found by the LLM reasoning pass">Reasoning</span>`;
+  }
+  return '';
+}

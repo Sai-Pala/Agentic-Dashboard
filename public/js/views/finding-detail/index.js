@@ -8,22 +8,22 @@
 
 import { state } from '../../state.js';
 import { getFinding } from '../../api.js';
-import { showView } from '../../router.js';
+import { showView } from '../../nav.js';
+import { on, emit, EVENTS } from '../../events.js';
 import { escapeHtml } from '../../lib/html.js';
 import { icon } from '../../lib/icons.js';
 import { highlightCode } from '../../lib/highlight.js';
 import { truncate, statusLabel, severityLabel } from '../../lib/format.js';
-import { SCAN_TYPE_META, FIX_FLOW_AGENTS } from '../../lib/meta.js';
+import { SCAN_TYPE_META, findingSourceTagHtml } from '../../lib/meta.js';
 import { wireConsoleToggles, reattachConsoleRefs } from '../../components/console.js';
 import { findingStageRuns } from '../../components/loop/state.js';
 import { fdLoopBoxesHtml } from '../../components/loop/boxes.js';
 import { onLoopAdvanceClick, onLoopRunAllClick } from '../../components/loop/actions.js';
 import { hasEligibleAgents, openMenuUnderButton } from '../../components/menu.js';
-import { openFindingsFilteredByScan } from '../findings/index.js';
-import { findingSourceTagHtml } from '../findings/table.js';
 import { runCardHtml } from './run-card.js';
 
-export async function openFindingDetail(findingId) {
+/** Reached through EVENTS.DETAIL_OPEN, subscribed in wireFindingDetail — not imported directly. */
+async function openFindingDetail(findingId) {
   state.currentFindingDetailId = findingId;
   showView('finding-detail');
   const bodyEl = document.getElementById('fd-body');
@@ -72,7 +72,8 @@ function findingFlowHtml(finding) {
   `;
 }
 
-export function renderFindingDetail(findingId) {
+/** Reached through EVENTS.DETAIL_REFRESH, subscribed in wireFindingDetail. */
+function renderFindingDetail(findingId) {
   const finding = state.findingCache.get(findingId);
   if (!finding || state.currentFindingDetailId !== findingId) return;
 
@@ -162,7 +163,7 @@ export function renderFindingDetail(findingId) {
 
   const viewSourceScanBtn = bodyEl.querySelector('[data-action="view-source-scan"]');
   if (viewSourceScanBtn) {
-    viewSourceScanBtn.addEventListener('click', () => openFindingsFilteredByScan(finding.sourceScanId));
+    viewSourceScanBtn.addEventListener('click', () => emit(EVENTS.FINDINGS_FILTER_BY_SCAN, finding.sourceScanId));
   }
 
   wireConsoleToggles(bodyEl, state.stageConsoles, () => renderFindingDetail(findingId));
@@ -196,6 +197,22 @@ function renderFindingDetailActions(finding) {
   }
 }
 
+/**
+ * True when this page is currently showing that finding.
+ *
+ * Lived in components/runs.js, where every caller had to remember to guard with it before
+ * asking for a re-render. It is a fact about this view, so this view now owns it and the
+ * refresh subscriber below applies it once — callers just announce that a finding changed.
+ */
+function isShowing(findingId) {
+  return state.currentView === 'finding-detail' && state.currentFindingDetailId === findingId;
+}
+
 export function wireFindingDetail() {
   document.getElementById('fd-back-btn').addEventListener('click', () => showView('findings'));
+
+  on(EVENTS.DETAIL_OPEN, openFindingDetail);
+  on(EVENTS.DETAIL_REFRESH, (findingId) => {
+    if (isShowing(findingId)) renderFindingDetail(findingId);
+  });
 }

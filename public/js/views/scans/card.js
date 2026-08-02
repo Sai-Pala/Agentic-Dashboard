@@ -8,6 +8,7 @@
  */
 
 import { state } from '../../state.js';
+import { emit, EVENTS } from '../../events.js';
 import { deleteScan } from '../../api.js';
 import { send } from '../../ws.js';
 import { escapeHtml } from '../../lib/html.js';
@@ -15,11 +16,10 @@ import { icon } from '../../lib/icons.js';
 import { truncate } from '../../lib/format.js';
 import { SCAN_TYPE_META } from '../../lib/meta.js';
 import { stopScanElapsedTimer } from './progress.js';
-import { renderNavStatus } from '../../router.js';
+import { renderNavStatus } from '../../nav.js';
 import { renderDashboard } from '../dashboard.js';
 import { renderTimeline } from '../timeline.js';
 import { openFindingsFilteredByScan } from '../findings/index.js';
-import { openFindingDetail } from '../finding-detail/index.js';
 
 export function makeScanCard(runId, targetPath, meta, containerEl) {
   const typeMeta = SCAN_TYPE_META[meta.scanType] || SCAN_TYPE_META.reasoning;
@@ -166,7 +166,7 @@ export function renderScanCardResults(run, scanFindings) {
         <div class="scan-result-why">${escapeHtml(truncate(f.description || '', 160))}</div>
       </div>
     `;
-    item.addEventListener('click', () => openFindingDetail(f.id));
+    item.addEventListener('click', () => emit(EVENTS.DETAIL_OPEN, f.id));
     run.resultsEl.appendChild(item);
   }
 }

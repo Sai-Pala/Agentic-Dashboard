@@ -7,7 +7,8 @@
 
 import { state } from './state.js';
 import { getAgents } from './api.js';
-import { initNav, showView } from './router.js';
+import { initNav, showView } from './nav.js';
+import { registerViews } from './router.js';
 import { connect } from './ws.js';
 
 import { loadFindings, wireFindingsView } from './views/findings/index.js';
@@ -15,6 +16,8 @@ import { loadScans, wireScansView } from './views/scans/index.js';
 import { loadTimeline, wireTimeline, closeTimelineDrawer } from './views/timeline.js';
 import { wireFindingDetail } from './views/finding-detail/index.js';
 import { wireSettings } from './views/settings.js';
+import { wireDashboard } from './views/dashboard.js';
+import { wireRunMessages } from './components/runs.js';
 import { wireModals, closeStageModal, closeFindingModal } from './components/modals.js';
 import { closeContextMenu } from './components/menu.js';
 
@@ -42,6 +45,8 @@ function wireGlobalDismiss() {
 }
 
 async function init() {
+  // Must precede any showView() call: it is what teaches the nav which view renders how.
+  registerViews();
   initNav();
   wireScansView();
   wireFindingsView();
@@ -49,6 +54,8 @@ async function init() {
   wireTimeline();
   wireSettings();
   wireModals();
+  wireDashboard();
+  wireRunMessages();
   wireGlobalDismiss();
 
   await loadAgents();

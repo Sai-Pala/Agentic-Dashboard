@@ -15,9 +15,7 @@ import { send } from '../ws.js';
 import { uid } from '../lib/format.js';
 import { agentMeta } from '../lib/meta.js';
 import { trackConsoleText } from './console.js';
-import { upsertTimelineEntry } from '../views/timeline.js';
-import { updateFindingListItem } from '../views/findings/index.js';
-import { renderFindingDetail } from '../views/finding-detail/index.js';
+import { emit, on, EVENTS } from '../events.js';
 import { findingStageRuns } from './loop/state.js';
 
 export async function ensureFindingCached(findingId) {
@@ -60,11 +58,6 @@ export function buildBaseContext(finding) {
   return parts.filter(Boolean).join('\n');
 }
 
-/** True when the finding-detail page is currently showing this finding. */
-export function detailOpenFor(findingId) {
-  return state.currentView === 'finding-detail' && state.currentFindingDetailId === findingId;
-}
-
 export function startStage(findingId, agent, context, instruction) {
   const finding = state.findingCache.get(findingId);
   const runId = uid();
@@ -73,7 +66,7 @@ export function startStage(findingId, agent, context, instruction) {
   state.stageConsoles.set(runId, { runId, consoleText: '', consoleOpen: false, consoleEl: null });
 
   const startedAt = Date.now();
-  upsertTimelineEntry({
+  emit(EVENTS.TIMELINE_UPSERT, {
     kind: agent, runId, findingId, findingTitle: finding ? finding.title : '(finding)', agent,
     status: 'running', instruction, verdict: null, startedAt, finishedAt: null,
   });
@@ -81,7 +74,7 @@ export function startStage(findingId, agent, context, instruction) {
   // Optimistic "running" placeholder so an open detail page shows the run starting immediately.
   if (finding) {
     finding.runs.push({ runId, agent, status: 'running', verdict: null, startedAt, finishedAt: null });
-    if (detailOpenFor(findingId)) renderFindingDetail(findingId);
+    emit(EVENTS.DETAIL_REFRESH, findingId);
   }
 
   const runMsg = { type: 'run', runId, findingId, agent, context, instruction };
@@ -98,7 +91,7 @@ async function refreshFindingAfterRun(findingId) {
   const finding = await getFinding(findingId);
   if (!finding) return;
   state.findingCache.set(findingId, finding);
-  updateFindingListItem(findingId, {
+  emit(EVENTS.FINDING_UPDATED, findingId, {
     status: finding.status,
     runCount: finding.runs.length,
     latestRun: finding.runs.length ? (({ agent, status, verdict }) => ({ agent, status, verdict }))(finding.runs[finding.runs.length - 1]) : null,
@@ -106,7 +99,11 @@ async function refreshFindingAfterRun(findingId) {
   });
 }
 
-export function handleFindingRunMessage(msg) {
+export function wireRunMessages() {
+  on(EVENTS.WS_RUN_MESSAGE, handleFindingRunMessage);
+}
+
+function handleFindingRunMessage(msg) {
   const findingId = msg.runId ? state.stages.get(msg.runId) : null;
 
   if (msg.type === 'error' && !findingId) {
@@ -121,7 +118,7 @@ export function handleFindingRunMessage(msg) {
     const finding = state.findingCache.get(findingId);
     if (finding && !finding.runs.some((r) => r.runId === msg.runId)) {
       finding.runs.push({ runId: msg.runId, agent: msg.agent, status: 'running', verdict: null, startedAt: Date.now(), finishedAt: null });
-      if (detailOpenFor(findingId)) renderFindingDetail(findingId);
+      emit(EVENTS.DETAIL_REFRESH, findingId);
     }
     return;
   }
@@ -140,12 +137,12 @@ export function handleFindingRunMessage(msg) {
       state.precheckRunIds.delete(msg.runId);
       alert(msg.message);
     }
-    upsertTimelineEntry({ runId: msg.runId, status: 'error', finishedAt: Date.now() });
+    emit(EVENTS.TIMELINE_UPSERT, { runId: msg.runId, status: 'error', finishedAt: Date.now() });
     refreshFindingAfterRun(findingId);
     return;
   }
   if (msg.type === 'done') {
-    upsertTimelineEntry({ runId: msg.runId, status: msg.code === 0 ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
+    emit(EVENTS.TIMELINE_UPSERT, { runId: msg.runId, status: msg.code === 0 ? 'done' : 'error', verdict: msg.verdict, finishedAt: Date.now() });
     state.precheckRunIds.delete(msg.runId);
     refreshFindingAfterRun(findingId);
     return;

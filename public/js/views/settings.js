@@ -10,7 +10,7 @@ import { state } from '../state.js';
 import { postSessionClear } from '../api.js';
 import { escapeHtml } from '../lib/html.js';
 import { KNOWN_AGENTS } from '../lib/meta.js';
-import { renderNavStatus } from '../router.js';
+import { renderNavStatus } from '../nav.js';
 import { renderDashboard } from './dashboard.js';
 import { renderFindingsView } from './findings/index.js';
 import { renderTimeline } from './timeline.js';
@@ -26,7 +26,7 @@ function knownAgentsAvailableCount() {
 function applyTheme(theme) {
   if (theme === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
-  try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+  try { localStorage.setItem(THEME_KEY, theme); } catch { /* private mode: theme is session-only */ }
   renderThemeToggle();
 }
 

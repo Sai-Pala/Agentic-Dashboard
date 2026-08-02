@@ -8,9 +8,9 @@
 
 import { state } from '../../state.js';
 import { getFindings, FINDINGS_CSV_URL } from '../../api.js';
-import { renderNavStatus, showView } from '../../router.js';
+import { renderNavStatus, showView } from '../../nav.js';
+import { on, emit, EVENTS } from '../../events.js';
 import { renderDashboard } from '../dashboard.js';
-import { renderFindingDetail } from '../finding-detail/index.js';
 import { renderFindingsScanFilter, renderFindingsTypeTabs, findingsScanScoped } from './filters.js';
 import { renderFindingsTable } from './table.js';
 
@@ -31,11 +31,12 @@ export function renderFindingsView() {
   renderFindingsTable();
 }
 
-export function updateFindingListItem(findingId, patch) {
+/** Reached through EVENTS.FINDING_UPDATED, subscribed in wireFindingsView. */
+function updateFindingListItem(findingId, patch) {
   const item = state.findings.find((f) => f.id === findingId);
   if (item) Object.assign(item, patch);
   if (state.currentView === 'findings') renderFindingsTable();
-  if (state.currentView === 'finding-detail' && state.currentFindingDetailId === findingId) renderFindingDetail(findingId);
+  emit(EVENTS.DETAIL_REFRESH, findingId);
   if (state.currentView === 'dashboard') renderDashboard();
 }
 
@@ -45,6 +46,10 @@ export function openFindingsFilteredByScan(scanId) {
 }
 
 export function wireFindingsView() {
+  on(EVENTS.FINDINGS_RELOAD, loadFindings);
+  on(EVENTS.FINDINGS_FILTER_BY_SCAN, openFindingsFilteredByScan);
+  on(EVENTS.FINDING_UPDATED, updateFindingListItem);
+
   const menuEl = document.getElementById('findings-scan-filter-menu');
   document.getElementById('findings-scan-filter-btn').addEventListener('click', (e) => {
     e.stopPropagation();

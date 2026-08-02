@@ -12,11 +12,11 @@ import { getScans } from '../../api.js';
 import { send } from '../../ws.js';
 import { escapeHtml } from '../../lib/html.js';
 import { uid, statusLabel } from '../../lib/format.js';
-import { renderNavStatus, showView } from '../../router.js';
+import { renderNavStatus, showView } from '../../nav.js';
+import { on, emit, EVENTS } from '../../events.js';
 import { renderDashboard } from '../dashboard.js';
 import { upsertTimelineEntry } from '../timeline.js';
 import { loadFindings, openFindingsFilteredByScan } from '../findings/index.js';
-import { openFindingDetail } from '../finding-detail/index.js';
 import { makeScanCard, setStageStatus, updateScanCardActions, renderScanCardResults } from './card.js';
 import {
   updateScanElapsed, stopScanElapsedTimer, updateDetBar, updateScaBar,
@@ -78,7 +78,7 @@ export function renderScanFindingsBody(body, scanFindings, scanId, detail) {
         <div class="finding-row-meta"><span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span></div>
       </div>
     `;
-    item.addEventListener('click', () => openFindingDetail(f.id));
+    item.addEventListener('click', () => emit(EVENTS.DETAIL_OPEN, f.id));
     body.appendChild(item);
   }
 }
@@ -165,7 +165,8 @@ function startScan() {
   beginScanRun(targetPath, '', scanMeta, document.getElementById('scan-live-container'));
 }
 
-export function handleScanServerMessage(msg) {
+/** Reached through EVENTS.WS_SCAN_MESSAGE, subscribed in wireScansView. */
+function handleScanServerMessage(msg) {
   const run = msg.runId ? state.scanRuns.get(msg.runId) : null;
   const listItem = msg.runId ? state.scansList.find((s) => s.runId === msg.runId) : null;
 
@@ -239,6 +240,8 @@ export function handleScanServerMessage(msg) {
 }
 
 export function wireScansView() {
+  on(EVENTS.WS_SCAN_MESSAGE, handleScanServerMessage);
+
   const baseBranchWrap = document.getElementById('scan-base-branch-wrap');
   const baseBranchInput = document.getElementById('scan-base-branch-input');
   document.querySelectorAll('#scan-scope-toggle .group-toggle-btn').forEach((btn) => {

@@ -8,10 +8,8 @@
  */
 
 import { state } from './state.js';
-import { renderNavStatus } from './router.js';
-import { renderDashboard } from './views/dashboard.js';
-import { handleScanServerMessage } from './views/scans/index.js';
-import { handleFindingRunMessage } from './components/runs.js';
+import { renderNavStatus } from './nav.js';
+import { emit, EVENTS } from './events.js';
 
 export function send(msg) {
   state.ws.send(JSON.stringify(msg));
@@ -23,12 +21,16 @@ function setStatus(connected) {
   el.className = connected ? 'connected' : 'disconnected';
 }
 
+/**
+ * The `scan-*` reply family is routed separately on purpose: the server gives scans their own
+ * message types so the generic runId-keyed handlers cannot collide with them.
+ */
 function handleServerMessage(msg) {
   if (msg.type && msg.type.indexOf('scan') === 0) {
-    handleScanServerMessage(msg);
+    emit(EVENTS.WS_SCAN_MESSAGE, msg);
     return;
   }
-  handleFindingRunMessage(msg);
+  emit(EVENTS.WS_RUN_MESSAGE, msg);
 }
 
 export function connect() {
@@ -37,11 +39,11 @@ export function connect() {
 
   state.ws.addEventListener('open', () => {
     setStatus(true); renderNavStatus();
-    if (state.currentView === 'dashboard') renderDashboard();
+    emit(EVENTS.WS_STATUS, true);
   });
   state.ws.addEventListener('close', () => {
     setStatus(false); renderNavStatus();
-    if (state.currentView === 'dashboard') renderDashboard();
+    emit(EVENTS.WS_STATUS, false);
     setTimeout(connect, 2000);
   });
   state.ws.addEventListener('error', () => state.ws.close());

@@ -14,9 +14,8 @@
 import { state } from '../../state.js';
 import { uid } from '../../lib/format.js';
 import { send } from '../../ws.js';
-import { upsertTimelineEntry } from '../../views/timeline.js';
-import { openFindingDetail, renderFindingDetail } from '../../views/finding-detail/index.js';
-import { ensureFindingCached, findingSourcePath, buildBaseContext, startStage, detailOpenFor } from '../runs.js';
+import { emit, EVENTS } from '../../events.js';
+import { ensureFindingCached, findingSourcePath, buildBaseContext, startStage } from '../runs.js';
 import { findingLoopNextAction } from './state.js';
 
 function confirmApplyWrite(targetPath) {
@@ -73,7 +72,7 @@ export async function onLoopRunAllClick(findingId) {
 }
 
 export function onViewDiffClick(findingId) {
-  openFindingDetail(findingId);
+  emit(EVENTS.DETAIL_OPEN, findingId);
 }
 
 /** Read-only propose. Tracked in precheckRunIds since "is this a real directory" can still fail. */
@@ -85,12 +84,12 @@ function startRemediatePreview(findingId, finding, targetPath) {
 
   const startedAt = Date.now();
   const context = buildBaseContext(finding);
-  upsertTimelineEntry({
+  emit(EVENTS.TIMELINE_UPSERT, {
     kind: 'remediation', runId, findingId, findingTitle: finding.title, agent: 'remediation',
     status: 'running', instruction: '', verdict: null, startedAt, finishedAt: null,
   });
   finding.runs.push({ runId, agent: 'remediation', status: 'running', verdict: null, startedAt, finishedAt: null });
-  if (detailOpenFor(findingId)) renderFindingDetail(findingId);
+  emit(EVENTS.DETAIL_REFRESH, findingId);
 
   send({ type: 'remediate_preview', runId, findingId, context, instruction: '', path: targetPath });
 }
@@ -102,12 +101,12 @@ function startRemediateFix(findingId, finding, targetPath) {
   state.precheckRunIds.add(runId);
 
   const startedAt = Date.now();
-  upsertTimelineEntry({
+  emit(EVENTS.TIMELINE_UPSERT, {
     kind: 'fix', runId, findingId, findingTitle: finding.title, agent: 'fix',
     status: 'running', instruction: '', verdict: null, startedAt, finishedAt: null,
   });
   finding.runs.push({ runId, agent: 'fix', status: 'running', verdict: null, startedAt, finishedAt: null });
-  if (detailOpenFor(findingId)) renderFindingDetail(findingId);
+  emit(EVENTS.DETAIL_REFRESH, findingId);
 
   send({ type: 'remediate_fix', runId, findingId, path: targetPath });
 }
@@ -131,12 +130,12 @@ function startRemediateAll(findingId, finding, targetPath) {
 
   const startedAt = Date.now();
   const context = buildBaseContext(finding);
-  upsertTimelineEntry({
+  emit(EVENTS.TIMELINE_UPSERT, {
     kind: 'remediation', runId: remediationRunId, findingId, findingTitle: finding.title, agent: 'remediation',
     status: 'running', instruction: '', verdict: null, startedAt, finishedAt: null,
   });
   finding.runs.push({ runId: remediationRunId, agent: 'remediation', status: 'running', verdict: null, startedAt, finishedAt: null });
-  if (detailOpenFor(findingId)) renderFindingDetail(findingId);
+  emit(EVENTS.DETAIL_REFRESH, findingId);
 
   send({ type: 'remediate_all', findingId, remediationRunId, fixRunId, verifyRunId, context, instruction: '', path: targetPath });
 }
