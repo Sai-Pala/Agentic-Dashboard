@@ -1,66 +1,27 @@
-# Read by sast-engine's BaseAgent._loadIgnorePatterns() (sast-engine/agents/base-agent.js),
-# applied as fast-glob ignores in discoverFiles(). One pattern per line; a trailing "/" means
-# "this directory and everything under it". Blank lines and "#" comments are skipped.
+# Excluded from the deterministic pattern engine's file discovery.
+# Read by BaseAgent._loadIgnorePatterns() (sast-engine/rules/base-agent.js).
 #
-# WHY THIS FILE EXISTS
+# Why: the pattern rules are made of the strings they look for, so scanning this repo with
+# itself makes every rule report itself. In auth-bypass-agent.js the regex /\bDEBUG\s*=\s*True\b/
+# matches the title 'Django: DEBUG = True' on the line above it. Measured: 107 of 134 findings
+# came from these two directories, and all 40 that reached adjudication were false positives.
 #
-# This repository contains a pattern-matching security scanner, so scanning it with itself
-# produces a large number of findings that are not vulnerabilities: the rule definitions are
-# made of the very strings the rules look for. The purest example is auth-bypass-agent.js,
-# where these two lines sit next to each other:
+# Scope is the rule corpus only. enumerate.js, ast-extract.js, remediation-apply.js and
+# commands/ stay in scope deliberately — remediation-apply.js is the one function here that
+# writes to disk. Do not widen this to "sast-engine/".
 #
-#     title: 'Django: DEBUG = True',
-#     regex: /\bDEBUG\s*=\s*True\b/g,
+# Known side effect: whole-tree analyses now see a smaller repo. UNUSED_DEPENDENCY reports
+# fast-glob as unused; it is not, it is imported by five files under rules/. Treat a
+# low-severity UNUSED_DEPENDENCY hit here with suspicion. UnusedGuardAgent's reference counting
+# has the same blind spot.
 #
-# The regex matches the title, so the rule reports itself as a high-severity finding. The same
-# happens to doc comments listing what an agent detects and to `description:` strings
-# explaining a pattern. BaseAgent.scanFileWithPatterns() tests every regex against every
-# physical line with no notion of whether that line is code, a comment, or a string literal —
-# so any file that *describes* a vulnerability pattern also *matches* it.
-#
-# Measured on this repo: 107 of 134 deterministic findings came from the two directories below,
-# and every one of the 40 that reached the LLM adjudication pass was closed as a false positive.
-#
-# SCOPE: THE RULE CORPUS ONLY, NOT THE WHOLE ENGINE
-#
-# Only the pattern-definition directories are excluded. sast-engine/enumerate.js,
-# ast-extract.js, remediation-apply.js and commands/ are ordinary application code that can
-# hold ordinary bugs — remediation-apply.js in particular is the one function in this app that
-# writes to disk — so they stay in scope deliberately. Do not widen this to "sast-engine/".
-#
-# This only affects the deterministic pattern engine's file discovery. The reasoning passes get
-# the target directory as cwd and read it with their own Read/Grep/Glob tools, so they still
-# see these files and can still report real logic bugs in them.
-#
-# Trade-off worth knowing: base-agent.js and orchestrator.js are real logic that lives in
-# agents/, so the pattern engine no longer scans them either. Both produced zero findings, and
-# the reasoning half still covers them — but that is the cost of a directory-level exclusion.
-#
-# KNOWN SIDE EFFECT: WHOLE-REPO ANALYSES SEE A SMALLER REPO
-#
-# Any rule that reasons about the *whole tree* rather than one line now works from a partial
-# picture, because usage that lives in an excluded file is invisible to it. One case is live
-# and expected: UNUSED_DEPENDENCY reports `fast-glob` as unused. It is not — it is imported by
-# base-agent.js, model-scan-agent.js, memory-poisoning-agent.js, install-guard-agent.js and
-# agent-config-scanner.js, every one of which sits under the excluded agents/ directory. That
-# finding is a false positive created by this file, not a real one; treat a low-severity
-# UNUSED_DEPENDENCY hit here with suspicion before acting on it.
-#
-# The same caution applies to UnusedGuardAgent's reference counting: a function defined in a
-# scanned file but only called from an excluded one would look like it has zero call sites.
-# Nothing in this repo currently hits that, but it is the same failure mode.
+# The reasoning passes are unaffected — they read the target with their own Read/Grep/Glob.
 
-sast-engine/agents/
+sast-engine/rules/
 sast-engine/utils/
 
-# Golden-master test input, not application code. test/fixtures/vuln-app/ is a deliberately
-# insecure miniature Express app that exists so the deterministic engine's output can be
-# snapshotted and compared across a refactor. It is never imported by the app and never
-# executed. If a real scan of this repo ever reports a finding from test/fixtures/, this
-# exclusion has regressed — see test/fixtures/vuln-app/README.md.
+# Golden-master input for engine-golden.test.js, never imported or executed. A real finding
+# from test/fixtures/ means this exclusion regressed.
 test/fixtures/
 
-# Deliberately NOT excluded: *.md. REASONING_ENGINE.md contributes 3 secret-pattern findings
-# that are documentation examples, but excluding markdown from a secret scanner is a bad
-# default — a credential really committed into a doc is a real finding, and this is exactly
-# the case GitHistoryScanner and SecretsAgent exist to catch.
+# Deliberately NOT excluded: *.md. A credential committed into a doc is a real finding.

@@ -1,0 +1,268 @@
+/**
+ * The reasoning half of a hybrid scan: two concurrent `claude -p` passes, both taking the
+ * deterministic half's output as their input.
+ *
+ *   ADJUDICATE — the pattern findings with their code, asking which are real. Only runs when
+ *                the deterministic half found something. Scales with finding count.
+ *   REVIEW     — the enumerated attack surface plus what the deterministic half already
+ *                reported, asking the authorization and business-logic questions no fixed rule
+ *                set can express. Always runs; an empty deterministic result is not evidence
+ *                the code is clean. Scales with endpoint count, sharded (see plan.js).
+ *
+ * Neither scales with repo size, so a large codebase costs roughly what a small one does.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const {
+  agentFilePath,
+  ADJUDICATE_MAX_FINDINGS,
+  REASONING_ADJUDICATE_BUDGET_USD,
+  REASONING_REVIEW_BUDGET_USD,
+  REASONING_REVIEW_TOTAL_USD,
+  REVIEW_MAX_SHARDS,
+  REVIEW_MAX_SHARDS_UNCAPPED,
+  REVIEW_SHARD_CONCURRENCY,
+} = require('../../config');
+const { severityRank } = require('../taxonomy');
+const { runReasoningCall } = require('../claude');
+const { loadSastEngine } = require('../sast-engine');
+const { buildCoverageSummary, renderAdjudicationWorklist, planReviewShards } = require('./plan');
+
+/**
+ * @returns {{findings, adjudications: Map<number, object>, error, costUsd}} `findings` is raw
+ * review-pass output; `adjudications` maps deterministic-finding index -> verdict.
+ */
+async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, surface, { children, send }) {
+  let engine;
+  try {
+    engine = await loadSastEngine();
+  } catch (err) {
+    return { findings: [], adjudications: new Map(), error: `Failed to load scan engine: ${err.message}`, costUsd: 0 };
+  }
+
+  const readAgent = (name) => {
+    const p = agentFilePath(name);
+    if (!fs.existsSync(p)) throw new Error(`agents/${name}.md is not available.`);
+    return fs.readFileSync(p, 'utf8');
+  };
+
+  let reviewPrompt;
+  try {
+    reviewPrompt = readAgent('scan') + '\n\n' + buildCoverageSummary(engine);
+  } catch (err) {
+    return { findings: [], adjudications: new Map(), error: err.message, costUsd: 0 };
+  }
+
+  scan.moduleRunIds = [];
+
+  const adjudicable = [...detFindings.entries()]
+    .sort(([, a], [, b]) => severityRank(a.severity) - severityRank(b.severity));
+  const adjudicating = adjudicable.slice(0, ADJUDICATE_MAX_FINDINGS);
+  const overflow = adjudicable.length - adjudicating.length;
+
+  let adjudicatePrompt = null;
+  if (adjudicating.length) {
+    try {
+      adjudicatePrompt = readAgent('adjudicate');
+    } catch (err) {
+      send({
+        type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+        message: `${err.message} Deterministic findings will keep their pattern-engine verdicts without independent review.`,
+      });
+    }
+  }
+
+  // Planned before `total` so the progress bar's denominator is right from the first message.
+  const shards = planReviewShards(surface, detFindings, targetPath, {
+    maxShards: scan.budgetEnabled ? REVIEW_MAX_SHARDS : REVIEW_MAX_SHARDS_UNCAPPED,
+  });
+
+  const total = (adjudicatePrompt ? 1 : 0) + shards.list.length;
+  let done = 0;
+  let totalCostUsd = 0;
+  const errors = [];
+  const progress = () => {
+    if (scan.status !== 'cancelled') {
+      send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'reasoning', done, total, costUsd: totalCostUsd });
+    }
+  };
+  progress();
+
+  const adjudications = new Map();
+
+  const adjudicatePass = async () => {
+    if (!adjudicatePrompt) return;
+    if (overflow > 0) {
+      send({
+        type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+        message: `${adjudicable.length} deterministic findings exceeded the ${ADJUDICATE_MAX_FINDINGS}-finding adjudication limit — the ${ADJUDICATE_MAX_FINDINGS} most severe were independently reviewed; the remaining ${overflow} keep their pattern-engine verdict and are marked "needs review".`,
+      });
+    }
+
+    const worklist = renderAdjudicationWorklist(adjudicating.map(([, f]) => f), targetPath);
+    const userPrompt = [
+      `A deterministic pattern-matching engine reported ${adjudicating.length} finding${adjudicating.length === 1 ? '' : 's'} in this codebase. Decide which are real.`,
+      'Read the actual files before deciding — the snippets below are a few lines of context, and what makes a finding real or not is often outside them.',
+      `Target directory: ${targetPath}`,
+      `Findings to adjudicate:\n\n${worklist}`,
+    ].join('\n\n');
+
+    const res = await runReasoningCall({
+      scan, targetPath, children, send, index: 0, label: 'Adjudication pass',
+      systemPrompt: adjudicatePrompt, userPrompt, budgetUsd: REASONING_ADJUDICATE_BUDGET_USD,
+    });
+    totalCostUsd += res.costUsd;
+    done++;
+    progress();
+    if (res.error) errors.push(res.error);
+
+    const verdicts = res.parsed && Array.isArray(res.parsed.verdicts) ? res.parsed.verdicts : [];
+    for (const v of verdicts) {
+      // `id` indexes the sorted slice handed to the model, not detFindings — map it back through
+      // `adjudicating` so a verdict can never land on the wrong finding.
+      const entry = adjudicating[Number(v.id)];
+      if (!entry) continue;
+      adjudications.set(entry[0], v);
+    }
+  };
+
+  if (!surface) {
+    send({
+      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+      message: 'Attack-surface enumeration produced nothing — the review pass will run without a route worklist, which weakens coverage of authorization and business-logic issues.',
+    });
+  }
+  if (shards.skippedRoutes > 0) {
+    send({
+      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+      message: `${shards.totalRoutes} routes exceeded what ${REVIEW_MAX_SHARDS} review shards can cover — the ${shards.reviewedRoutes} highest-risk were reviewed (unguarded mounts and authenticated-but-not-authorized surfaces first); ${shards.skippedRoutes} were NOT reviewed for authorization or business-logic issues. Turn off the budget cap, or scan a narrower directory, for full coverage.`,
+    });
+  }
+
+  const runReviewShard = async (shard, index) => {
+    // Checked at dispatch rather than up front so shards already in flight always finish —
+    // killing a call mid-analysis wastes what it already spent.
+    if (scan.budgetEnabled && totalCostUsd >= REASONING_REVIEW_TOTAL_USD) {
+      return { findings: [], skipped: true };
+    }
+
+    const parts = [
+      'Review this application for security vulnerabilities that a pattern-matching engine cannot find: '
+      + 'authorization and access-control gaps, business-logic flaws, and controls that are defined in one '
+      + 'place but never actually applied where they are needed. Reason about externally-reachable endpoints '
+      + 'the way an attacker interacting with the running application would. No live instance is being hit — '
+      + 'this is inferred from static code, so frame findings accordingly.',
+    ];
+
+    if (diffFiles) {
+      parts.push(`Limit your review to only the following changed files versus the base branch — do not scan anything else in the repository:\n${diffFiles.map((p) => `- ${p}`).join('\n')}`);
+    } else if (shard.files && shards.list.length > 1) {
+      // Focus, NOT a sandbox. Answering "could this data belong to someone else" almost always
+      // means following the call into a file outside the list; forbidding that would defeat the
+      // questions the pass is being asked.
+      parts.push(
+        'You are reviewing one slice of a larger application. These files hold the routes you '
+        + 'are responsible for:\n'
+        + shard.files.map((p) => `- ${p}`).join('\n')
+        + '\n\nReport findings for these routes only — other slices are being reviewed separately, '
+        + 'so do not report issues whose root cause lives in a file outside this list. You may and '
+        + 'should read anything in the repository to understand what these routes do.',
+      );
+    }
+    parts.push(`Target directory: ${targetPath}`);
+
+    // The enumerated surface is what bounds this call: the model answers questions about a
+    // known set of endpoints instead of deciding for itself what to read. A malformed worklist
+    // degrades to the unscoped behaviour and must never cost us the shard.
+    if (surface) {
+      try {
+        const worklist = engine.renderWorklist(surface, shard.files || diffFiles || null);
+        if (worklist.trim()) parts.push(worklist);
+      } catch { /* non-fatal */ }
+    }
+
+    // Naming what the deterministic half already found is the other half of making this a
+    // hybrid: without it the model spends its budget rediscovering the same hardcoded secret.
+    // Locations only — the point is avoidance, not review, which was the adjudication pass's job.
+    const shardFileSet = shard.files ? new Set(shard.files) : null;
+    const relevantDet = detFindings.filter((f) => {
+      if (!shardFileSet) return true;
+      if (!f.file) return false;
+      return shardFileSet.has(path.relative(targetPath, f.file).split(path.sep).join('/'));
+    });
+    if (relevantDet.length) {
+      const already = relevantDet.slice(0, 60).map((f) => {
+        const rel = f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : '(no file)';
+        return `- ${f.title || f.rule} @ ${f.line ? `${rel}:${f.line}` : rel}`;
+      }).join('\n');
+      parts.push(
+        'Already reported by the deterministic engine — do NOT report these again, and do not spend '
+        + `effort re-deriving them. Report only what is missing from this list:\n${already}`
+        + (relevantDet.length > 60 ? `\n(+${relevantDet.length - 60} more of the same kinds)` : ''),
+      );
+    }
+
+    const res = await runReasoningCall({
+      scan, targetPath, children, send,
+      // index 0 is the adjudication pass; review shards follow it.
+      index: index + 1,
+      label: shards.list.length > 1 ? `Review shard ${index + 1}/${shards.list.length}` : 'Review pass',
+      systemPrompt: reviewPrompt, userPrompt: parts.join('\n\n'), budgetUsd: REASONING_REVIEW_BUDGET_USD,
+    });
+    totalCostUsd += res.costUsd;
+    done++;
+    progress();
+    if (res.error) errors.push(res.error);
+    return {
+      findings: res.parsed && Array.isArray(res.parsed.findings) ? res.parsed.findings : [],
+      skipped: false,
+    };
+  };
+
+  const reviewPass = async () => {
+    const out = [];
+    let skippedForBudget = 0;
+    let next = 0;
+    const worker = async () => {
+      while (next < shards.list.length && scan.status !== 'cancelled') {
+        const i = next++;
+        const r = await runReviewShard(shards.list[i], i);
+        if (r.skipped) { skippedForBudget++; done++; progress(); continue; }
+        out.push(...r.findings);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(REVIEW_SHARD_CONCURRENCY, shards.list.length) }, worker),
+    );
+    if (skippedForBudget) {
+      send({
+        type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+        message: `The review pass reached its $${REASONING_REVIEW_TOTAL_USD} per-scan budget — ${skippedForBudget} of ${shards.list.length} shards were skipped and their routes were NOT reviewed. Turn off the budget cap for full coverage.`,
+      });
+    }
+    return out;
+  };
+
+  // Concurrent: the two passes share no data with each other, and both their inputs already
+  // exist by the time this runs, so sequencing them adds the shorter one's whole wall clock to
+  // every scan for nothing.
+  const [, reviewFindings] = await Promise.all([adjudicatePass(), reviewPass()]);
+
+  if (scan.status === 'cancelled') {
+    return { findings: [], adjudications, error: null, costUsd: totalCostUsd };
+  }
+
+  // Every pass failing is an engine failure; some passing is a degraded scan that still produced
+  // real results. scan-warning rather than scan-stderr, which the client discards.
+  if (errors.length === total) {
+    return { findings: [], adjudications, error: errors.join(' | '), costUsd: totalCostUsd };
+  }
+  if (errors.length) {
+    send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `${errors.length}/${total} reasoning passes had issues: ${errors.join(' | ')}` });
+  }
+  return { findings: reviewFindings, adjudications, error: null, costUsd: totalCostUsd };
+}
+
+module.exports = { runLLMReasoningScan };

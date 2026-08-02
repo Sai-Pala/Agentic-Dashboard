@@ -18,87 +18,28 @@
  *
  * HOW THE FUNCTIONS GET HERE
  * --------------------------
- * index.html's script is not a module and touches the DOM at its top level, so it cannot be
- * required or eval'd wholesale in Node. test/helpers/extract-client-fns.js parses it with
- * @babel/parser, slices out only the named top-level declarations listed below, and evaluates
- * those in a bare `node:vm` context with no `document` and no app globals. See that file's
- * header for the full rationale.
- *
- * The harness throws loudly if a named declaration disappears — during the refactor that is a
- * real signal about what moved, so do not silence it by deleting names from TARGETS.
- *
- * LIFESPAN
- * --------
- * Once Phase 4 lands, the `extract(TARGETS)` call below collapses into ordinary `import`
- * statements and test/helpers/extract-client-fns.js is deleted (along with the `plain()` /
- * `isTypeError()` cross-realm shims, which only exist because of the vm). The assertions
- * themselves survive that change untouched — that is the point of writing them against
- * behaviour rather than against wiring.
+ * Ordinary imports. Node can require() an ES module as long as it has no top-level await.
+ * These modules are pure — no DOM access at module scope — which is why they can be pulled
+ * into a Node test at all; keep it that way when adding to them.
  *
  * NOT COVERED (deliberately): anything that touches the DOM. `escapeHtml()` builds a detached
- * <div> and reads `.innerHTML`, so it cannot run without a DOM and is not a pure function to
- * lift; `diffLineHtml()`, `highlightCode()`, `loopTrackHtml()`, `findingLoopCellHtml()` and
- * `fdLoopBoxesHtml()` all either call it or emit markup. There is no `parseFileLine()` on the
- * client at all — that helper lives in server.js, outside this file's scope.
+ * <div> and reads `.innerHTML`, so it cannot run without a DOM; `diffLineHtml()`,
+ * `highlightCode()`, `loopTrackHtml()`, `findingLoopCellHtml()` and `fdLoopBoxesHtml()` all
+ * either call it or emit markup.
  */
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { extract } = require('./helpers/extract-client-fns.js');
 
-// Every top-level declaration lifted out of index.html. Pure constants are included because
-// the functions close over them (SEV_ORDER_MAP / STATUS_ORDER_MAP / AGENT_META).
-const TARGETS = [
-  // NOTE: guardKindOf / guardNameSegments / AUTHZ_WORDS / AUTHN_WORDS moved to
-  // views/surface-guards.js, and agentMeta / SEV_ORDER_MAP / STATUS_ORDER_MAP / AGENT_META
-  // moved to data/meta.js. All are real imports below now.
-  'findingStageRuns',
-  'findingLoopState',
-  'findingLoopNextAction',
-  'findingsSortValue',
-  'scanFilterLabel',
-  // NOTE: formatRelativeTime / verdictFieldLabel / truncate / statusLabel / severityLabel /
-  // formatElapsed / formatTokenCount used to be extracted here too. Phase 4 step 2 moved them
-  // into public/js/util/format.js, so they are now imported as real module exports instead —
-  // see `format` below. Each name that leaves this list is a name the harness no longer has to
-  // fake, and the harness is deleted entirely once the list is empty (PHASE4-PLAN.md §4).
-];
-
-// Real module exports, imported directly — no extraction, no vm realm, no shims. As the Phase
-// 4 split proceeds, names migrate from `extract(TARGETS)` into imports like this one, and the
-// test bodies below are unchanged either way because both sources are merged into `C`.
-// Node can require() an ES module as long as it has no top-level await, which these do not.
-const format = require('../public/js/util/format.js');
-const meta = require('../public/js/data/meta.js');
+const format = require('../public/js/lib/format.js');
+const meta = require('../public/js/lib/meta.js');
 const guards = require('../public/js/views/surface-guards.js');
+const loop = require('../public/js/components/loop/state.js');
+const table = require('../public/js/views/findings/table.js');
 
-// scanFilterLabel is still extracted from app.js but calls formatRelativeTime, which now lives
-// in a module the bare vm context cannot see. Seed it so the extracted function can resolve it.
-// This is the shape of every remaining step: as a dependency moves out, whatever still depends
-// on it gets that binding injected until it moves too.
-const extracted = extract(TARGETS, {
-  bindings: {
-    formatRelativeTime: format.formatRelativeTime,   // used by scanFilterLabel
-    SEV_ORDER_MAP: meta.SEV_ORDER_MAP,               // used by findingsSortValue
-    STATUS_ORDER_MAP: meta.STATUS_ORDER_MAP,         // used by findingsSortValue
-  },
-});
+const C = { ...format, ...meta, ...guards, ...loop, ...table };
 
-// __meta is non-enumerable, so an object spread silently drops it — carry it across explicitly.
-const C = { ...extracted, ...format, ...meta, ...guards, __meta: extracted.__meta };
-
-/**
- * Objects created inside the vm context carry that realm's Object.prototype, not the host's,
- * so `deepStrictEqual` rejects them as "same structure but not reference-equal" even when the
- * data matches. Normalize through JSON before any structural comparison. Identity assertions
- * (e.g. "returns the same object, not a copy") deliberately skip this.
- */
 const plain = (v) => JSON.parse(JSON.stringify(v));
-
-/**
- * Same cross-realm problem for errors: a TypeError thrown inside the vm is not an `instanceof`
- * the host's TypeError. Match on `name` instead.
- */
 const isTypeError = (err) => err.name === 'TypeError';
 
 // ---------------------------------------------------------------------------
@@ -121,29 +62,15 @@ const FIX_APPLIED = { status: 'done', verdict: { verdict: 'applied', applied_dif
 const VERIFY_FIXED = { status: 'done', verdict: { verdict: 'verified_fixed' } };
 
 // ===========================================================================
-describe('extraction harness', () => {
-  test('every targeted declaration is still present at the top level of index.html', () => {
-    // extract() throws on a miss, so reaching here already proves it. Assert the shapes so a
-    // declaration that survives in name but changes kind (function -> arrow const, say) shows up.
-    assert.equal(C.__meta.length, TARGETS.length);
-    for (const name of TARGETS) {
-      assert.ok(name in C, `${name} was not exported by the harness`);
-    }
-  });
-
-  test('the harness fails loudly, not silently, when a function name disappears', () => {
-    assert.throws(
-      () => extract(['guardKindOf', 'aFunctionThatDoesNotExist']),
-      /aFunctionThatDoesNotExist/,
-      'a missing declaration must throw by name — swallowing it would let the suite pass while testing nothing'
-    );
-  });
-
-  test('extracted functions run with no DOM available at all', () => {
-    // Proves the vm context is genuinely bare: if any of these had reached for `document`,
-    // it would have thrown a ReferenceError rather than returned a value.
+describe('module surface', () => {
+  test('the pure client modules import and run with no DOM at all', () => {
+    // This whole file runs in bare Node. Reaching here already proves the modules have no
+    // top-level DOM access; calling through proves the functions don't either. If someone adds
+    // a `document` reference to one of these, this is where it surfaces.
     assert.equal(typeof C.guardKindOf({ middleware: [] }), 'string');
     assert.equal(typeof C.findingLoopState(mkStageRuns({})), 'object');
+    assert.equal(typeof C.findingsSortValue({ severity: 'high' }, 'severity'), 'number');
+    assert.equal(typeof C.scanFilterLabel({ path: '/x', startedAt: Date.now() }), 'string');
   });
 });
 

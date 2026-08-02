@@ -1,6 +1,6 @@
 # Agents
 
-`agents/*.md` are system prompts, passed to `claude -p` via `--append-system-prompt`. Plain
+`prompts/*.md` are system prompts, passed to `claude -p` via `--append-system-prompt`. Plain
 markdown, no code. **This is the only place agent-specific analysis logic lives.**
 
 | File | Role | Invoked by |
@@ -86,7 +86,7 @@ byte-identical across agents** — copy, do not redefine. They match the org's e
 `owasp-code-review` Claude skill so findings read consistently whether a human or an agent
 produced them.
 
-`agents/remediation.md` is the canonical source. `verify.md` points to it.
+`prompts/remediation.md` is the canonical source. `verify.md` points to it.
 
 **Framework mapping (`owasp`, `asvs`, `cwe`, `nist_800_53`) is required, not optional**, whenever
 a verdict is `confirmed` or `needs_review` — this program runs under FedRAMP Moderate/High and

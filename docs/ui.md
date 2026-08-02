@@ -1,29 +1,42 @@
 # The client
 
 `public/` is served as-is. No bundler, no build step — the client is native ES modules loaded via
-a single `<script type="module" src="/js/app.js">`. Keep it that way.
+a single `<script type="module" src="/js/main.js">`. Keep it that way.
 
 ```
 public/
-  index.html          markup only (386 lines)
-  app.css             all styles (693 lines)
+  index.html          markup only
+  app.css             all styles
   js/
     package.json      {"type":"module"} — lets Node import these files in tests
-    app.js            views, wiring, WebSocket handling, and the mutable state
-    data/meta.js      AGENT_META, severity/status order maps, label tables
-    ui/icons.js       hand-drawn inline SVG — no icon library
-    ui/highlight.js   hand-rolled regex tokenizer — no highlighting library
-    util/format.js    pure formatters (Node-importable, no DOM)
-    util/html.js      escapeHtml / formatInlineText (DOM-touching)
-    views/surface-guards.js   guard classification for the Attack Surface page
+    main.js           entry point: wiring order and nothing else
+    state.js          the shared mutable state (see below)
+    api.js            every fetch(), one function per endpoint
+    ws.js             the socket + message dispatch
+    router.js         showView(), nav wiring, nav badges
+    views/            one folder or file per screen — start here to find a screen
+      dashboard.js  surface.js  timeline.js  settings.js
+      surface-guards.js         guard classification, kept pure so tests can import it
+      scans/        index (load + start + dispatch)  card  progress
+      findings/     index (load + wiring)  table  filters
+      finding-detail/  index  run-card
+    components/       UI used by more than one view
+      loop/         state  cell  boxes  actions
+      runs.js  modals.js  menu.js  console.js
+    lib/            format  html  icons  highlight  meta
 ```
 
 The no-external-dependency aesthetic is deliberate and consistent: hand-drawn icons, a
 hand-rolled syntax highlighter, and hand-rolled `+`/`-`/`@@` diff colouring rather than a diff
 library.
 
-`util/format.js` is kept free of DOM access specifically so the test suite can import it
-directly. Anything DOM-touching goes in `util/html.js` instead.
+Two rules keep the test suite able to import client code at all, since it runs in bare Node with
+no DOM:
+
+- **`lib/format.js` and `views/surface-guards.js` and `components/loop/state.js` must stay free
+  of DOM access.** Anything DOM-touching goes in `lib/html.js` instead.
+- **No module may touch `document` at module scope.** Inside a function body is fine; at the top
+  level it makes the module unimportable in Node and un-orderable in the browser.
 
 ## Views
 
@@ -205,14 +218,28 @@ This is a **deliberately separate, simpler implementation** from the engine's ow
 a display-time classification over an already-computed manifest, not a detection rule, so the two
 are not kept in sync and this page can label a mount `authn` without a corresponding finding.
 
+## State
+
+`state.js` exports one plain object. Every module reads and writes `state.foo` directly.
+
+This shape is forced, not stylistic: **ES modules forbid assigning to an imported binding**, so
+`import { findings }` then `findings = [...]` is a syntax error. A single mutable container is
+the smallest thing that lets any module write shared state without a framework.
+
+It is deliberately dumb — no reactivity, no subscriptions, no proxies. A view re-renders because
+a caller says so. If you find yourself wanting change detection here, the honest fix is to call
+the render function, not to make the object clever.
+
 ## Known weaknesses
 
-Two, both known and both worth fixing before adding features here:
-
-1. **`app.js` is still ~2,700 lines** and holds every view. The remaining split is blocked on
-   the item below, since view modules would need to write shared state.
-2. **20 module-level `let` bindings are the app's entire state model**, mutated in place from
-   anywhere. **ES modules forbid assigning to an imported binding**, so these cannot simply be
-   moved into a `state.js` and imported — they need a mutable container or setters. This is also
-   the root cause of the three `reattach*` workarounds: state has no owner, so re-rendering
-   destroys the DOM those bindings implicitly point at.
+- **Twelve files sit between 150 and 270 lines**, mostly `views/scans/index.js`,
+  `views/timeline.js`, and `src/services/engines/reasoning.js`. Each has a plausible seam
+  (start vs. handlers; drawer vs. render; adjudicate vs. review) and none is urgent.
+- **`components/runs.js` and `components/loop/` know about each other.** `runs.js` imports
+  `loop/state.js` and `loop/actions.js` imports back into views. The cycles are safe today
+  because every cross-edge is a call inside a function body — but that is a property nothing
+  enforces. Moving a cross-module call to module scope will break the graph at load time, and
+  the only thing that catches it is loading the page.
+- **The `reattach*` helpers remain.** Finding Detail and the scan cards rebuild their HTML on
+  render, so live-run element refs have to be re-pointed afterwards. That is a consequence of
+  rendering by string concatenation, not of the state model.

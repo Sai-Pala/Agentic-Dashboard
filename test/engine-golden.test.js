@@ -55,7 +55,7 @@ let _enginePromise = null;
 function loadEngine() {
   if (!_enginePromise) {
     _enginePromise = Promise.all([
-      import('../sast-engine/agents/index.js'),
+      import('../sast-engine/rules/index.js'),
       import('../sast-engine/enumerate.js'),
     ]).then(([agentsIndex, enumerate]) => ({
       buildOrchestratorAsync: agentsIndex.buildOrchestratorAsync,

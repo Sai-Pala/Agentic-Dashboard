@@ -102,7 +102,7 @@ Comment-stripping must stay quote-aware (`stripLineComment()`): a naive `//` str
 `runLLMReasoningScan()`. Two `claude -p` passes, run **concurrently with each other** but
 **after** the deterministic half, since both take its output as input.
 
-- **Adjudicate** (`agents/adjudicate.md`, `REASONING_ADJUDICATE_BUDGET_USD` = $1.50) takes the
+- **Adjudicate** (`prompts/adjudicate.md`, `REASONING_ADJUDICATE_BUDGET_USD` = $1.50) takes the
   deterministic findings with code context and decides which are real. This removes false
   positives, which pattern matching structurally cannot do for itself — it matches *syntax*, not
   *meaning*, so it cannot tell a genuine SQL injection from a parameterized query sitting next to
@@ -114,7 +114,7 @@ Comment-stripping must stay quote-aware (`stripLineComment()`): a naive `//` str
   incomplete. Bounded at `ADJUDICATE_MAX_FINDINGS` (40, most-severe-first); the shortfall is
   reported in a `scan-warning`, not silently ignored.
 
-- **Review** (`agents/scan.md`, `REASONING_REVIEW_BUDGET_USD` = $3.50 **per shard**,
+- **Review** (`prompts/scan.md`, `REASONING_REVIEW_BUDGET_USD` = $3.50 **per shard**,
   `REASONING_REVIEW_TOTAL_USD` = $8 per scan) takes the enumerated attack surface and asks the
   authorization and business-logic questions no fixed rule set can express. It is also handed the
   deterministic findings' locations under a "do NOT report these again" instruction — that
@@ -196,8 +196,9 @@ it's typically far the fastest.
    consistently, so **location is the signal**. Findings are sorted most-severe-first before
    deduping, so when two calls disagree on severity the surviving copy is the more severe
    reading.
-3. **Deterministic vs itself** (`dedupeAdjacentSameRule()`) — collapses a rule firing on
-   *consecutive* lines. **Adjacency is load-bearing**: three separate SQL injections in one file
+3. **Deterministic vs itself** (`dedupeAdjacentSameRule()`) — collapses a rule firing repeatedly
+   within `ADJACENT_RULE_LINES` (3), anchored to the group's first line so a group can never
+   drift. **Adjacency is load-bearing**: three separate SQL injections in one file
    are three real findings and must stay three, so distance is what separates "one condition
    observed repeatedly" from "several distinct sites".
 
@@ -284,3 +285,79 @@ and renders as an amber banner, appended rather than replaced. This distinction 
 the partial-failure summary *was* originally sent as `scan-stderr` and therefore silently
 dropped — a real induced failure produced no visible signal anywhere in the UI despite the server
 correctly describing it.
+
+## Reference: every tunable number
+
+| constant | value | controls |
+|---|---|---|
+| `REASONING_ADJUDICATE_BUDGET_USD` | 1.50 | cap on the adjudication pass |
+| `REASONING_REVIEW_BUDGET_USD` | 3.50 | cap per review **shard** |
+| `REASONING_REVIEW_TOTAL_USD` | 8.00 | ceiling across all review shards |
+| `ADJUDICATE_MAX_FINDINGS` | 40 | findings per adjudication call |
+| `REVIEW_ROUTES_PER_SHARD` | 40 | routes per review shard |
+| `REVIEW_MAX_SHARDS` | 6 | shards with the budget cap on (~240 routes) |
+| `REVIEW_MAX_SHARDS_UNCAPPED` | 24 | shards with the cap off |
+| `REVIEW_SHARD_CONCURRENCY` | 3 | shards running at once |
+| `DETERMINISTIC_AGENT_TIMEOUT_MS` | 180000 | per-agent hang detector |
+| `WORKLIST_MAX_ROUTES` / `_MOUNTS` | 60 / 60 | worklist section caps |
+| `WORKLIST_MAX_UNUSED` | 40 | unused-control lines in a worklist |
+| `WORKLIST_MAX_SINKS_PER_KIND` | 30 | sink lines per kind |
+| `MAX_FLOW_DISTANCE` | 60 | taint source→sink line distance |
+| `MIN_ENTROPY` | 3.0 | Shannon bits/char for generic secrets |
+| `ADJACENT_RULE_LINES` | 3 | same-rule collapse distance |
+| dedup proximity | 2 | reasoning-vs-pattern line distance |
+
+## Reference: failure modes
+
+The engine works to distinguish **"found nothing"** from **"couldn't look."** Those look
+identical in a naive scanner and are the most dangerous thing a security tool can confuse.
+
+| what happens | result |
+|---|---|
+| 1 of 3 engines fails | succeeds on the other two + warning |
+| 3 of 3 engines fail | scan fails |
+| 1 of N reasoning passes fails | succeeds on the survivors + "1/N passes had issues" |
+| every reasoning pass fails | treated as the whole engine failing |
+| budget exhausted mid-call | keeps partial findings, says coverage incomplete |
+| a pattern agent times out | **warning naming it + "these classes were NOT checked"** |
+| more than 40 pattern findings | 40 most severe adjudicated; rest keep their pattern verdict + warning |
+| more routes than 6 shards hold | highest-risk reviewed; warning names how many were not |
+| per-scan review ceiling hit | remaining shards skipped + warning; findings so far kept |
+| `prompts/adjudicate.md` missing | findings keep their pattern verdicts + warning; review still runs |
+| audit tool broken | throws → warning (**never** a silent zero) |
+| a file won't parse | that file falls back to regex |
+| enumeration fails entirely | scan continues without a worklist + warning |
+
+## Reference: how to add things
+
+**A pattern rule** — find the right agent in `sast-engine/rules/`, add
+`{ rule, title, regex, severity, cwe, owasp, description, fix }`. The regex is tested against
+**one line**. Then self-scan and confirm it produces no noise on real code.
+
+**A whole agent** — new file in `sast-engine/rules/` extending `BaseAgent`; implement
+`shouldRun(recon)` and `analyze(context)`; register it in `sast-engine/rules/index.js`.
+`context` gives you `rootPath`, `files`, `recon`, `options`, `surface`.
+
+**A taint sink or source** — `sast-engine/rules/taint-flow-agent.js`: `SINKS[]` for a new
+dangerous operation, `TAINT_SOURCE` for a new way untrusted data enters.
+
+**What the AI is asked** — `prompts/scan.md` is the system prompt; the per-call user prompt is
+built in `runLLMReasoningScan()`; the worklist text is `renderWorklist()` in `enumerate.js`.
+
+## Known limits
+
+Stated plainly, because a tool that hides these is worse than one that doesn't have them.
+
+- **No call graph.** Taint is intra-procedural: a value tainted in a handler, passed to a helper,
+  and used dangerously *inside that helper* is not tracked across the boundary.
+- **Enumeration is structural, not semantic.** Routes registered dynamically — a loop over a
+  config array, a decorator, a generated router — won't appear, because there is no static route
+  string to read.
+- **Tuned for JavaScript/TypeScript.** Other languages get the generic patterns and the
+  dependency audit, not the route/taint/guard analysis.
+- **The reasoning half varies between runs.** The deterministic half is byte-identical every
+  time; the AI pass is not.
+- **Unused-control detection counts references textually.** A function invoked dynamically reads
+  as unused — hence the medium-confidence cap.
+- **Business logic remains the hardest class.** Multi-step flaws (a refund exceeding the original
+  charge, a coupon redeemable twice) are found by the reasoning half or not at all.

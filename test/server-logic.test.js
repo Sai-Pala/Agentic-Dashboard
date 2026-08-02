@@ -10,30 +10,30 @@
  * `CONCERN:` comment. Do not "fix" a failing assertion by changing server.js unless the
  * behaviour change is deliberate.
  *
- * Requiring server.js is safe: the listen() call is guarded by `require.main === module`.
+ * Imports come straight from the modules that own each function, so a failure points at one.
  */
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
+const { deriveStatus, latestRunByAgent } = require('../src/store/findings/status.js');
+const { toListItem } = require('../src/store/findings/list-item.js');
+const { csvEscape } = require('../src/store/findings/csv.js');
+const { toScanListItem } = require('../src/store/scans.js');
 const {
-  deriveStatus,
-  dedupeAdjacentSameRule,
   priorityFromSeverityConfidence,
   normalizeSeverity,
   placeholderTriageRun,
-  extractVerdict,
-  latestRunByAgent,
-  toListItem,
   severityRank,
+} = require('../src/services/taxonomy.js');
+const { extractVerdict } = require('../src/services/verdict.js');
+const {
+  dedupeAdjacentSameRule,
   parseFileLine,
   isDuplicateOfReasoning,
-  csvEscape,
-  planReviewShards,
-  renderAdjudicationWorklist,
-  toScanListItem,
-  isAllowedWsOrigin,
-} = require('../server.js');
+} = require('../src/services/merge.js');
+const { planReviewShards, renderAdjudicationWorklist } = require('../src/services/engines/plan.js');
+const { isAllowedWsOrigin } = require('../src/ws/origin.js');
 
 // ---------------------------------------------------------------------------
 // Cross-site WebSocket hijacking guard.

@@ -16,7 +16,7 @@ Everything is in-memory and session-lifetime. There is no database, no auth, no 
 ```bash
 npm install
 npm start     # node server.js — http://localhost:4500
-npm test      # node --test "test/**/*.test.js" — 367 tests, ~30s
+npm test      # node --test "test/**/*.test.js" — 365 tests, ~30s
 ```
 
 `claude auth status` must succeed before any LLM-backed feature works; the server spawns the
@@ -28,27 +28,49 @@ upgrade.
 
 ## Repo map
 
+Layered: routes are controllers, services hold the logic, store holds the data. The browser
+side has no routes or database, so it only grows the layer it has — views.
+
 ```
-server.js              Express + ws. REST API, WebSocket handlers, the scan orchestration
-                       (runHybridReasoningScan), the in-memory stores, and the `claude -p`
-                       spawn/relay logic. Re-exports lib/* so tests and callers have one
-                       import surface.
-lib/                   Extracted from server.js, pure and independently testable:
-                         taxonomy.js    severity/status/label derivation
-                         verdict.js     extractVerdict — pulls the fenced JSON block
-                         merge.js       the three dedupe axes
-                         ws-origin.js   WebSocket Origin validation
-                         remediation.js the fix flow (preview / apply / chained)
-sast-engine/           Vendored from the open-source `ship-safe` project (MIT — see
-                       sast-engine/LICENSE), trimmed to what this app uses. Real ESM
-                       ("type":"module"); server.js loads it via dynamic import().
-                       See docs/scan-engine.md.
-agents/*.md            Agent system prompts, passed via --append-system-prompt. Plain
-                       markdown, no code. See docs/agents.md.
-public/                index.html (markup only), app.css, js/ (ES modules).
-                       See docs/ui.md.
-test/                  node:test characterization suites. See "Testing" below.
+server.js               ~40 lines: build the app, mount routers, attach ws, listen.
+src/
+  config.js             every constant and every tunable number
+  routes/               controllers — parse the request, call a service, respond
+    agents  findings  scans  session  timeline
+  services/             logic, no req/res
+    scanner.js          orchestrates the three engines and merges them
+    engines/            deterministic.js  reasoning.js  sca.js  plan.js (shard planning)
+    claude.js           spawning `claude -p`, relaying stream-json
+    remediation.js      the fix flow
+    sast-engine.js      loads the vendored ESM engine via dynamic import()
+    merge.js  taxonomy.js  verdict.js
+  store/                the in-memory data
+    findings/           state  status  list-item  factories  flow  csv  (index re-exports)
+    scans.js
+  ws/                   index.js (dispatch) + scan  run  fix  origin
+
+public/
+  index.html            markup only
+  app.css
+  js/
+    main.js             entry point: wiring order, nothing else
+    state.js            the shared mutable state — one object, see docs/ui.md
+    api.js  ws.js  router.js
+    views/              one folder or file per screen
+      dashboard  scans/  findings/  finding-detail/  surface  timeline  settings
+    components/         UI used by more than one view
+      loop/ (state cell boxes actions)  runs  modals  menu  console
+    lib/                format  html  icons  highlight  meta
+
+sast-engine/            vendored from `ship-safe` (MIT — see sast-engine/LICENSE). Real ESM.
+                        rules/ holds the pattern agents. See docs/scan-engine.md.
+prompts/*.md            agent system prompts, passed via --append-system-prompt.
+                        See docs/agents.md.
+test/                   node:test characterization suites. See "Testing" below.
 ```
+
+Two names that used to collide: `prompts/` holds LLM prompt files, `sast-engine/rules/` holds
+regex pattern rules. Both were called `agents/` once; they are unrelated.
 
 ## The pipeline
 
@@ -80,7 +102,7 @@ code edit.
 
 ## Data model
 
-Four session-lifetime `Map`s in `server.js`, all reset on restart, all starting empty (there is
+Two session-lifetime `Map`s under `src/store/`, both reset on restart, both starting empty (there is
 no seed data).
 
 - **`findings`** — each finding owns a `runs` array. A run record (`{runId, agent, status,
@@ -179,7 +201,7 @@ the browser.
 
 This app can scan itself, and `.sast-engineignore` exists because of what happens when it does:
 the pattern agents' own rule definitions are literal vulnerable-code strings, so the engine
-reports its own rule files as findings. The ignore file excludes `sast-engine/agents/` and
+reports its own rule files as findings. The ignore file excludes `sast-engine/rules/` and
 `sast-engine/utils/` plus `test/fixtures/`, and deliberately does **not** exclude
 `enumerate.js`, `ast-extract.js`, or `remediation-apply.js` — those hold real logic worth
 scanning.
