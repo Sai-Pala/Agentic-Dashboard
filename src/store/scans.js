@@ -4,6 +4,8 @@
  * Session-lifetime only — lost on restart.
  */
 
+/** @typedef {import('../types').Scan} Scan */
+
 const scans = new Map();        // id -> scan record
 const scanRunIndex = new Map(); // runId -> scan record, for O(1) lookup on done/error/cancel
 

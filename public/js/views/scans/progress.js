@@ -11,7 +11,7 @@ import { truncate, formatElapsed, formatTokenCount } from '../../lib/format.js';
 import { SEV_VAR, SEV_ORDER } from '../../lib/meta.js';
 import { trackConsoleText } from '../../components/console.js';
 
-const SEV_TAG_RE = /\[(critical|high|medium|low|informational)\]\s+([^\[]*)/gi;
+const SEV_TAG_RE = /\[(critical|high|medium|low|informational)\]\s+([^[]*)/gi;
 
 export function updateScanElapsed(run) {
   if (run.elapsedEl) run.elapsedEl.textContent = formatElapsed(Date.now() - run.startTime);

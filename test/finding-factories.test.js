@@ -33,6 +33,9 @@ describe('findingFromSastEngine', () => {
     rule: 'SQL_INJECTION', title: 'SQL injection', severity: 'critical', confidence: 'high',
     file: '/repo/src/db.js', line: 12, description: 'concatenated query',
     cwe: 'CWE-89', owasp: 'A03', verified: true,
+    // Sample vulnerable source: the literal `${id}` is the point, it is what a real
+    // concatenated query looks like.
+    // eslint-disable-next-line no-template-curly-in-string
     codeContext: [{ text: 'const q = `SELECT ${id}`;' }],
   };
 

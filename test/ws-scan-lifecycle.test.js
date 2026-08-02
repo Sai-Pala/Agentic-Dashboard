@@ -61,7 +61,7 @@ describe('a scan pipeline that throws', () => {
     const ctx = makeCtx();
 
     handle({ type: 'scan', runId: 'r1', path: TARGET }, ctx);
-    await new Promise((r) => setImmediate(r));   // let the rejection settle
+    await new Promise((r) => { setImmediate(r); });   // let the rejection settle
 
     const types = ctx.sent.map((m) => m.type);
     assert.ok(types.includes('scan-error'), `expected a scan-error, got: ${types.join(', ')}`);
@@ -76,21 +76,21 @@ describe('a scan pipeline that throws', () => {
     const ctx = makeCtx();
     handle({ type: 'scan', runId: 'r2', path: TARGET }, ctx);
 
-    return new Promise((resolve) => setImmediate(() => {
+    return new Promise((resolve) => { setImmediate(() => {
       const rec = [...scans.values()].find((s) => s.runId === 'r2');
       assert.equal(rec.status, 'error');
       assert.equal(rec.error, 'boom');
       assert.ok(rec.finishedAt, 'finishedAt must be stamped');
       assert.equal(scanRunIndex.has('r2'), false, 'the run index entry must be released');
       resolve();
-    }));
+    }); });
   });
 
   test('a synchronous throw is caught too', async () => {
     const handle = loadHandlerWith(() => { throw new Error('sync boom'); });
     const ctx = makeCtx();
     handle({ type: 'scan', runId: 'r3', path: TARGET }, ctx);
-    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => { setImmediate(r); });
     assert.ok(ctx.sent.some((m) => m.type === 'scan-error' && /sync boom/.test(m.message)));
   });
 });

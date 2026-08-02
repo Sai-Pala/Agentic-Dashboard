@@ -5,6 +5,9 @@
 
 const { spawn } = require('child_process');
 
+/** @typedef {import('../types').Run} Run */
+/** @typedef {import('../types').Verdict} Verdict */
+
 const { extractVerdict } = require('./verdict');
 const { runIndex } = require('../store/findings');
 

@@ -47,7 +47,8 @@ export function getScan(id) {
 }
 
 export async function deleteScan(id) {
-  try { await fetch(`/api/scans/${id}`, { method: 'DELETE' }); } catch (e) {}
+  // Fire and forget: the list is refetched either way, so a failed delete surfaces there.
+  try { await fetch(`/api/scans/${id}`, { method: 'DELETE' }); } catch { /* reported by the refetch */ }
 }
 
 /** The persisted attack-surface manifest. A scan older than the feature carries none. */

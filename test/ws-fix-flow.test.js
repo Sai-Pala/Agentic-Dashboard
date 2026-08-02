@@ -161,7 +161,7 @@ class Client {
 
   /** Resolve after `ms` with whatever matched, or null — for asserting a NON-reply. */
   async silenceFor(ms, predicate) {
-    await new Promise((r) => setTimeout(r, ms));
+    await new Promise((r) => { setTimeout(r, ms); });
     return this.messages.find(predicate) || null;
   }
 

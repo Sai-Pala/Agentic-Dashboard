@@ -6,12 +6,17 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@babel/parser": "^7.29.8",
     "express": "^4.19.2",
     "fast-glob": "^3.3.2",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0"
   }
 }

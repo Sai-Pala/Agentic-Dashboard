@@ -62,7 +62,7 @@ after(async () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 /**
  * Open a client socket and buffer everything it receives.
@@ -132,7 +132,7 @@ function connect({ origin } = {}) {
           });
         },
         close: () => new Promise((res) => {
-          if (ws.readyState === WebSocket.CLOSED) return res();
+          if (ws.readyState === WebSocket.CLOSED) { res(); return; }
           ws.once('close', res);
           ws.close();
         }),
@@ -146,7 +146,7 @@ const connectOk = () => connect({ origin: ORIGIN });
 
 /** Assert a handshake is refused, and report the HTTP status the client saw. */
 async function expectHandshakeRejected(origin) {
-  let client = null;
+  let client;
   try {
     client = await connect({ origin });
   } catch (err) {
@@ -303,10 +303,10 @@ describe('scan message validation (returns before any claude process is spawned)
     await client.waitFor(byRunId('scan-error', 'scan-reuse-1'), { label: 'first scan-error' });
     // Same runId again. Validation fails before `scanRunIndex.set()`, so nothing was registered
     // and this is NOT answered with "This runId is already active."
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.send({ type: 'scan', runId: 'scan-reuse-1', path: MISSING_DIR });
     await sleep(400);
-    const second = client.messages.slice(before);
+    const second = client.messages.slice(priorCount);
     assert.equal(second.length, 1);
     assert.equal(second[0].message, `Path not found: ${MISSING_DIR}`);
   });
@@ -330,10 +330,10 @@ describe('runId validation (^[a-zA-Z0-9_-]+$)', () => {
 
   for (const [label, runId] of BAD_RUN_IDS) {
     test(`scan refuses ${label} with a GENERIC error, not scan-error`, async () => {
-      const before = client.messages.length;
+      const priorCount = client.messages.length;
       client.send({ type: 'scan', runId, path: MISSING_DIR });
       await sleep(350);
-      const got = client.messages.slice(before);
+      const got = client.messages.slice(priorCount);
       assert.equal(got.length, 1, `expected exactly one reply, got ${JSON.stringify(got)}`);
       // CONCERN: every OTHER scan validation failure answers `scan-error`, but an invalid runId
       // answers the generic `error` type used by per-finding runs. A client listening only for
@@ -346,19 +346,19 @@ describe('runId validation (^[a-zA-Z0-9_-]+$)', () => {
   }
 
   test('a scan message with no runId field at all is treated as an invalid runId', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.send({ type: 'scan', path: MISSING_DIR });
     await sleep(350);
-    const got = client.messages.slice(before);
+    const got = client.messages.slice(priorCount);
     assert.deepEqual(got, [{ type: 'error', message: 'Invalid or missing runId.' }]);
   });
 
   test('the run message refuses an invalid runId before it even looks at the agent name', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     // A perfectly valid agent name here; the runId check comes first, so it is never reached.
     client.send({ type: 'run', runId: 'a b', agent: 'no_such_agent_xyz' });
     await sleep(350);
-    const got = client.messages.slice(before);
+    const got = client.messages.slice(priorCount);
     assert.deepEqual(got, [{ type: 'error', message: 'Invalid or missing runId.' }]);
   });
 
@@ -436,19 +436,19 @@ describe('cancel', () => {
   after(async () => { if (client) await client.close(); });
 
   test('cancelling a runId the server has never seen is silently harmless', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.send({ type: 'cancel', runId: 'never-existed-anywhere' });
     await sleep(400);
     // No acknowledgement of any kind — cancel never replies, even on the happy path.
-    assert.deepEqual(client.messages.slice(before), []);
+    assert.deepEqual(client.messages.slice(priorCount), []);
     assert.equal(client.ws.readyState, WebSocket.OPEN);
   });
 
   test('cancel with no runId at all is silently harmless', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.send({ type: 'cancel' });
     await sleep(400);
-    assert.deepEqual(client.messages.slice(before), []);
+    assert.deepEqual(client.messages.slice(priorCount), []);
     assert.equal(client.ws.readyState, WebSocket.OPEN);
   });
 
@@ -458,10 +458,10 @@ describe('cancel', () => {
     // (the value is only ever used as a Map key), but it is the one message type where the
     // "every runId from a client message is validated" invariant stated in CLAUDE.md's security
     // posture does not actually hold.
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.send({ type: 'cancel', runId: '../../etc/passwd' });
     await sleep(400);
-    assert.deepEqual(client.messages.slice(before), []);
+    assert.deepEqual(client.messages.slice(priorCount), []);
     assert.equal(client.ws.readyState, WebSocket.OPEN);
   });
 
@@ -492,55 +492,55 @@ describe('unknown and malformed messages never take the connection down', () => 
   after(async () => { if (client) await client.close(); });
 
   test('non-JSON text gets a single "Malformed message." error and the socket stays open', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.sendRaw('this is not json at all');
     await sleep(400);
-    assert.deepEqual(client.messages.slice(before), [{ type: 'error', message: 'Malformed message.' }]);
+    assert.deepEqual(client.messages.slice(priorCount), [{ type: 'error', message: 'Malformed message.' }]);
     assert.equal(client.ws.readyState, WebSocket.OPEN);
   });
 
   test('a binary frame is treated as malformed rather than crashing the parser', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.sendRaw(Buffer.from([0x00, 0x01, 0x02, 0xff]));
     await sleep(400);
-    assert.deepEqual(client.messages.slice(before), [{ type: 'error', message: 'Malformed message.' }]);
+    assert.deepEqual(client.messages.slice(priorCount), [{ type: 'error', message: 'Malformed message.' }]);
     assert.equal(client.ws.readyState, WebSocket.OPEN);
   });
 
   test('valid JSON with an unrecognised type is silently ignored', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.send({ type: 'totally_unknown_message_type', runId: 'unknown-type-1' });
     await sleep(400);
     // CONCERN: no reply at all. `if (msg.type !== 'run') return;` is the last branch, so anything
     // unrecognised is dropped without an error — a client that mistypes a message type (or talks
     // to a server that no longer supports it) waits forever with no signal. Contrast with
     // malformed JSON, which does get an error back.
-    assert.deepEqual(client.messages.slice(before), []);
+    assert.deepEqual(client.messages.slice(priorCount), []);
     assert.equal(client.ws.readyState, WebSocket.OPEN);
   });
 
   test('valid JSON with no type field at all is silently ignored', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.send({ runId: 'no-type-1', path: MISSING_DIR });
     await sleep(400);
-    assert.deepEqual(client.messages.slice(before), []);
+    assert.deepEqual(client.messages.slice(priorCount), []);
     assert.equal(client.ws.readyState, WebSocket.OPEN);
   });
 
   test('a null type is silently ignored', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.send({ type: null });
     await sleep(400);
-    assert.deepEqual(client.messages.slice(before), []);
+    assert.deepEqual(client.messages.slice(priorCount), []);
     assert.equal(client.ws.readyState, WebSocket.OPEN);
   });
 
   test('a JSON array (not an object) is accepted as parseable and then ignored', async () => {
-    const before = client.messages.length;
+    const priorCount = client.messages.length;
     client.sendRaw('[1,2,3]');
     await sleep(400);
     // Parses fine, has no `.type`, falls through to the same silent drop.
-    assert.deepEqual(client.messages.slice(before), []);
+    assert.deepEqual(client.messages.slice(priorCount), []);
     assert.equal(client.ws.readyState, WebSocket.OPEN);
   });
 

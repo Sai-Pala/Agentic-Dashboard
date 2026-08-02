@@ -31,6 +31,37 @@ const { buildCoverageSummary, renderAdjudicationWorklist, planReviewShards } = r
 const { toRepoRelative } = require('../paths');
 
 /**
+ * Announce what the review pass will NOT look at, before it starts.
+ *
+ * Kept separate from the orchestration because it is the one part with no state of its own — it
+ * reads the plan and emits. It is also the part that must never be quietly dropped: a scan that
+ * reviewed a fraction of the surface and says nothing reads identically to one that reviewed all
+ * of it, and "found nothing" where "could not look" is the truth is the failure mode a security
+ * tool cannot afford.
+ */
+function reportCoverageGaps(scan, surface, shards, send) {
+  if (!surface) {
+    send({
+      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+      message: 'Attack-surface enumeration produced nothing — the review pass will run without a route worklist, which weakens coverage of authorization and business-logic issues.',
+    });
+  }
+  if (shards.skippedRoutes > 0) {
+    // Report the ceiling that actually applied, and only suggest the cap toggle when it is on.
+    // This message exists to state how much was NOT reviewed; naming the wrong limit, or
+    // advising a change already in effect, undermines the one job it has.
+    const appliedMaxShards = scan.budgetEnabled ? REVIEW_MAX_SHARDS : REVIEW_MAX_SHARDS_UNCAPPED;
+    const remedy = scan.budgetEnabled
+      ? 'Turn off the budget cap, or scan a narrower directory, for full coverage.'
+      : 'The budget cap is already off — scan a narrower directory for full coverage.';
+    send({
+      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+      message: `${shards.totalRoutes} routes exceeded what ${appliedMaxShards} review shards can cover — the ${shards.reviewedRoutes} highest-risk were reviewed (unguarded mounts and authenticated-but-not-authorized surfaces first); ${shards.skippedRoutes} were NOT reviewed for authorization or business-logic issues. ${remedy}`,
+    });
+  }
+}
+
+/**
  * @returns {{findings, adjudications: Map<number, object>, error, costUsd}} `findings` is raw
  * review-pass output; `adjudications` maps deterministic-finding index -> verdict.
  */
@@ -128,25 +159,7 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
     }
   };
 
-  if (!surface) {
-    send({
-      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
-      message: 'Attack-surface enumeration produced nothing — the review pass will run without a route worklist, which weakens coverage of authorization and business-logic issues.',
-    });
-  }
-  if (shards.skippedRoutes > 0) {
-    // Report the ceiling that actually applied, and only suggest the cap toggle when it is on.
-    // This message exists to state how much was NOT reviewed; naming the wrong limit, or
-    // advising a change already in effect, undermines the one job it has.
-    const appliedMaxShards = scan.budgetEnabled ? REVIEW_MAX_SHARDS : REVIEW_MAX_SHARDS_UNCAPPED;
-    const remedy = scan.budgetEnabled
-      ? 'Turn off the budget cap, or scan a narrower directory, for full coverage.'
-      : 'The budget cap is already off — scan a narrower directory for full coverage.';
-    send({
-      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
-      message: `${shards.totalRoutes} routes exceeded what ${appliedMaxShards} review shards can cover — the ${shards.reviewedRoutes} highest-risk were reviewed (unguarded mounts and authenticated-but-not-authorized surfaces first); ${shards.skippedRoutes} were NOT reviewed for authorization or business-logic issues. ${remedy}`,
-    });
-  }
+  reportCoverageGaps(scan, surface, shards, send);
 
   const runReviewShard = async (shard, index) => {
     // Checked at dispatch rather than up front so shards already in flight always finish —

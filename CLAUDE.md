@@ -16,7 +16,7 @@ Everything is in-memory and session-lifetime. There is no database, no auth, no 
 ```bash
 npm install
 npm start     # node server.js — http://localhost:4500
-npm test      # node --test "test/**/*.test.js" — 365 tests, ~30s
+npm test      # node --test "test/**/*.test.js" — 430 tests, ~30s
 ```
 
 `claude auth status` must succeed before any LLM-backed feature works; the server spawns the

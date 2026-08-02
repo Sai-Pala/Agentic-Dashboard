@@ -69,7 +69,7 @@ async function applyRemediationPlan(targetPath, verdict) {
     return { applied: false, diff: null, error: `Failed to apply edit: ${err.message}` };
   }
 
-  let diff = '';
+  let diff;
   try {
     diff = execFileSync('git', ['diff'], { cwd: targetPath, encoding: 'utf8' });
   } catch (err) {

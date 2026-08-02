@@ -14,33 +14,62 @@ const { checkCleanGitTarget, applyRemediationPlan } = require('../services/remed
 const { findings, runIndex, deriveStatus } = require('../store/findings');
 
 /**
- * Runs Remediation read-only against the finding's target directory and stops — no apply, no
- * automatic chain into Fix, so a human always sees the proposal before anything is written.
+ * The entry checks every fix-flow handler runs before doing anything.
+ *
+ * Written out three times previously, once per handler, differing only in how many run ids the
+ * message carries and one sentence of wording. Validation that is copied is validation that
+ * drifts — and this is the gate in front of the only code path in the app that writes to a
+ * user's files, so drift here is the expensive kind.
+ *
+ * @param {object} msg                      the raw client message
+ * @param {{children: Map, send: Function}} ctx
+ * @param {{runIdKeys: string[], pathPurpose: string}} spec
+ *   runIdKeys   — message fields holding run ids; the first is the one errors are reported against
+ *   pathPurpose — completes "A target directory is required to ___."
+ * @returns {{findingId: string|null, finding: object, runIds: string[], runId: string,
+ *            targetPath: string}|null} null when a check failed — the error has already been
+ *            sent, so the caller only needs to return.
  */
-function handleRemediatePreviewMessage(msg, { children, send }) {
+function validateFixRequest(msg, { children, send }, { runIdKeys, pathPurpose }) {
   const findingId = msg.findingId ? String(msg.findingId) : null;
-  const runId = String(msg.runId || '').trim();
-  const context = String(msg.context || '');
-  const instruction = String(msg.instruction || '');
-  const targetPath = String(msg.path || '').trim();
+  const runIds = runIdKeys.map((key) => String(msg[key] || '').trim());
+  const runId = runIds[0];
 
-  if (!RUN_ID_RE.test(runId)) {
-    send({ type: 'error', message: 'Invalid or missing run id.' });
-    return;
+  if (!runIds.every((id) => RUN_ID_RE.test(id))) {
+    // No runId echoed back: it is the thing that failed validation, and echoing an unvalidated
+    // value is how it ends up keyed into a Map.
+    send({ type: 'error', message: `Invalid or missing run id${runIds.length > 1 ? '(s)' : ''}.` });
+    return null;
   }
-  if (children.has(runId)) {
+  if (runIds.some((id) => children.has(id))) {
     send({ type: 'error', runId, findingId, message: 'This run is already active.' });
-    return;
+    return null;
   }
   const finding = findingId ? findings.get(findingId) : null;
   if (!finding) {
     send({ type: 'error', runId, findingId, message: 'Unknown finding.' });
-    return;
+    return null;
   }
+  const targetPath = String(msg.path || '').trim();
   if (!targetPath) {
-    send({ type: 'error', runId, findingId, message: 'A target directory is required to propose a fix.' });
-    return;
+    send({ type: 'error', runId, findingId, message: `A target directory is required to ${pathPurpose}.` });
+    return null;
   }
+  return { findingId, finding, runIds, runId, targetPath };
+}
+
+/**
+ * Runs Remediation read-only against the finding's target directory and stops — no apply, no
+ * automatic chain into Fix, so a human always sees the proposal before anything is written.
+ */
+function handleRemediatePreviewMessage(msg, { children, send }) {
+  const valid = validateFixRequest(msg, { children, send }, {
+    runIdKeys: ['runId'], pathPurpose: 'propose a fix',
+  });
+  if (!valid) return;
+  const { findingId, finding, runId, targetPath } = valid;
+  const context = String(msg.context || '');
+  const instruction = String(msg.instruction || '');
   // No git-clean gate here: this handler never writes.
   try {
     if (!fs.statSync(targetPath).isDirectory()) {
@@ -83,27 +112,11 @@ function handleRemediatePreviewMessage(msg, { children, send }) {
  * Fix must write exactly what the human just reviewed.
  */
 function handleRemediateFixMessage(msg, { children, send }) {
-  const findingId = msg.findingId ? String(msg.findingId) : null;
-  const runId = String(msg.runId || '').trim();
-  const targetPath = String(msg.path || '').trim();
-
-  if (!RUN_ID_RE.test(runId)) {
-    send({ type: 'error', message: 'Invalid or missing run id.' });
-    return;
-  }
-  if (children.has(runId)) {
-    send({ type: 'error', runId, findingId, message: 'This run is already active.' });
-    return;
-  }
-  const finding = findingId ? findings.get(findingId) : null;
-  if (!finding) {
-    send({ type: 'error', runId, findingId, message: 'Unknown finding.' });
-    return;
-  }
-  if (!targetPath) {
-    send({ type: 'error', runId, findingId, message: 'A target directory is required to apply a fix.' });
-    return;
-  }
+  const valid = validateFixRequest(msg, { children, send }, {
+    runIdKeys: ['runId'], pathPurpose: 'apply a fix',
+  });
+  if (!valid) return;
+  const { findingId, finding, runId, targetPath } = valid;
 
   const remRun = [...finding.runs].reverse().find((r) => r.agent === 'remediation');
   const plan = remRun && remRun.verdict && remRun.verdict.edit_plan;
@@ -146,31 +159,15 @@ function handleRemediateFixMessage(msg, { children, send }) {
  * fix it then cannot apply.
  */
 function handleRemediateAllMessage(msg, { children, send }) {
-  const findingId = msg.findingId ? String(msg.findingId) : null;
-  const remediationRunId = String(msg.remediationRunId || '').trim();
-  const fixRunId = String(msg.fixRunId || '').trim();
-  const verifyRunId = String(msg.verifyRunId || '').trim();
+  const valid = validateFixRequest(msg, { children, send }, {
+    runIdKeys: ['remediationRunId', 'fixRunId', 'verifyRunId'],
+    pathPurpose: 'run the full pipeline',
+  });
+  if (!valid) return;
+  const { findingId, finding, targetPath } = valid;
+  const [remediationRunId, fixRunId, verifyRunId] = valid.runIds;
   const context = String(msg.context || '');
   const instruction = String(msg.instruction || '');
-  const targetPath = String(msg.path || '').trim();
-
-  if (!RUN_ID_RE.test(remediationRunId) || !RUN_ID_RE.test(fixRunId) || !RUN_ID_RE.test(verifyRunId)) {
-    send({ type: 'error', message: 'Invalid or missing run id(s).' });
-    return;
-  }
-  if (children.has(remediationRunId) || children.has(fixRunId) || children.has(verifyRunId)) {
-    send({ type: 'error', runId: remediationRunId, findingId, message: 'This run is already active.' });
-    return;
-  }
-  const finding = findingId ? findings.get(findingId) : null;
-  if (!finding) {
-    send({ type: 'error', runId: remediationRunId, findingId, message: 'Unknown finding.' });
-    return;
-  }
-  if (!targetPath) {
-    send({ type: 'error', runId: remediationRunId, findingId, message: 'A target directory is required to run the full pipeline.' });
-    return;
-  }
 
   const gate = checkCleanGitTarget(targetPath);
   if (!gate.ok) {

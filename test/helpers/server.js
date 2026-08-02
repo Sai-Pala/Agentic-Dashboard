@@ -29,7 +29,7 @@ const DEFAULT_READY_TIMEOUT_MS = 90_000;
 const POLL_INTERVAL_MS = 250;
 
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
 }
 
 /**
@@ -62,7 +62,7 @@ async function startServer(options = {}) {
 
   const stop = async () => {
     if (child.exitCode !== null || child.signalCode !== null) return;
-    const closed = new Promise((resolve) => child.once('exit', resolve));
+    const closed = new Promise((resolve) => { child.once('exit', resolve); });
     killGroup(child.pid, 'SIGTERM');
     const settled = await Promise.race([closed.then(() => true), sleep(5000).then(() => false)]);
     if (!settled) {

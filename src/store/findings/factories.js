@@ -16,6 +16,9 @@ const { deriveStatus } = require('./status');
 const { readFlowSpan } = require('./flow');
 const { toRepoRelative } = require('../../services/paths');
 
+/** @typedef {import('../../types').Finding} Finding */
+/** @typedef {import('../../types').Run} Run */
+
 const CONFIDENCES = ['high', 'medium', 'low'];
 
 /** Shared skeleton — every finding carries the same fields, engine-specific ones default null. */
