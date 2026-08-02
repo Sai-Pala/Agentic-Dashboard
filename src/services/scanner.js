@@ -7,7 +7,6 @@
  * just found: a union, not a hybrid. SCA shares no data with either and runs throughout.
  */
 
-const path = require('path');
 
 const { loadSastEngine } = require('./sast-engine');
 const { severityRank } = require('./taxonomy');
@@ -15,6 +14,7 @@ const { parseFileLine, isDuplicateOfReasoning, dedupeAdjacentSameRule } = requir
 const { runDeterministicPatternScan } = require('./engines/deterministic');
 const { runDeterministicScaScan } = require('./engines/sca');
 const { runLLMReasoningScan } = require('./engines/reasoning');
+const { toRepoRelative } = require('./paths');
 const {
   findings,
   toListItem,
@@ -85,7 +85,7 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   // Drop a reasoning finding landing within a couple of lines of a deterministic one in the
   // same file. Findings with no resolvable line always survive — there is nothing to compare.
   const detLocations = collapsedDet
-    .map((f) => ({ file: f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : null, line: f.line }))
+    .map((f) => ({ file: toRepoRelative(targetPath, f.file), line: f.line }))
     .filter((l) => l.file);
   const isDuplicateOfDeterministic = (rf) => {
     const loc = parseFileLine(rf.file);

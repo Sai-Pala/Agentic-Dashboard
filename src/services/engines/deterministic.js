@@ -4,10 +4,10 @@
  * every engine's output together.
  */
 
-const path = require('path');
 
 const { DETERMINISTIC_AGENT_TIMEOUT_MS } = require('../../config');
 const { normalizeSeverity } = require('../taxonomy');
+const { toRepoRelative } = require('../paths');
 
 async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, { send }) {
   let orchestrator;
@@ -53,7 +53,7 @@ async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, 
         send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'deterministic', done, total });
         if (!agentFindings.length) return;
         const lines = agentFindings.map((f) => {
-          const rel = f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : 'unknown file';
+          const rel = toRepoRelative(targetPath, f.file) || 'unknown file';
           const loc = f.line ? `${rel}:${f.line}` : rel;
           return `[${normalizeSeverity(f.severity)}] \`${loc}\` — ${f.title}`;
         });

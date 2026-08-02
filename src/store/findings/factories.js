@@ -8,13 +8,13 @@
  */
 
 const crypto = require('crypto');
-const path = require('path');
 
 const { PRIORITIES } = require('../../config');
 const { SEVERITIES, normalizeSeverity, priorityFromSeverityConfidence } = require('../../services/taxonomy');
 const { parseFileLine } = require('../../services/merge');
 const { deriveStatus } = require('./status');
 const { readFlowSpan } = require('./flow');
+const { toRepoRelative } = require('../../services/paths');
 
 const CONFIDENCES = ['high', 'medium', 'low'];
 
@@ -62,7 +62,7 @@ function triageRun(verdict) {
  * visibility, not evidence.
  */
 function findingFromSastEngine(f, scan, targetPath, adjudication = null) {
-  const relFile = f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : null;
+  const relFile = toRepoRelative(targetPath, f.file);
   const severity = normalizeSeverity(f.severity);
   const confidence = CONFIDENCES.includes(f.confidence) ? f.confidence : 'medium';
 

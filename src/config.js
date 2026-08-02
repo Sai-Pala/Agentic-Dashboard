@@ -37,7 +37,9 @@ const SCAN_SCOPES = ['full', 'diff'];
 // ceiling below is what bounds the total.
 const REASONING_ADJUDICATE_BUDGET_USD = 1.5;
 const REASONING_REVIEW_BUDGET_USD = 3.5;
-const REASONING_REVIEW_TOTAL_USD = 8.0;
+// Bounds the reasoning half as a whole: adjudication and every review shard both add
+// into the same running total, so this is not review-only despite where it sits.
+const REASONING_TOTAL_USD = 8.0;
 
 // The review pass shards by attack surface because the *context window*, not the dollar cap,
 // is the binding constraint: `claude -p` responds to a full context by compacting, silently
@@ -80,7 +82,7 @@ module.exports = {
   SCAN_SCOPES,
   REASONING_ADJUDICATE_BUDGET_USD,
   REASONING_REVIEW_BUDGET_USD,
-  REASONING_REVIEW_TOTAL_USD,
+  REASONING_TOTAL_USD,
   REVIEW_ROUTES_PER_SHARD,
   REVIEW_MAX_SHARDS,
   REVIEW_MAX_SHARDS_UNCAPPED,

@@ -3,10 +3,11 @@
 /**
  * Boot/teardown helper for the characterization tests.
  *
- * server.js calls `server.listen(PORT)` unguarded at top level and exports
- * nothing, so it cannot be imported without booting. Until that changes, the
- * only way to exercise its HTTP surface is to run it as a child process and
- * talk to it over the network — which is what this helper does.
+ * server.js can now be imported without booting — it guards listen() on
+ * `require.main === module` and exports { app, server }. This helper still runs
+ * it as a child process on purpose: these tests exercise the real HTTP surface
+ * over a real socket, including the port binding and middleware order, which an
+ * in-process supertest-style call would skip.
  *
  * Boot it once per test file (a `before` hook) and always stop it from an
  * `after` hook, so a failing assertion can never leave an orphan node process

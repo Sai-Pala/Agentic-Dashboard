@@ -4,12 +4,10 @@
  */
 
 const fs = require('fs');
-const { spawn } = require('child_process');
 
 const { RUN_ID_RE, AGENT_NAME_RE, agentFilePath } = require('../config');
-const { extractVerdict } = require('../services/verdict');
-const { onStreamJson, assistantText, claudeArgs } = require('../services/claude');
-const { findings, runIndex, deriveStatus } = require('../store/findings');
+const { spawnAgentStage } = require('../services/claude');
+const { findings, deriveStatus } = require('../store/findings');
 
 function handleRunMessage(msg, { children, send }) {
   const runId = String(msg.runId || '').trim();
@@ -48,23 +46,6 @@ function handleRunMessage(msg, { children, send }) {
   }
 
   const finding = findingId ? findings.get(findingId) : null;
-  let runRecord = null;
-  if (finding) {
-    runRecord = {
-      runId,
-      agent: agentName,
-      instruction,
-      context,
-      status: 'running',
-      verdict: null,
-      fullText: '',
-      startedAt: Date.now(),
-      finishedAt: null,
-    };
-    finding.runs.push(runRecord);
-    runIndex.set(runId, { findingId: finding.id, run: runRecord });
-  }
-
   const userPrompt = `${instruction}\n\nFinding context:\n${context}`;
 
   // Per-finding agents normally reason over the `code` snippet already in context, so they run
@@ -86,49 +67,16 @@ function handleRunMessage(msg, { children, send }) {
     }
   }
 
-  send({ type: 'started', runId, findingId, agent: agentName });
-
-  const child = spawn('claude', claudeArgs({ userPrompt, systemPrompt, allowedTools }), { cwd: runCwd, shell: false });
-  children.set(runId, child);
-
-  let fullText = '';
-
-  onStreamJson(child.stdout, (event) => {
-    fullText += assistantText(event);
-    send({ type: 'event', runId, findingId, event });
-  });
-
-  child.stderr.on('data', (chunk) => {
-    send({ type: 'stderr', runId, findingId, data: chunk.toString() });
-  });
-
-  child.on('close', (code) => {
-    const verdict = extractVerdict(fullText);
-    if (runRecord && runRecord.status === 'running') {
-      runRecord.status = code === 0 ? 'done' : 'error';
-    }
-    if (runRecord) {
-      runRecord.verdict = verdict;
-      runRecord.fullText = fullText;
-      runRecord.finishedAt = Date.now();
-    }
+  // Same spawn/relay/close path every other stage uses. It was duplicated here, and the two
+  // copies had already drifted on what `done` carries.
+  spawnAgentStage({
+    runId, findingId, finding, agentName, systemPrompt, userPrompt,
+    allowedTools, cwd: runCwd, instruction, children, send,
+  }).then((res) => {
     if (finding) finding.status = deriveStatus(finding);
-    // fullText stays on the run record; no client reads it off the wire, and a whole
-    // model transcript per run is a lot of socket traffic for nothing.
-    send({ type: 'done', runId, findingId, code, verdict, fullText: '' });
-    children.delete(runId);
-    runIndex.delete(runId);
-  });
-
-  child.on('error', (err) => {
-    if (runRecord) {
-      runRecord.status = 'error';
-      runRecord.finishedAt = Date.now();
-    }
-    if (finding) finding.status = deriveStatus(finding);
-    send({ type: 'error', runId, findingId, message: `Failed to spawn claude: ${err.message}` });
-    children.delete(runId);
-    runIndex.delete(runId);
+    // fullText stays on the run record; no client reads it off the wire, and a whole model
+    // transcript per run is a lot of socket traffic for nothing.
+    send({ type: 'done', runId, findingId, code: res.code, verdict: res.verdict, fullText: '' });
   });
 }
 

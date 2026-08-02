@@ -115,7 +115,7 @@ Comment-stripping must stay quote-aware (`stripLineComment()`): a naive `//` str
   reported in a `scan-warning`, not silently ignored.
 
 - **Review** (`prompts/scan.md`, `REASONING_REVIEW_BUDGET_USD` = $3.50 **per shard**,
-  `REASONING_REVIEW_TOTAL_USD` = $8 per scan) takes the enumerated attack surface and asks the
+  `REASONING_TOTAL_USD` = $8 per scan) takes the enumerated attack surface and asks the
   authorization and business-logic questions no fixed rule set can express. It is also handed the
   deterministic findings' locations under a "do NOT report these again" instruction — that
   avoidance is the other half of what makes this a hybrid rather than two independent scans.
@@ -292,7 +292,7 @@ correctly describing it.
 |---|---|---|
 | `REASONING_ADJUDICATE_BUDGET_USD` | 1.50 | cap on the adjudication pass |
 | `REASONING_REVIEW_BUDGET_USD` | 3.50 | cap per review **shard** |
-| `REASONING_REVIEW_TOTAL_USD` | 8.00 | ceiling across all review shards |
+| `REASONING_TOTAL_USD` | 8.00 | ceiling across the whole reasoning half (adjudication + review) |
 | `ADJUDICATE_MAX_FINDINGS` | 40 | findings per adjudication call |
 | `REVIEW_ROUTES_PER_SHARD` | 40 | routes per review shard |
 | `REVIEW_MAX_SHARDS` | 6 | shards with the budget cap on (~240 routes) |

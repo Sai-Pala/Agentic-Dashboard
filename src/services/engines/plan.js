@@ -3,9 +3,9 @@
  * deterministic findings and the engine's own coverage are rendered into prompt text.
  */
 
-const path = require('path');
 
 const { REVIEW_ROUTES_PER_SHARD } = require('../../config');
+const { toRepoRelative } = require('../paths');
 
 /**
  * Tells the reasoning pass what the deterministic half already covers. Built from each agent's
@@ -26,7 +26,7 @@ function buildCoverageSummary(engine) {
  */
 function renderAdjudicationWorklist(detFindings, targetPath) {
   return detFindings.map((f, i) => {
-    const rel = f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : '(no file)';
+    const rel = toRepoRelative(targetPath, f.file) || '(no file)';
     const loc = f.line ? `${rel}:${f.line}` : rel;
     const code = Array.isArray(f.codeContext) && f.codeContext.length
       ? f.codeContext.map((c) => `    ${c.line != null ? String(c.line).padStart(5) + ' | ' : ''}${c.text}`).join('\n')
@@ -72,7 +72,7 @@ function planReviewShards(surface, detFindings, targetPath, { maxShards }) {
   const findingsPerFile = new Map();
   for (const f of detFindings) {
     if (!f.file) continue;
-    const rel = path.relative(targetPath, f.file).split(path.sep).join('/');
+    const rel = toRepoRelative(targetPath, f.file);
     findingsPerFile.set(rel, (findingsPerFile.get(rel) || 0) + 1);
   }
   const sinksPerFile = new Map();

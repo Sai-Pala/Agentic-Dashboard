@@ -471,15 +471,15 @@ describe('cancel', () => {
     assert.equal(msg.type, 'scan-error');
   });
 
-  // NOT COVERED, deliberately: cancel's actual bookkeeping (flipping a run/scan
-  // record to status 'cancelled', deleting the scanRunIndex entry, killing
-  // `children` entries and a scan's `moduleRunIds` module children). Every one of those requires
-  // a record to exist in the relevant index first, and the ONLY way to create one is to get past
-  // the validation gates above — which immediately spawns a real `claude -p` run costing ~$5 and
-  // ~6 minutes. There is no test seam for injecting a fake in-flight run (the `children` Map is
-  // closure-scoped inside wss.on('connection') and the four run indexes are module-private with
-  // no write path other than the handlers). Covering it would need either an injectable spawn or
-  // an exported store handle; until then this is unit-testable only, not integration-testable.
+  // NOT COVERED HERE: cancel's actual bookkeeping (flipping a run/scan record to 'cancelled',
+  // deleting the scanRunIndex entry, killing `children` entries and a scan's module children).
+  // Reaching it through this socket would mean getting past the validation gates above, which
+  // immediately spawns a real `claude -p` run costing real money.
+  //
+  // A seam does exist, though: `runIndex` and `scanRunIndex` are plain requires from
+  // src/store/, so a fake in-flight record can be written directly. ws-scan-lifecycle.test.js
+  // uses exactly that, plus a require.cache stub for the scanner, to cover the failure path and
+  // per-connection scan ownership without spawning anything. Extend that file, not this one.
 });
 
 // ---------------------------------------------------------------------------

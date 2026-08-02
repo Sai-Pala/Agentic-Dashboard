@@ -64,8 +64,12 @@ function spawnAgentStage({ runId, findingId, finding, agentName, systemPrompt, u
       status: 'running', verdict: null, fullText: '',
       startedAt: Date.now(), finishedAt: null,
     };
-    finding.runs.push(runRecord);
-    runIndex.set(runId, { findingId: finding.id, run: runRecord });
+    // `finding` is optional: the generic `run` message accepts a null findingId, in which case
+    // there is no history to append to and nothing to look up on done/cancel.
+    if (finding) {
+      finding.runs.push(runRecord);
+      runIndex.set(runId, { findingId: finding.id, run: runRecord });
+    }
 
     send({ type: 'started', runId, findingId, agent: agentName });
 

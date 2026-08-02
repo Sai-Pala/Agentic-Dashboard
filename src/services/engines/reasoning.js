@@ -13,14 +13,13 @@
  */
 
 const fs = require('fs');
-const path = require('path');
 
 const {
   agentFilePath,
   ADJUDICATE_MAX_FINDINGS,
   REASONING_ADJUDICATE_BUDGET_USD,
   REASONING_REVIEW_BUDGET_USD,
-  REASONING_REVIEW_TOTAL_USD,
+  REASONING_TOTAL_USD,
   REVIEW_MAX_SHARDS,
   REVIEW_MAX_SHARDS_UNCAPPED,
   REVIEW_SHARD_CONCURRENCY,
@@ -29,6 +28,7 @@ const { severityRank } = require('../taxonomy');
 const { runReasoningCall } = require('../claude');
 const { loadSastEngine } = require('../sast-engine');
 const { buildCoverageSummary, renderAdjudicationWorklist, planReviewShards } = require('./plan');
+const { toRepoRelative } = require('../paths');
 
 /**
  * @returns {{findings, adjudications: Map<number, object>, error, costUsd}} `findings` is raw
@@ -151,7 +151,7 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
   const runReviewShard = async (shard, index) => {
     // Checked at dispatch rather than up front so shards already in flight always finish —
     // killing a call mid-analysis wastes what it already spent.
-    if (scan.budgetEnabled && totalCostUsd >= REASONING_REVIEW_TOTAL_USD) {
+    if (scan.budgetEnabled && totalCostUsd >= REASONING_TOTAL_USD) {
       return { findings: [], skipped: true };
     }
 
@@ -197,11 +197,11 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
     const relevantDet = detFindings.filter((f) => {
       if (!shardFileSet) return true;
       if (!f.file) return false;
-      return shardFileSet.has(path.relative(targetPath, f.file).split(path.sep).join('/'));
+      return shardFileSet.has(toRepoRelative(targetPath, f.file));
     });
     if (relevantDet.length) {
       const already = relevantDet.slice(0, 60).map((f) => {
-        const rel = f.file ? path.relative(targetPath, f.file).split(path.sep).join('/') : '(no file)';
+        const rel = toRepoRelative(targetPath, f.file) || '(no file)';
         return `- ${f.title || f.rule} @ ${f.line ? `${rel}:${f.line}` : rel}`;
       }).join('\n');
       parts.push(
@@ -246,7 +246,7 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
     if (skippedForBudget) {
       send({
         type: 'scan-warning', runId: scan.runId, scanId: scan.id,
-        message: `The review pass reached its $${REASONING_REVIEW_TOTAL_USD} per-scan budget — ${skippedForBudget} of ${shards.list.length} shards were skipped and their routes were NOT reviewed. Turn off the budget cap for full coverage.`,
+        message: `This scan reached its $${REASONING_TOTAL_USD} reasoning budget — ${skippedForBudget} of ${shards.list.length} shards were skipped and their routes were NOT reviewed. Turn off the budget cap for full coverage.`,
       });
     }
     return out;
