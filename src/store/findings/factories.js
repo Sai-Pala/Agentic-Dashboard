@@ -10,8 +10,8 @@
 const crypto = require('crypto');
 const path = require('path');
 
-const { SEVERITIES, PRIORITIES } = require('../../config');
-const { normalizeSeverity, priorityFromSeverityConfidence } = require('../../services/taxonomy');
+const { PRIORITIES } = require('../../config');
+const { SEVERITIES, normalizeSeverity, priorityFromSeverityConfidence } = require('../../services/taxonomy');
 const { parseFileLine } = require('../../services/merge');
 const { deriveStatus } = require('./status');
 const { readFlowSpan } = require('./flow');
