@@ -14,7 +14,8 @@ function loadSastEngine() {
       import('../../sast-engine/remediation-apply.js'),
       import('../../sast-engine/utils/patterns.js'),
       import('../../sast-engine/enumerate.js'),
-    ]).then(([agentsIndex, deps, remediationApply, patterns, enumerate]) => ({
+      import('../../sast-engine/rules/core/base-agent.js'),
+    ]).then(([agentsIndex, deps, remediationApply, patterns, enumerate, baseAgent]) => ({
       buildOrchestratorAsync: agentsIndex.buildOrchestratorAsync,
       listBuiltInAgents: agentsIndex.listBuiltInAgents,
       enumerateSurface: enumerate.enumerateSurface,
@@ -27,6 +28,10 @@ function loadSastEngine() {
       SKIP_FILENAMES: patterns.SKIP_FILENAMES,
       MAX_FILE_SIZE: patterns.MAX_FILE_SIZE,
       loadGitignorePatterns: patterns.loadGitignorePatterns,
+      // The agents' own file discovery. Coverage reporting calls this rather than
+      // reimplementing the skip rules, so "what was scanned" cannot drift from what was.
+      discoverFiles: (rootPath) => new baseAgent.BaseAgent('coverage', 'file discovery', 'meta')
+        .discoverFiles(rootPath),
     }));
   }
   return enginePromise;

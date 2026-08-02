@@ -44,7 +44,27 @@ router.get('/api/scans/:id/surface', (req, res) => {
     res.status(404).json({ error: 'No attack-surface map was stored for this scan. It either ran before this feature existed, or enumeration did not complete.' });
     return;
   }
-  res.json({ scanId: scan.id, path: scan.path, app: scan.app, startedAt: scan.startedAt, ...scan.surface });
+  res.json({
+    scanId: scan.id, path: scan.path, app: scan.app, startedAt: scan.startedAt,
+    ...scan.surface,
+    // What the scan looked at and what it dropped. Separate from the surface manifest: one
+    // describes the application, the other describes the scan of it.
+    coverage: scan.coverage || null,
+    reviewCoverage: scan.reviewCoverage || null,
+    agents: {
+      run: scan.agentsRun ?? null,
+      skipped: scan.agentsSkipped || [],
+      failed: scan.agentsFailed || [],
+      // Every agent the engine has, with what happened to it — including the ones gated out.
+      roster: scan.agentRoster || [],
+    },
+    // The facts the engine's gating decisions were made on. Published beside the roster because
+    // `shouldRun()` returns a bare boolean: this is the evidence, not the stated reason.
+    recon: scan.engineRecon || null,
+    suppression: scan.suppression || null,
+    // What the merge removed or rewrote between the engines and the findings list.
+    dispositions: scan.dispositions || null,
+  });
 });
 
 router.delete('/api/scans/:id', (req, res) => {

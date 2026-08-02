@@ -71,7 +71,7 @@ function triageRun(verdict) {
  * adjudicator that explicitly called it a false positive, since that pass read the code with
  * more context than either.
  */
-function findingFromSastEngine(f, scan, targetPath, adjudication = null, corroboration = null) {
+function findingFromSastEngine(f, scan, targetPath, adjudication = null, corroboration = null, collapsed = 0) {
   const relFile = toRepoRelative(targetPath, f.file);
   const severity = normalizeSeverity(f.severity);
   const confidence = CONFIDENCES.includes(f.confidence) ? f.confidence : 'medium';
@@ -131,8 +131,54 @@ function findingFromSastEngine(f, scan, targetPath, adjudication = null, corrobo
     // source alone — including the check written to verify the merge worked.
     corroborated: Boolean(corroboration),
   }));
+  finding.disposition = buildDisposition({
+    severityBefore: severity,
+    severityAfter: finalSeverity,
+    changedBy: adjSeverity ? 'the adjudicator' : null,
+    applied: true,
+    verdict: verdictLabel,
+    closedBy: adjVerdict ? 'the adjudicator' : 'the pattern engine’s verifier',
+    corroborated: Boolean(corroboration),
+    collapsed,
+  });
   finding.status = deriveStatus(finding);
   return finding;
+}
+
+/**
+ * What happened to this finding between the engine emitting it and the list showing it.
+ *
+ * Every field here describes a decision the app made on the user's behalf and previously did not
+ * record. A severity downgrade was applied and the original discarded; a rule firing six times on
+ * one condition became one row with no trace of the other five; a finding closed as a false
+ * positive gave no hint whether a regex heuristic or a pass that read the surrounding code made
+ * that call. All three change whether you trust the row, and none of them were visible.
+ *
+ * Returns null when nothing happened, so the common case adds no weight to the wire shape.
+ */
+function buildDisposition({ severityBefore, severityAfter, changedBy, applied, verdict, closedBy, corroborated, collapsed }) {
+  const d = {};
+  if (severityAfter !== severityBefore) {
+    d.severityFrom = severityBefore;
+    d.severityTo = severityAfter;
+    // Direction matters more than the pair: a downgrade is the app quietly de-prioritising
+    // something the engine flagged, which is the one worth a second look.
+    d.severityDirection = SEVERITIES.indexOf(severityAfter) > SEVERITIES.indexOf(severityBefore)
+      ? 'down' : 'up';
+    d.severityChangedBy = changedBy;
+    // Whether the row you are looking at shows the NEW severity or the old one. The adjudicator's
+    // call is applied to the finding; the reasoning pass's `severity_confirmed` is not, it sits
+    // in the verdict beside a `severity` that still disagrees with it. Labelling both "downgraded"
+    // would assert a change to the row that in the second case never happened.
+    d.severityApplied = Boolean(applied);
+  }
+  if (verdict === 'false_positive' || verdict === 'duplicate') {
+    d.closedAs = verdict;
+    d.closedBy = closedBy;
+  }
+  if (corroborated) d.corroborated = true;
+  if (collapsed > 0) d.collapsed = collapsed;
+  return Object.keys(d).length ? d : null;
 }
 
 /** A dependency-audit finding. No triage run — SCA never enters the Remediation Loop. */
@@ -196,6 +242,18 @@ function findingFromLLMScan(rf, scan) {
     next_agent: verdict === 'confirmed' ? 'remediation' : null,
     source: 'reasoning-scan',
   }));
+  // The reasoning pass can revise its own severity in the same breath as reporting it — the
+  // finding carries `severity`, the verdict carries `severity_confirmed`, and they can disagree.
+  finding.disposition = buildDisposition({
+    severityBefore: severity,
+    severityAfter: severityConfirmed,
+    changedBy: 'the reasoning pass',
+    applied: false,
+    verdict,
+    closedBy: 'the reasoning pass',
+    corroborated: false,
+    collapsed: 0,
+  });
   finding.status = deriveStatus(finding);
   return finding;
 }

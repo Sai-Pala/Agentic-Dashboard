@@ -181,6 +181,28 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
     }
   };
 
+  // Persisted so the Attack Surface page can state review depth after the fact — the live
+  // panel is thrown away on reload, and "how much of the surface was actually reviewed" is
+  // exactly the number that must survive.
+  const reviewedFiles = new Set(shards.list.flatMap((s) => s.files || []));
+  const routeFiles = new Set(
+    (surface && Array.isArray(surface.routes) ? surface.routes : []).map((r) => r.file).filter(Boolean),
+  );
+
+  scan.reviewCoverage = {
+    totalRoutes: shards.totalRoutes,
+    reviewedRoutes: shards.reviewedRoutes,
+    skippedRoutes: shards.skippedRoutes,
+    shards: shards.list.length,
+    adjudicated: adjudicating.length,
+    adjudicable: adjudicable.length,
+    // Which files the review actually opened, and which route-bearing files it never reached.
+    // The counts above say how much was left out; only these say WHAT was left out, which is the
+    // half you need to judge whether the shard budget landed on the right code.
+    shardFiles: shards.list.map((s, i) => ({ index: i + 1, files: s.files || null, routeCount: s.routeCount })),
+    unreviewedFiles: [...routeFiles].filter((f) => !reviewedFiles.has(f)).sort(),
+  };
+
   reportCoverageGaps(scan, surface, shards, send);
 
   const runReviewShard = async (shard, index) => {

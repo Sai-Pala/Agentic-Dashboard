@@ -800,13 +800,13 @@ describe('toListItem', () => {
     assert.deepEqual(Object.keys(toListItem(finding)), [
       'id', 'title', 'severity', 'scanType', 'rule', 'file', 'description', 'code',
       'packageName', 'packageVersion', 'fixedVersion', 'endpoint', 'method', 'status',
-      'createdAt', 'runCount', 'latestRun', 'stageRuns', 'sourceScanId', 'flow',
+      'createdAt', 'runCount', 'latestRun', 'stageRuns', 'sourceScanId', 'flow', 'disposition',
     ]);
   });
 
   test('absent optional fields are normalized to null, never left undefined', () => {
     const item = toListItem(finding);
-    for (const k of ['code', 'packageName', 'packageVersion', 'fixedVersion', 'endpoint', 'method', 'sourceScanId', 'flow']) {
+    for (const k of ['code', 'packageName', 'packageVersion', 'fixedVersion', 'endpoint', 'method', 'sourceScanId', 'flow', 'disposition']) {
       assert.equal(item[k], null, k);
     }
   });

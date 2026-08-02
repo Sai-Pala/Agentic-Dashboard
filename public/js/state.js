@@ -21,6 +21,10 @@ export const state = {
   // firing 17 times is one issue to decide about, not 17, and it used to push everything else
   // off the first screen.
   findingsExpandedRules: new Set(),
+  // Insights is scoped to one completed scan, like Attack Surface, and keeps its own selection
+  // so switching between the two screens does not reset either.
+  insightsScanId: null,
+  insightsData: null,
   currentFindingDetailId: null,
   currentView: 'dashboard',
 

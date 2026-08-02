@@ -42,6 +42,10 @@
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="12" width="18" height="8" rx="1"/><path d="M7 16h4"/></svg>
     <span>Attack Surface</span>
   </button>
+  <button class="nav-item" data-view="insights">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16v-5M12.5 16V8M17 16v-3"/></svg>
+    <span>Insights</span>
+  </button>
   <button class="nav-item" data-view="reports">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h9L19.5 8v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M9 12v4M12 9.5v6.5M15 13v3"/></svg>
     <span>Reports</span>
@@ -262,6 +266,22 @@
   </div>
   <div class="view-body">
     <div id="surface-content"></div>
+  </div>
+</div>
+
+<div id="view-insights" class="view" hidden>
+  <div class="view-header">
+    <div>
+      <h1>Insights</h1>
+      <div class="view-subtitle">How the scan behaved — every file it never opened, every agent that never ran, and everything it dropped on the way to the findings list</div>
+    </div>
+    <div class="scan-filter-dropdown">
+      <button id="insights-scan-btn" class="secondary" type="button">Select a scan</button>
+      <div id="insights-scan-menu" class="scan-filter-menu" hidden></div>
+    </div>
+  </div>
+  <div class="view-body">
+    <div id="insights-content"></div>
   </div>
 </div>
 

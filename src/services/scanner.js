@@ -10,11 +10,12 @@
 
 const { loadSastEngine } = require('./sast-engine');
 const { severityRank } = require('./taxonomy');
-const { parseFileLine, isDuplicateOfReasoning, dedupeAdjacentSameRule } = require('./merge');
+const { parseFileLine, isDuplicateOfReasoning, groupAdjacentSameRule } = require('./merge');
 const { runDeterministicPatternScan } = require('./engines/deterministic');
 const { runDeterministicScaScan } = require('./engines/sca');
 const { runLLMReasoningScan } = require('./engines/reasoning');
 const { toRepoRelative } = require('./paths');
+const { buildCoverageManifest } = require('./coverage');
 const {
   findings,
   toListItem,
@@ -54,9 +55,18 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   // findings list conveys. Surfaced by the Attack Surface page.
   if (detResult.surface) scan.surface = detResult.surface;
 
+  // What the scan actually looked at, and what it silently dropped. Best-effort: a failure here
+  // must never fail the scan, since it is reporting about the scan rather than part of it.
+  try {
+    const scannedFiles = await engine.discoverFiles(targetPath);
+    scan.coverage = buildCoverageManifest(engine, targetPath, scannedFiles);
+  } catch (err) {
+    scan.coverage = { error: `Coverage could not be determined: ${err.message}` };
+  }
+
   // Runs before adjudication so the reasoning pass reviews N distinct issues rather than N
   // restatements of one — both cheaper and more accurate.
-  const collapsedDet = dedupeAdjacentSameRule(detResult.findings);
+  const { kept: collapsedDet, absorbed } = groupAdjacentSameRule(detResult.findings);
 
   const llmResult = await runLLMReasoningScan(
     scan, targetPath, diffFiles, collapsedDet, detResult.surface, { children, send },
@@ -104,10 +114,28 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
     mergedLlm.add(rf);
   }
 
+  // Every decision the merge makes on the user's behalf, tallied. Each of these removes or
+  // rewrites something an engine reported, and until now every one of them was silent — a scan
+  // that discarded 40 findings and one that never produced them read identically.
+  const dispositions = {
+    patternRaw: detResult.findings.length,
+    collapsedAdjacent: detResult.findings.length - collapsedDet.length,
+    reasoningRaw: llmResult.findings.length,
+    mergedIntoPattern: 0,
+    duplicateReasoning: 0,
+    malformedReasoning: 0,
+    severityChanged: 0,
+    closedAsFalsePositive: 0,
+  };
+
   for (const [i, f] of collapsedDet.entries()) {
+    const corroboration = corroborationByDet.get(i) || null;
+    if (corroboration) dispositions.mergedIntoPattern++;
     const finding = findingFromSastEngine(
-      f, scan, targetPath, adjudications.get(i) || null, corroborationByDet.get(i) || null,
+      f, scan, targetPath, adjudications.get(i) || null, corroboration, absorbed.get(f) || 0,
     );
+    if (finding.disposition && finding.disposition.severityApplied) dispositions.severityChanged++;
+    if (finding.disposition && finding.disposition.closedAs) dispositions.closedAsFalsePositive++;
     findings.set(finding.id, finding);
     scan.findingIds.push(finding.id);
     created.push(toListItem(finding));
@@ -119,11 +147,12 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   for (const rf of [...llmResult.findings].sort((a, b) => severityRank(a.severity) - severityRank(b.severity))) {
     const title = String(rf.title || '').trim();
     const description = String(rf.description || '').trim();
-    if (!title || !description) continue; // skip malformed entries rather than fail the scan
+    if (!title || !description) { dispositions.malformedReasoning++; continue; } // never fail the scan over one bad entry
     if (mergedLlm.has(rf)) continue;      // already folded into its deterministic counterpart
-    if (isDuplicateOfReasoning(rf, keptLlm)) continue;
+    if (isDuplicateOfReasoning(rf, keptLlm)) { dispositions.duplicateReasoning++; continue; }
     keptLlm.push(rf);
     const finding = findingFromLLMScan(rf, scan);
+    if (finding.disposition && finding.disposition.closedAs) dispositions.closedAsFalsePositive++;
     findings.set(finding.id, finding);
     scan.findingIds.push(finding.id);
     created.push(toListItem(finding));
@@ -138,6 +167,7 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   }
 
   scan.reasoningCostUsd = llmResult.costUsd || 0;
+  scan.dispositions = dispositions;
   finish(created);
 }
 

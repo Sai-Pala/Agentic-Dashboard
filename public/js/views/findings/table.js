@@ -11,7 +11,7 @@ import { emit, EVENTS } from '../../events.js';
 import { escapeHtml, statusBadgeHtml } from '../../lib/html.js';
 import { icon } from '../../lib/icons.js';
 import { severityLabel } from '../../lib/format.js';
-import { SCAN_TYPE_META, SEV_ORDER_MAP, STATUS_ORDER_MAP, findingSourceTagHtml } from '../../lib/meta.js';
+import { SCAN_TYPE_META, SEV_ORDER_MAP, STATUS_ORDER_MAP, findingSourceTagHtml, findingDispositionTagsHtml } from '../../lib/meta.js';
 import { findingLoopCellHtml } from '../../components/loop/cell.js';
 import { onViewDiffClick } from '../../components/loop/actions.js';
 import { openMenuUnderButton, openFindingContextMenu } from '../../components/menu.js';
@@ -67,7 +67,7 @@ function findingsCellHtml(f, key) {
       return `<span class="scan-type-chip">${escapeHtml(m.label)}</span>`;
     }
     case 'title':
-      return `<div class="ft-title">${escapeHtml(f.title)}${findingSourceTagHtml(f)}</div>`;
+      return `<div class="ft-title">${escapeHtml(f.title)}${findingSourceTagHtml(f)}${findingDispositionTagsHtml(f)}</div>`;
     case 'file':
       return f.file ? `<span class="ft-mono">${escapeHtml(f.file)}</span>` : '<span class="hint">—</span>';
     case 'location':
@@ -192,11 +192,22 @@ export function renderFindingsTable() {
   }
 
   /** A normal finding row — unchanged behaviour, indented when it sits inside a group. */
-  const appendFindingRow = (f, inGroup) => {
+  const appendFindingRow = (f, inGroup, isLast = false) => {
     const tr = document.createElement('tr');
     tr.dataset.findingId = f.id;
-    if (inGroup) tr.className = 'ft-grouped-row';
-    tr.innerHTML = columns.map((col) => `<td data-col="${col.key}">${findingsCellHtml(f, col.key)}</td>`).join('')
+    if (inGroup) tr.className = 'ft-grouped-row' + (isLast ? ' last' : '');
+    // Inside a group every member shares the rule, so the title column repeats the group
+    // header 36 times and the rows become indistinguishable. What actually differs is WHERE
+    // each one is, so members show their location instead — the header already said what.
+    tr.innerHTML = columns.map((col) => {
+      const key = inGroup && col.key === 'title' ? 'location' : col.key;
+      // Disposition rides on the title cell, so a grouped member — whose title cell became a
+      // location — would lose it. That is precisely where it matters most: members of one group
+      // share a rule but not a fate, and one of seventeen being closed as a false positive is
+      // invisible otherwise.
+      const extra = inGroup && col.key === 'title' ? findingDispositionTagsHtml(f) : '';
+      return `<td data-col="${key}">${findingsCellHtml(f, key)}${extra}</td>`;
+    }).join('')
       + `<td class="ft-actions-col"><div class="ft-actions-cell">`
       + `<button class="console-toggle-btn" type="button" data-run-agent-btn title="Run agent…">${icon('more')}</button>`
       + `</div></td>`;
@@ -227,6 +238,16 @@ export function renderFindingsTable() {
     const expanded = state.findingsExpandedRules.has(group.key);
     const open = group.findings.filter((f) => f.status !== 'closed').length;
     const files = new Set(group.findings.map((f) => (f.file || '').split(':')[0]).filter(Boolean));
+    // A collapsed group hides every member's disposition behind one row. Rolling the two that
+    // change whether the group is worth opening up to the header keeps the lid from concealing
+    // them — without it, "17×" reads the same whether all 17 are live or 14 were closed.
+    const dispo = group.findings.reduce((acc, f) => {
+      const d = f.disposition;
+      if (d && d.closedAs) acc.closed++;
+      if (d && d.severityApplied) acc.resev++;
+      if (d && d.collapsed) acc.folded += d.collapsed;
+      return acc;
+    }, { closed: 0, resev: 0, folded: 0 });
 
     const tr = document.createElement('tr');
     tr.className = 'ft-group-row' + (expanded ? ' expanded' : '');
@@ -239,6 +260,9 @@ export function renderFindingsTable() {
           + `<span class="ft-group-count">${group.findings.length}\u00d7</span>`
           + `</div>`
           + `<div class="hint ft-group-sub">${open} open`
+          + `${dispo.closed ? ` · <span class="ft-group-dispo">${dispo.closed} closed as not real</span>` : ''}`
+          + `${dispo.resev ? ` · <span class="ft-group-dispo">${dispo.resev} re-severitied</span>` : ''}`
+          + `${dispo.folded ? ` · <span class="ft-group-dispo">${dispo.folded} more folded in</span>` : ''}`
           + `${files.size > 1 ? ` · ${files.size} files` : ''}`
           + `${group.lead.rule ? ` · ${escapeHtml(group.lead.rule)}` : ''}</div></td>`;
       }
@@ -254,6 +278,8 @@ export function renderFindingsTable() {
     });
     bodyEl.appendChild(tr);
 
-    if (expanded) for (const f of group.findings) appendFindingRow(f, true);
+    if (expanded) {
+      group.findings.forEach((f, i) => appendFindingRow(f, true, i === group.findings.length - 1));
+    }
   }
 }

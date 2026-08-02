@@ -16,6 +16,7 @@ import { loadScans, wireScansView } from './views/scans/index.js';
 import { loadTimeline, wireTimeline, closeTimelineDrawer } from './views/timeline.js';
 import { wireFindingDetail } from './views/finding-detail/index.js';
 import { wireSettings } from './views/settings.js';
+import { wireInsights } from './views/insights.js';
 import { wireDashboard } from './views/dashboard.js';
 import { wireRunMessages } from './components/runs.js';
 import { wireModals, closeStageModal, closeFindingModal } from './components/modals.js';
@@ -53,6 +54,7 @@ async function init() {
   wireFindingDetail();
   wireTimeline();
   wireSettings();
+  wireInsights();
   wireModals();
   wireDashboard();
   wireRunMessages();

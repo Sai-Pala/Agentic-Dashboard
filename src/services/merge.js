@@ -47,7 +47,7 @@ const ADJACENT_RULE_LINES = 3;
  *     Anchoring to the previous hit lets groups chain without bound (10,12,14,16,18,20 become
  *     one finding despite spanning 10 lines), silently discarding the distinct ones.
  */
-function dedupeAdjacentSameRule(findings) {
+function groupAdjacentSameRule(findings) {
   const groups = new Map();
   for (const f of findings) {
     const key = `${f.file}::${f.rule}`;
@@ -55,9 +55,15 @@ function dedupeAdjacentSameRule(findings) {
     groups.get(key).push(f);
   }
   const kept = new Set();
+  // How many nearby siblings each survivor stands for. Without this the collapse is invisible:
+  // a rule firing six times on one condition and a rule firing once look identical afterwards,
+  // and the five that vanished leave no trace anywhere in the app.
+  const absorbed = new Map();
+
   for (const group of groups.values()) {
     const sorted = [...group].sort((a, b) => (a.line || 0) - (b.line || 0));
     let groupStart = null;
+    let survivor = null;
     for (const f of sorted) {
       // CONCERN (recorded, not fixed): `f.line || 0` means every lineless hit of one rule in
       // one file collapses to a single finding. That is correct for the file-level rules that
@@ -66,12 +72,21 @@ function dedupeAdjacentSameRule(findings) {
       const line = f.line || 0;
       if (groupStart == null || line - groupStart > ADJACENT_RULE_LINES) {
         kept.add(f);
+        absorbed.set(f, 0);
         groupStart = line;
+        survivor = f;
+      } else {
+        absorbed.set(survivor, absorbed.get(survivor) + 1);
       }
     }
   }
   // Preserve the engine's own severity ordering rather than the grouping order.
-  return findings.filter((f) => kept.has(f));
+  return { kept: findings.filter((f) => kept.has(f)), absorbed };
+}
+
+/** The kept findings alone, for callers that do not care what was collapsed into them. */
+function dedupeAdjacentSameRule(findings) {
+  return groupAdjacentSameRule(findings).kept;
 }
 
 module.exports = {
@@ -79,4 +94,5 @@ module.exports = {
   parseFileLine,
   isDuplicateOfReasoning,
   dedupeAdjacentSameRule,
+  groupAdjacentSameRule,
 };

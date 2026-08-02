@@ -16,7 +16,7 @@ Everything is in-memory and session-lifetime. There is no database, no auth, no 
 ```bash
 npm install
 npm start     # node server.js — http://localhost:4500
-npm test      # node --test "test/**/*.test.js" — 430 tests, ~30s
+npm test      # node --test "test/**/*.test.js" — 478 tests, ~30s
 ```
 
 `claude auth status` must succeed before any LLM-backed feature works; the server spawns the
@@ -184,6 +184,11 @@ recorded behaviour looks like a latent bug it is asserted as-is with a `CONCERN:
 | `engine-golden` | sast-engine output against fixtures |
 | `ws-scan-protocol` | WebSocket message validation and framing |
 | `ws-fix-flow` | the preview / apply / chained fix handlers |
+| `coverage` | the file-coverage manifest — what a scan read and what it dropped |
+| `scan-report` | the agent roster and recon summary behind the Insights screen |
+| `finding-disposition` | severity rewrites, closures, and collapsed siblings |
+| `scan-handoff` | what the deterministic engine tells the reasoning pass |
+| `module-graph` | client import cycles and cluster size (Tarjan SCC) |
 
 Two things to know before believing a red run:
 

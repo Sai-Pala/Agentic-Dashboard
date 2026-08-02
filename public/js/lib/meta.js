@@ -78,3 +78,60 @@ export function findingSourceTagHtml(f) {
   }
   return '';
 }
+
+const SEV_LABEL = { critical: 'critical', high: 'high', medium: 'medium', low: 'low', informational: 'info' };
+
+/**
+ * What the app did to this finding after an engine reported it.
+ *
+ * Everything here was previously silent. A severity the adjudicator rewrote was displayed as
+ * though the engine had assigned it; a finding closed as a false positive said "closed" without
+ * saying who decided or on what basis; five sibling matches folded into one row left no trace at
+ * all. Each of those changes whether the row in front of you deserves trust, so each gets a tag —
+ * and Insights carries the scan-wide totals behind them.
+ */
+export function findingDispositionTagsHtml(f) {
+  const d = f.disposition;
+  const tags = [];
+
+  const corroborated = f.stageRuns && f.stageRuns.triage && f.stageRuns.triage.verdict
+    && f.stageRuns.triage.verdict.corroborated;
+  if (corroborated) {
+    tags.push(['ok', 'Both engines',
+      'The pattern engine and the reasoning pass independently reported this same location — the strongest signal this app produces']);
+  }
+  if (!d) return tags.map(tagHtml).join('');
+
+  if (d.severityFrom) {
+    const arrow = d.severityDirection === 'down' ? '↓' : '↑';
+    const from = SEV_LABEL[d.severityFrom] || d.severityFrom;
+    const to = SEV_LABEL[d.severityTo] || d.severityTo;
+    if (d.severityApplied) {
+      tags.push([d.severityDirection === 'down' ? 'warn' : 'err', `Severity ${arrow} ${from} → ${to}`,
+        `The engine reported ${from}. ${cap(d.severityChangedBy)} changed it to ${to}, and the severity shown on this row is the changed one.`]);
+    } else {
+      // Deliberately not called a downgrade: nothing was applied. The row still shows `from`.
+      tags.push(['muted', `Confirmed ${to}, reported ${from}`,
+        `${cap(d.severityChangedBy)} reported ${from} but confirmed ${to}. The disagreement was left as-is — this row shows the reported severity.`]);
+    }
+  }
+  if (d.closedAs) {
+    tags.push(['err', d.closedAs === 'duplicate' ? 'Closed — duplicate' : 'Closed — false positive',
+      `Closed by ${d.closedBy}. It is kept and still inspectable — a wrong call here should cost visibility, not evidence.`]);
+  }
+  if (d.collapsed) {
+    tags.push(['muted', `+${d.collapsed} collapsed`,
+      `${d.collapsed} more hit${d.collapsed === 1 ? '' : 's'} of this same rule within a few lines were folded into this finding, and are not listed separately anywhere.`]);
+  }
+  return tags.map(tagHtml).join('');
+}
+
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'It'; }
+
+function tagHtml([tone, label, why]) {
+  return `<span class="disposition-tag dt-${tone}" title="${escapeAttr(why)}">${escapeAttr(label)}</span>`;
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}

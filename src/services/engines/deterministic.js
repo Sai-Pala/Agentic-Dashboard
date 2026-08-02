@@ -8,6 +8,7 @@
 const { DETERMINISTIC_AGENT_TIMEOUT_MS } = require('../../config');
 const { normalizeSeverity } = require('../taxonomy');
 const { toRepoRelative } = require('../paths');
+const { summarizeRecon, buildAgentRoster } = require('../scan-report');
 
 async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, { send }) {
   let orchestrator;
@@ -68,6 +69,12 @@ async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, 
     // Recorded on the scan for the same reason agentsSkipped is: the reasoning pass needs to
     // know which classes went unchecked so it does not treat them as already covered.
     scan.agentsFailed = failedAgents;
+
+    // runAll() returns the whole record of how it decided; the app used to keep only `findings`
+    // and `surface`. These three are what makes a scan auditable rather than just a result.
+    scan.agentRoster = buildAgentRoster(orchestrator.agents, result.agentResults, skipped);
+    scan.engineRecon = summarizeRecon(result.recon);
+    scan.suppression = result.suppression || null;
     if (failedAgents.length && scan.status !== 'cancelled') {
       send({
         type: 'scan-warning',

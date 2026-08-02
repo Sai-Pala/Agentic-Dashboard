@@ -14,7 +14,7 @@ import { escapeHtml } from '../../lib/html.js';
 import { icon } from '../../lib/icons.js';
 import { highlightCode } from '../../lib/highlight.js';
 import { truncate, statusLabel, severityLabel } from '../../lib/format.js';
-import { SCAN_TYPE_META, findingSourceTagHtml } from '../../lib/meta.js';
+import { SCAN_TYPE_META, findingSourceTagHtml, findingDispositionTagsHtml } from '../../lib/meta.js';
 import { wireConsoleToggles, reattachConsoleRefs } from '../../components/console.js';
 import { findingStageRuns } from '../../components/loop/state.js';
 import { fdLoopBoxesHtml } from '../../components/loop/boxes.js';
@@ -89,6 +89,7 @@ function renderFindingDetail(findingId) {
       <span class="badge ${finding.status}">${escapeHtml(statusLabel(finding.status))}</span>
       <span class="scan-type-chip">${escapeHtml(typeMeta.label)}</span>
       ${findingSourceTagHtml({ stageRuns: findingStageRuns(finding) })}
+      ${findingDispositionTagsHtml({ stageRuns: findingStageRuns(finding), disposition: finding.disposition })}
     </div>
   `;
 

@@ -33,6 +33,10 @@ function toListItem(finding) {
     },
     sourceScanId: finding.sourceScanId || null,
     flow: finding.flow || null,
+    // What the app did to this finding after the engine emitted it — severity rewritten, closed
+    // as a false positive, siblings collapsed into it. Null when nothing happened, which is the
+    // common case, so the wire shape stays light.
+    disposition: finding.disposition || null,
   };
 }
 

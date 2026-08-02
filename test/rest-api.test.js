@@ -272,6 +272,7 @@ test('GET /api/findings list items expose runCount/latestRun/stageRuns', async (
       'id', 'title', 'severity', 'scanType', 'rule', 'file', 'description', 'code',
       'packageName', 'packageVersion', 'fixedVersion', 'endpoint', 'method',
       'status', 'createdAt', 'runCount', 'latestRun', 'stageRuns', 'sourceScanId', 'flow',
+      'disposition',
     ]) {
       assert.ok(key in item, `expected list item key "${key}"`);
     }

@@ -19,7 +19,7 @@ import { state } from './state.js';
 
 const NAV_COLLAPSE_KEY = 'appsecops-nav-collapsed';
 
-const VIEW_IDS = ['dashboard', 'scans', 'settings', 'findings', 'finding-detail', 'surface', 'reports'];
+const VIEW_IDS = ['dashboard', 'scans', 'settings', 'findings', 'finding-detail', 'surface', 'insights', 'reports'];
 
 /** view id -> the function that loads/renders it. Populated by router.js at startup. */
 const viewRenderers = new Map();

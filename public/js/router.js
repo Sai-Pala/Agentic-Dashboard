@@ -10,6 +10,7 @@ import { registerView, registerBadgeHook } from './nav.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderFindingsView } from './views/findings/index.js';
 import { openSurfaceView } from './views/surface.js';
+import { openInsightsView } from './views/insights.js';
 import { renderSettings } from './views/settings.js';
 import { updateTimelineClockDots } from './views/timeline.js';
 
@@ -21,6 +22,7 @@ export function registerViews() {
   registerView('dashboard', renderDashboard);
   registerView('findings', renderFindingsView);
   registerView('surface', openSurfaceView);
+  registerView('insights', openInsightsView);
   registerView('settings', renderSettings);
 
   registerBadgeHook(updateTimelineClockDots);

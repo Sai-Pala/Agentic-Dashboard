@@ -360,6 +360,19 @@
     text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: var(--radius-sm);
     white-space: nowrap; vertical-align: middle; background: var(--panel-3); color: var(--text-dim);
   }
+  /* What the app did to a finding after an engine reported it. Same size and shape as the
+     source tag beside it, but colour-carrying: these are decisions that changed the row, and
+     the source tag is only a statement of origin. */
+  .disposition-tag {
+    display: inline-flex; align-items: center; margin-left: 6px; font-size: 9.5px; font-weight: 600;
+    letter-spacing: .02em; padding: 1px 6px; border-radius: var(--radius-sm);
+    white-space: nowrap; vertical-align: middle; cursor: help;
+  }
+  .dt-ok { background: var(--ok-soft); color: var(--ok); }
+  .dt-warn { background: var(--warn-soft); color: var(--warn); }
+  .dt-err { background: var(--err-soft); color: var(--err); }
+  .dt-muted { background: var(--panel-3); color: var(--muted); }
+  .ft-group-dispo { color: var(--warn); }
   .scan-meta-text { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
   .scan-stats { display: flex; align-items: center; gap: 14px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; font-family: var(--mono); }
   .scan-stats .stat b { color: var(--text-dim); font-weight: 600; }
@@ -695,26 +708,220 @@
 
 /* ── Grouped findings ──────────────────────────────────────────────────────
    One rule firing many times is one decision. The group row is a lid over its
-   occurrences; every finding underneath still renders as an ordinary row. */
-.ft-group-row { cursor: pointer; }
-.ft-group-row:hover { background: var(--row-hover, rgba(255, 255, 255, 0.04)); }
+   occurrences; every finding underneath still renders as an ordinary row.
+
+   The first version used invented variables (--row-nested, --row-hover) that
+   were never defined, so every rule fell back to a 1.6%-opacity white — the
+   expanded rows were indistinguishable from the header. Everything below uses
+   real tokens, so it holds in both themes. */
+
+/* The lid. Filled, so it reads as a container rather than another finding. */
+.findings-table tr.ft-group-row { cursor: pointer; background: var(--panel-2); }
+.findings-table tr.ft-group-row:hover { background: var(--panel-3); }
+.findings-table tr.ft-group-row.expanded { background: var(--panel-3); }
+.findings-table tr.ft-group-row > td { border-bottom: 1px solid var(--border); }
+
+/* `flex: 0 0 12px`, not `width`: .ft-title is a flex row, so a plain width was overridden by
+   flex-shrink and the caret computed to 0px wide — the only affordance saying a row expands
+   rendered as a stray dot. */
 .ft-group-caret {
-  display: inline-block;
-  width: 12px;
+  flex: 0 0 12px;
   margin-right: 6px;
-  opacity: 0.6;
-  font-size: 10px;
+  color: var(--accent);
+  font-size: 11px;
 }
+
 .ft-group-count {
   margin-left: 8px;
-  padding: 1px 6px;
-  border-radius: 9px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 600;
-  background: var(--chip-bg, rgba(255, 255, 255, 0.08));
-  color: var(--text-dim, #9aa0a6);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
-.ft-group-sub { margin-top: 2px; font-size: 11px; }
-/* Indented so an expanded group reads as belonging to the row above it. */
-.ft-grouped-row > td:first-child { padding-left: 26px; }
-.ft-grouped-row { background: var(--row-nested, rgba(255, 255, 255, 0.015)); }
+
+.ft-group-sub { margin-top: 3px; font-size: 11px; color: var(--muted); }
+
+/* Members. The accent rail is the primary signal that these belong to the row
+   above — it survives both themes, where a background tint barely does. */
+.findings-table tr.ft-grouped-row > td:first-child {
+  border-left: 2px solid var(--accent);
+  padding-left: 26px;
+}
+.findings-table tr.ft-grouped-row > td { background: var(--panel); }
+.findings-table tr.ft-grouped-row:hover > td { background: var(--panel-2); }
+/* Closes the group visually, so the next top-level row is unambiguous. */
+.findings-table tr.ft-grouped-row.last > td { border-bottom: 1px solid var(--border); }
+
+/* ── Insights ──────────────────────────────────────────────────────────────
+   Describes the SCAN, not the target. Built for someone tuning the engine, so
+   it favours density and completeness over calm: full file listings, every
+   agent whether or not it ran, and colour reserved for the two things that
+   mean coverage was lost — an agent that failed and source that was never
+   opened. Everything else stays neutral so those two stand out. */
+.ins-section { margin-bottom: 28px; }
+.ins-section-head { margin-bottom: 12px; }
+.ins-section-head h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.ins-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+.ins-note {
+  margin: 6px 0 0;
+  max-width: 78ch;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.ins-empty { padding: 8px 0; font-size: 12px; color: var(--muted); }
+.ins-sub { margin-top: 3px; font-size: 11px; line-height: 1.45; color: var(--muted); }
+
+/* Tone classes. Applied to numbers and status pills alike. */
+.ins-ok { color: var(--ok); }
+.ins-warn { color: var(--warn); }
+.ins-err { color: var(--err); }
+.ins-plain { color: var(--text); }
+
+/* Headline numbers. */
+.ins-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin-bottom: 14px;
+  background: var(--border-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.ins-metric { padding: 12px 14px; background: var(--panel); }
+.ins-metric-value { font-family: var(--mono); font-size: 22px; font-weight: 600; line-height: 1.1; }
+.ins-metric-label { margin-top: 4px; font-size: 12px; color: var(--text-dim); }
+.ins-metric-sub { margin-top: 3px; font-size: 11px; line-height: 1.4; color: var(--muted); }
+
+/* Tables. */
+.ins-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ins-table th, .ins-table td {
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-soft);
+}
+.ins-table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.ins-table td { color: var(--text-dim); }
+.ins-table code { font-family: var(--mono); font-size: 11.5px; color: var(--path); }
+.ins-num { text-align: right; font-family: var(--mono); }
+.ins-kv th {
+  width: 190px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.ins-kv th.ins-num { width: 70px; font-weight: 600; color: var(--text); }
+/* The tone classes are single-class selectors and lose to the rule above on specificity, which
+   silently rendered every "this dropped findings" count in the neutral colour. */
+.ins-kv th.ins-num.ins-warn { color: var(--warn); }
+.ins-kv th.ins-num.ins-err { color: var(--err); }
+.ins-agents tbody tr:hover { background: var(--panel-2); }
+.ins-agent-name { font-weight: 500; color: var(--text); }
+.ins-agent-cat { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+/* A gated-out agent is a scoping decision, not a problem — recede it. */
+.ins-agent-skipped .ins-agent-name { font-weight: 400; color: var(--muted); }
+.ins-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--panel-3);
+}
+.ins-status.ins-ok { background: var(--ok-soft); }
+.ins-status.ins-warn { background: var(--warn-soft); }
+.ins-status.ins-err { background: var(--err-soft); }
+.ins-status.ins-plain { color: var(--muted); }
+
+/* Expandable file listings. */
+.ins-drill {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  margin-bottom: 6px;
+  background: var(--panel);
+}
+.ins-drill[open] { background: var(--panel-2); border-color: var(--border); }
+.ins-drill-summary {
+  padding: 9px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.ins-drill-summary::-webkit-details-marker { display: none; }
+.ins-drill-summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 14px;
+  color: var(--muted);
+}
+.ins-drill[open] > .ins-drill-summary::before { content: '▾'; }
+.ins-drill-summary:hover { background: var(--panel-2); }
+.ins-drill[open] > .ins-drill-summary { border-bottom: 1px solid var(--border); }
+.ins-drill-n {
+  display: inline-block;
+  min-width: 34px;
+  margin-right: 6px;
+  font-family: var(--mono);
+  font-weight: 700;
+}
+.ins-drill-body { padding: 10px 12px 12px 26px; }
+/* Its own bordered box, not a bare block: this list scrolls, and a scrolled region with no
+   boundary cuts its top line in half against whatever sits above it. */
+.ins-files {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 2px 16px;
+  max-height: 340px;
+  padding: 8px 10px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.ins-files code {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+/* Detected-signal chips. */
+.ins-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.ins-chip {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ins-chip-off { background: var(--panel-3); color: var(--muted); }
