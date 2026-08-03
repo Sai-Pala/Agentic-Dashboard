@@ -24,11 +24,15 @@ const {
   REVIEW_MAX_SHARDS,
   REVIEW_MAX_SHARDS_UNCAPPED,
   REVIEW_SHARD_CONCURRENCY,
+  OPENGREP_CONFIG,
 } = require('../../config');
 const { severityRank } = require('../taxonomy');
 const { runReasoningCall } = require('../claude');
 const { loadSastEngine } = require('../sast-engine');
-const { buildCoverageSummary, renderAdjudicationWorklist, planReviewShards, selectForAdjudication } = require('./plan');
+const {
+  buildCoverageSummary, buildOpengrepCoverageSummary,
+  renderAdjudicationWorklist, planReviewShards, selectForAdjudication,
+} = require('./plan');
 const { toRepoRelative } = require('../paths');
 
 /**
@@ -100,10 +104,13 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
 
   let reviewPrompt;
   try {
-    reviewPrompt = readAgent('scan') + '\n\n' + buildCoverageSummary(engine, {
-      skipped: scan.agentsSkipped,
-      failed: scan.agentsFailed,
-    });
+    // Which brief depends on which deterministic engine ran. The agent-based summary can name
+    // the classes that went unchecked; Opengrep's cannot, and says so rather than implying
+    // coverage it has no record of.
+    const coverageBrief = scan.agentRoster
+      ? buildCoverageSummary(engine, { skipped: scan.agentsSkipped, failed: scan.agentsFailed })
+      : buildOpengrepCoverageSummary(OPENGREP_CONFIG, detFindings);
+    reviewPrompt = readAgent('scan') + '\n\n' + coverageBrief;
   } catch (err) {
     return { findings: [], adjudications: new Map(), error: err.message, costUsd: 0 };
   }

@@ -56,6 +56,19 @@ const REVIEW_SHARD_CONCURRENCY = 3;
 // scales with repo size. Anything still running at this point is stuck, not slow.
 const DETERMINISTIC_AGENT_TIMEOUT_MS = 180_000;
 
+// ── Opengrep ────────────────────────────────────────────────────────────────
+// The deterministic pattern engine. Opengrep rather than Semgrep for one reason: --taint-intrafile,
+// inter-procedural taint tracking within a file, which Semgrep keeps behind its paid tier. On the
+// benchmark the two are otherwise byte-identical.
+const OPENGREP_BIN = process.env.OPENGREP_BIN || 'opengrep';
+// `p/default` is the conservative registry pack. Measured: adding p/security-audit, p/javascript,
+// p/nodejs and p/owasp-top-ten together produced FEWER findings (12 vs 23) and lost every XSS
+// result — more packs is not more coverage, so this stays a single deliberate choice.
+const OPENGREP_CONFIG = process.env.OPENGREP_CONFIG || 'p/default';
+// Hang detector, not a work budget. A 12-file repo scans in ~5s; this is three orders of
+// magnitude of headroom before something is considered stuck.
+const OPENGREP_TIMEOUT_MS = 300_000;
+
 // Past this the adjudication prompt stops being a review and becomes a haystack. Findings over
 // the cap keep their pattern-engine verdict and the shortfall is reported, never dropped.
 const ADJUDICATE_MAX_FINDINGS = 40;
@@ -96,6 +109,9 @@ module.exports = {
   REVIEW_MAX_SHARDS_UNCAPPED,
   REVIEW_SHARD_CONCURRENCY,
   DETERMINISTIC_AGENT_TIMEOUT_MS,
+  OPENGREP_BIN,
+  OPENGREP_CONFIG,
+  OPENGREP_TIMEOUT_MS,
   ADJUDICATE_MAX_FINDINGS,
   ADJUDICATE_MAX_PER_RULE,
   NON_FINDING_AGENTS,

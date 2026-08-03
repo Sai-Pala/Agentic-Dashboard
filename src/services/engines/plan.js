@@ -25,6 +25,35 @@ const { toRepoRelative } = require('../paths');
  * @param {object} engine  loaded sast-engine
  * @param {{skipped?: string[], failed?: string[]}} [coverage]
  */
+/**
+ * The same brief, for Opengrep.
+ *
+ * The agent-based version below enumerates named agents and can therefore say exactly which
+ * classes went unchecked. Opengrep has no equivalent: a rule pack is a flat set of hundreds of
+ * rules with no per-class run/skip record, so an honest summary cannot claim a gap list.
+ *
+ * It says two true things instead — which rule pack ran, and which of its rules actually fired
+ * here — and is explicit that absence of a rule firing is not proof of absence. Getting this
+ * wrong in the other direction is the expensive mistake: telling the reasoning pass a class is
+ * "already covered" when nothing checked it is how a real finding gets talked out of existence.
+ */
+function buildOpengrepCoverageSummary(rulePack, detFindings = []) {
+  const fired = [...new Set(detFindings.map((f) => f.rule).filter(Boolean))].sort();
+
+  return 'A deterministic pattern engine (Opengrep, rule pack `' + rulePack + '`) ran over this '
+    + 'same codebase before you. It matches syntactic patterns and intra-file taint flows: '
+    + 'injection, XSS, unsafe deserialization, SSRF, weak crypto, hardcoded secrets and '
+    + 'framework misconfiguration. Do not spend effort re-deriving those from scratch.\n\n'
+    + 'Focus instead on what a fixed rule set structurally cannot do: business-logic flaws, '
+    + 'authorization and access-control reasoning, and attack-surface analysis.\n\n'
+    + (fired.length
+      ? 'Rules that actually fired on this codebase:\n' + fired.map((r) => `- ${r}`).join('\n')
+      : 'No pattern rules fired on this codebase.')
+    + '\n\nIMPORTANT: that list is what fired, NOT what was checked. A rule pack carries no record '
+    + 'of which vulnerability classes it examined and cleared, so treat any class absent from the '
+    + 'list as unverified rather than as confirmed clean.';
+}
+
 function buildCoverageSummary(engine, coverage = {}) {
   const skipped = new Set(coverage.skipped || []);
   // failedAgents entries read "AgentName (reason)" — key on the name alone.
@@ -192,4 +221,7 @@ function planReviewShards(surface, detFindings, targetPath, { maxShards }) {
   return { list, totalRoutes, reviewedRoutes, skippedRoutes: totalRoutes - reviewedRoutes };
 }
 
-module.exports = { buildCoverageSummary, renderAdjudicationWorklist, planReviewShards, selectForAdjudication };
+module.exports = {
+  buildCoverageSummary, buildOpengrepCoverageSummary,
+  renderAdjudicationWorklist, planReviewShards, selectForAdjudication,
+};

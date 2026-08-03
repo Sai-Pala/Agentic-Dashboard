@@ -11,7 +11,10 @@
 const { loadSastEngine } = require('./sast-engine');
 const { severityRank } = require('./taxonomy');
 const { parseFileLine, isDuplicateOfReasoning, groupAdjacentSameRule } = require('./merge');
-const { runDeterministicPatternScan } = require('./engines/deterministic');
+// The deterministic half. `deterministic.js` (the vendored 491-rule pattern engine) is kept on
+// disk deliberately — its AI/agentic agents have no Opengrep equivalent and the overlap between
+// the two has not been measured yet. Do not delete it until it has.
+const { runOpengrepScan } = require('./engines/opengrep');
 const { runDeterministicScaScan } = require('./engines/sca');
 const { runLLMReasoningScan } = require('./engines/reasoning');
 const { toRepoRelative } = require('./paths');
@@ -47,19 +50,31 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
     return result;
   });
 
-  const detResult = await runDeterministicPatternScan(engine, scan, targetPath, diffFiles, { send });
+  const detResult = await runOpengrepScan(scan, targetPath, diffFiles, { children, send });
 
   if (scan.status === 'cancelled') return;
 
-  // The only description of the application's shape the app has, and posture information no
-  // findings list conveys. Surfaced by the Attack Surface page.
-  if (detResult.surface) scan.surface = detResult.surface;
+  // Enumerated directly rather than arriving with the findings. The old pattern engine produced
+  // the route map as a by-product of runAll(); Opengrep has no equivalent and never will — it is
+  // a rule runner, not a framework-aware mapper. Losing this silently would be the expensive
+  // failure, because the reasoning pass is SHARDED by these routes: with no surface it reviews
+  // the tree unscoped, which its own warning calls substantially weaker coverage.
+  try {
+    scan.surface = engine.enumerateSurface(targetPath);
+  } catch (err) {
+    send({
+      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+      message: `Attack-surface enumeration failed, so the reasoning pass could not be scoped to routes and ran over the whole tree instead — weaker coverage, not a clean result: ${err.message}`,
+    });
+  }
 
   // What the scan actually looked at, and what it silently dropped. Best-effort: a failure here
   // must never fail the scan, since it is reporting about the scan rather than part of it.
+  //
+  // `scannedFiles` is Opengrep's own list of files it parsed — ground truth, so the manifest
+  // cannot drift from what was really read.
   try {
-    const scannedFiles = await engine.discoverFiles(targetPath);
-    scan.coverage = buildCoverageManifest(engine, targetPath, scannedFiles);
+    scan.coverage = buildCoverageManifest(engine, targetPath, detResult.scannedFiles || []);
   } catch (err) {
     scan.coverage = { error: `Coverage could not be determined: ${err.message}` };
   }
@@ -69,7 +84,7 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   const { kept: collapsedDet, absorbed } = groupAdjacentSameRule(detResult.findings);
 
   const llmResult = await runLLMReasoningScan(
-    scan, targetPath, diffFiles, collapsedDet, detResult.surface, { children, send },
+    scan, targetPath, diffFiles, collapsedDet, scan.surface, { children, send },
   );
   const scaResult = await scaPromise;
 
