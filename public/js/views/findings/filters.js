@@ -1,6 +1,5 @@
 /**
  * Agent Triage filters
- * ====================
  *
  * The type tabs (All / Hybrid / SCA) and the per-scan filter popover.
  */

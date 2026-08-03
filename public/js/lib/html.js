@@ -1,6 +1,5 @@
 /**
  * HTML helpers that need a document
- * =================================
  *
  * Split out from util/format.js precisely because these touch the DOM: escapeHtml round-trips
  * through a detached element rather than doing regex replacement. Keeping them here is what
@@ -21,13 +20,10 @@ export function statusBadgeHtml(f) {
   return `<span class="badge ${f.status}">${escapeHtml(statusLabel(f.status))}</span>`;
 }
 
-// Agent free-text (reasoning/root_cause/evidence/etc.) commonly contains Markdown-ish inline
-// code spans and bold the model wrote assuming a Markdown renderer downstream — this app had
-// none, so a literal backtick or `**` pair just showed up as stray punctuation. A small
-// hand-rolled inline formatter (escape first, then linkify backtick spans and bold — no lists/
-// headers/links, this app's verdict fields never use them) fixes that without pulling in an
-// external Markdown library, consistent with this app's other hand-rolled renderers
-// (highlightCode(), diffLineHtml()).
+// Agent free-text arrives with Markdown-ish backtick spans and `**` bold, written assuming a
+// renderer downstream. There is none, so without this they show up as stray punctuation.
+// Escape first, then the two inline forms only — verdict fields never use lists, headers or
+// links, so a Markdown dependency would buy nothing.
 export function formatInlineText(str) {
   return escapeHtml(str)
     .replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`)

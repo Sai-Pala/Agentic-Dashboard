@@ -1,6 +1,5 @@
 /**
  * Nav mechanics: which view is showing, and the sidebar.
- * ======================================================
  *
  * This module knows how to switch views and refresh the nav badges. It deliberately does NOT
  * know what any view is — it imports nothing but `state`.

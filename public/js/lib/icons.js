@@ -1,6 +1,5 @@
 /**
  * The icon set
- * ============
  *
  * Hand-drawn monoline SVG paths, no icon font and no emoji anywhere in the UI — consistent
  * with this app's no-external-dependency aesthetic.

@@ -104,15 +104,13 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
   // Pair each reasoning finding with a deterministic one at the same place (same file, within a
   // couple of lines).
   //
-  // Two engines independently flagging one location is the strongest signal this app produces,
-  // and it used to be the weakest: the reasoning finding was discarded and the pattern hit kept.
-  // That is backwards twice over. The pattern hit carries the structured half — rule, CWE, code
-  // context, taint span — while the reasoning finding carries the explanation of WHY it is
-  // exploitable, which is the half a human actually needs. And a pattern is most likely to fire
-  // near a real bug, so the rule fired precisely where it cost the most.
+  // Two engines independently flagging one location is the strongest signal this app produces, so
+  // neither half may be dropped in favour of the other. The pattern hit carries the structured
+  // half — rule, CWE, code context, taint span — while the reasoning finding carries the
+  // explanation of WHY it is exploitable, which is the half a human actually needs.
   //
-  // They are merged into one finding instead: structured fields from the pattern engine, prose
-  // from the reasoning pass, and a verdict that records that both agreed.
+  // They become one finding: structured fields from the pattern engine, prose from the reasoning
+  // pass, and a verdict recording that both agreed.
   const detLine = (f) => ({ file: toRepoRelative(targetPath, f.file), line: f.line });
   const corroborationByDet = new Map();  // det index -> reasoning finding
   const mergedLlm = new Set();           // reasoning findings already merged, so not re-created
@@ -129,9 +127,9 @@ async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, s
     mergedLlm.add(rf);
   }
 
-  // Every decision the merge makes on the user's behalf, tallied. Each of these removes or
-  // rewrites something an engine reported, and until now every one of them was silent — a scan
-  // that discarded 40 findings and one that never produced them read identically.
+  // Every decision the merge makes on the user's behalf, tallied. Each one removes or rewrites
+  // something an engine reported, and unrecorded they are invisible: a scan that discarded 40
+  // findings and one that never produced them would read identically.
   const dispositions = {
     patternRaw: detResult.findings.length,
     collapsedAdjacent: detResult.findings.length - collapsedDet.length,

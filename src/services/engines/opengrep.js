@@ -1,6 +1,5 @@
 /**
  * The deterministic half of a hybrid scan, run by Opengrep.
- * =========================================================
  *
  * Replaces the vendored pattern engine's 491 regex rules. Measured on DVNA, against that repo's
  * own documentation: the regex engine found 3 of the 10 vulnerabilities a fixed rule should be
@@ -30,6 +29,7 @@ const {
 } = require('../../config');
 const { normalizeSeverity } = require('../taxonomy');
 const { toRepoRelative } = require('../paths');
+const { sendScanText } = require('./emit');
 
 /**
  * Opengrep severity plus impact, mapped onto this app's five-level scale.
@@ -209,16 +209,10 @@ function runOpengrepScan(scan, targetPath, diffFiles, { children, send }) {
       }
 
       if (findings.length && scan.status !== 'cancelled') {
-        const lines = findings.map((f) => {
+        sendScanText(send, scan, findings.map((f) => {
           const rel = toRepoRelative(targetPath, f.file) || 'unknown file';
           return `[${f.severity}] \`${rel}${f.line ? ':' + f.line : ''}\` — ${f.title}`;
-        });
-        send({
-          type: 'scan-event',
-          runId: scan.runId,
-          scanId: scan.id,
-          event: { type: 'assistant', message: { content: [{ type: 'text', text: lines.join('\n') }] } },
-        });
+        }));
       }
 
       return {

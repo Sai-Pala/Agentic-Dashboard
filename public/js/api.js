@@ -1,6 +1,5 @@
 /**
  * Every REST call the client makes
- * ================================
  *
  * One function per endpoint. Callers get parsed data (or a small {ok, ...} envelope where the
  * failure body matters); no module outside this file calls fetch().

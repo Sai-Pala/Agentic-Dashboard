@@ -1,6 +1,5 @@
 /**
  * Live scan-card instrumentation
- * ==============================
  *
  * The three engine bars (pattern match / reasoning / dependency audit), the severity chip row
  * and live findings list, and the tool/file/token/elapsed counters. Everything here mutates a

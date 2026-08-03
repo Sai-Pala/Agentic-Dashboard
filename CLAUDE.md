@@ -16,13 +16,14 @@ Everything is in-memory and session-lifetime. There is no database, no auth, no 
 ```bash
 npm install
 npm start     # node server.js — http://localhost:4500
-npm test      # node --test "test/**/*.test.js" — 478 tests, ~30s
+npm test      # node --test "test/**/*.test.js" — 494 tests, ~30s
+npm run lint  # eslint . — tuned to catch bugs, not taste; see eslint.config.js
 ```
 
 `claude auth status` must succeed before any LLM-backed feature works; the server spawns the
 CLI non-interactively and does not handle auth itself.
 
-There is no lint script and no build step. `public/` is served as-is — the client is native ES
+There is no build step. `public/` is served as-is — the client is native ES
 modules (`<script type="module">`), so **adding a bundler would be a regression**, not an
 upgrade.
 

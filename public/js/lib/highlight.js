@@ -1,6 +1,5 @@
 /**
  * Syntax and diff highlighting
- * ============================
  *
  * A hand-rolled regex tokenizer, deliberately not an external highlighting library — the same
  * no-external-dependency choice as the hand-drawn icons. Good enough to make a code snippet

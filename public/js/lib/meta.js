@@ -1,6 +1,5 @@
 /**
  * Static metadata tables
- * ======================
  *
  * The vocabularies the UI renders against: agent identities and their icons/blurbs, severity
  * and status orderings, column configurations, and the field lists that decide how a verdict
@@ -84,11 +83,11 @@ const SEV_LABEL = { critical: 'critical', high: 'high', medium: 'medium', low: '
 /**
  * What the app did to this finding after an engine reported it.
  *
- * Everything here was previously silent. A severity the adjudicator rewrote was displayed as
- * though the engine had assigned it; a finding closed as a false positive said "closed" without
- * saying who decided or on what basis; five sibling matches folded into one row left no trace at
- * all. Each of those changes whether the row in front of you deserves trust, so each gets a tag —
- * and Insights carries the scan-wide totals behind them.
+ * Untagged, each of these is invisible: a severity the adjudicator rewrote reads as though the
+ * engine assigned it, a finding closed as a false positive says "closed" without saying who
+ * decided or on what basis, and five sibling matches folded into one row leave no trace. Each
+ * changes whether the row deserves trust, so each gets a tag — with the scan-wide totals behind
+ * them on Insights.
  */
 export function findingDispositionTagsHtml(f) {
   const d = f.disposition;

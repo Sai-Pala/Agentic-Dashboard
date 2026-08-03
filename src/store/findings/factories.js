@@ -148,11 +148,11 @@ function findingFromSastEngine(f, scan, targetPath, adjudication = null, corrobo
 /**
  * What happened to this finding between the engine emitting it and the list showing it.
  *
- * Every field here describes a decision the app made on the user's behalf and previously did not
- * record. A severity downgrade was applied and the original discarded; a rule firing six times on
- * one condition became one row with no trace of the other five; a finding closed as a false
- * positive gave no hint whether a regex heuristic or a pass that read the surrounding code made
- * that call. All three change whether you trust the row, and none of them were visible.
+ * Every field here records a decision the app made on the user's behalf, each of which changes
+ * whether you should trust the row: a severity downgrade that would otherwise discard the
+ * original, a rule firing six times on one condition collapsing to a single row, a finding closed
+ * as a false positive without saying whether a regex heuristic or a pass that read the
+ * surrounding code made that call.
  *
  * Returns null when nothing happened, so the common case adds no weight to the wire shape.
  */

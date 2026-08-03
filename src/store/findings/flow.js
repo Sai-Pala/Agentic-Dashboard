@@ -33,4 +33,4 @@ function readFlowSpan(f) {
   }
 }
 
-module.exports = { MAX_FLOW_SPAN_LINES, readFlowSpan };
+module.exports = { readFlowSpan };

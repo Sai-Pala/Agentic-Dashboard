@@ -1,6 +1,5 @@
 /**
  * The app's shared mutable state
- * ==============================
  *
  * One plain object rather than module-level `let`s, because ES modules forbid assigning to an
  * imported binding — `state.findings = [...]` works from any module, `findings = [...]` cannot.
@@ -18,7 +17,7 @@ export const state = {
   findingsScanFilter: 'all',   // 'all' or a scan id
   findingsSort: { key: 'severity', dir: 'asc' },
   // Rule keys whose group is expanded in the triage table. Collapsed is the default: one rule
-  // firing 17 times is one issue to decide about, not 17, and it used to push everything else
+  // firing 17 times is one issue to decide about, not 17, and expanded it pushes everything else
   // off the first screen.
   findingsExpandedRules: new Set(),
   // Insights is scoped to one completed scan, like Attack Surface, and keeps its own selection

@@ -74,11 +74,10 @@ const OPENGREP_TIMEOUT_MS = 300_000;
 const ADJUDICATE_MAX_FINDINGS = 40;
 // How many findings of any ONE rule may take adjudication slots.
 //
-// The slots used to be filled purely by severity, and severity is a static per-pattern constant.
-// One prolific rule therefore ate the budget: 20 unpinned-GitHub-Action findings are all `high`,
-// so they were adjudicated ahead of everything else while 119 other findings were shown without
-// review. The verdict on the 3rd identical Action pin also tells you nothing the 1st did not —
-// spending a slot on it buys no information.
+// Severity alone cannot fill these slots, because severity is a static per-pattern constant: one
+// prolific rule then eats the whole budget. Twenty unpinned-GitHub-Action findings are all `high`,
+// so they would be adjudicated ahead of everything else while a hundred other findings went
+// unreviewed — and the verdict on the 3rd identical Action pin tells you nothing the 1st did not.
 const ADJUDICATE_MAX_PER_RULE = 3;
 
 // Shipped with the app and load-bearing for hardcoded UI — editable, not deletable.

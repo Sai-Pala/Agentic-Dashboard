@@ -1,23 +1,22 @@
 /**
  * What the deterministic engine decided, and what it decided it on.
- * =================================================================
  *
- * `orchestrator.runAll()` returns five things. Until now the app kept two of them — `findings`
- * and `surface` — and dropped `recon`, `agentResults` and `suppression` on the floor. Those three
- * are the entire record of *how* a scan reached its answer:
+ * DORMANT — called only by engines/deterministic.js, which is itself unwired since the Opengrep
+ * swap. See that file before editing anything here.
  *
- *   `recon`        the facts every gating decision was made on. The engine's own comment calls
- *                  part of it "signals that exist purely so agents can gate themselves via
- *                  shouldRun()", which makes it the closest thing to a reason a skipped agent has.
+ * Turns the three parts of `orchestrator.runAll()` that are not findings into a readable record
+ * of *how* a scan reached its answer:
+ *
+ *   `recon`        the facts every gating decision was made on — the closest thing to a reason a
+ *                  skipped agent has, since agents gate themselves on it via shouldRun().
  *   `agentResults` per agent: did it complete, how much did it find, how much did it suppress.
  *   `suppression`  the roll-up of findings an agent deliberately withheld.
  *
  * WHAT THIS MODULE WILL NOT CLAIM. `shouldRun()` returns a bare boolean — no reason string. So
  * "MobileScanner did not run" can be stated as fact, but "because there is no mobile framework"
- * cannot: it would be an inference about code this module does not read. The roster therefore
- * reports the decision and publishes the recon evidence beside it, and leaves the inference to
- * the person reading it. Getting a real per-agent reason means changing `shouldRun()` inside the
- * vendored engine, which is a separate decision.
+ * cannot: that would be an inference about code this module does not read. The roster reports the
+ * decision and publishes the recon evidence beside it, leaving the inference to the reader. A real
+ * per-agent reason means changing `shouldRun()` inside the vendored engine — a separate decision.
  */
 
 /** Recon fields that are lists of detected things — rendered as chips, empty ones dropped. */

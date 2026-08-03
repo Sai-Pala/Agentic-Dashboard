@@ -5,6 +5,7 @@
  */
 
 const { normalizeSeverity } = require('../taxonomy');
+const { sendScanText } = require('./emit');
 
 async function runDeterministicScaScan(engine, scan, targetPath, { send }) {
   let result;
@@ -21,13 +22,9 @@ async function runDeterministicScaScan(engine, scan, targetPath, { send }) {
   if (result.error) return { findings: [], error: result.error };
 
   if (result.vulns.length) {
-    const lines = result.vulns.map((v) => `[${normalizeSeverity(v.severity)}] \`${v.name}@${v.range}\` — ${v.title}`);
-    send({
-      type: 'scan-event',
-      runId: scan.runId,
-      scanId: scan.id,
-      event: { type: 'assistant', message: { content: [{ type: 'text', text: lines.join('\n') }] } },
-    });
+    sendScanText(send, scan, result.vulns.map(
+      (v) => `[${normalizeSeverity(v.severity)}] \`${v.name}@${v.range}\` — ${v.title}`,
+    ));
   }
 
   return { findings: result.vulns, error: null };

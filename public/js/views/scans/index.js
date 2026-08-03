@@ -1,6 +1,5 @@
 /**
  * Hybrid Scan
- * ===========
  *
  * The kickoff form, the live cards it creates, and the WS message handling that drives them.
  * A scan runs three engines over a directory server-side and creates findings on completion —

@@ -1,6 +1,5 @@
 /**
  * Finding Detail
- * ==============
  *
  * A full page per finding: badges, meta grid, description, data flow, code, the four loop
  * stage boxes plus "Run all stages", the agent menu, and every run against this finding.

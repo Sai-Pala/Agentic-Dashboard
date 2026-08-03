@@ -1,6 +1,5 @@
 /**
  * The four stage boxes on Finding Detail
- * ======================================
  *
  * Triage / Remediate / Fix / Verify plus "Run all stages". Only one box is ever clickable —
  * findingLoopNextAction() resolves a strictly linear pipeline to a single next stage, so every

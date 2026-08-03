@@ -1,6 +1,5 @@
 /**
  * Attack Surface
- * ==============
  *
  * A posture view, not a findings view: what a scanned codebase exposes and what guards it.
  * Reports no vulnerabilities and makes no LLM call — it renders the manifest every scan

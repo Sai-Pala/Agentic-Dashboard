@@ -1,6 +1,5 @@
 /**
  * Settings and the theme toggle
- * =============================
  *
  * The environment panel (stating in-product that scans are not sandboxed) and the danger-zone
  * "Clear session" reset. The theme switch lives in the nav footer, not on this screen.

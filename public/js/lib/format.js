@@ -1,6 +1,5 @@
 /**
  * Pure formatting helpers
- * =======================
  *
  * Value-in, string-out. No DOM, no app state, no imports — deliberately, so this module stays
  * importable from Node and unit-testable directly. Anything that touches the document belongs

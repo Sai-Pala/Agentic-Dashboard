@@ -1,6 +1,5 @@
 /**
  * Per-finding agent runs
- * ======================
  *
  * Starting a stage, the context string every agent is handed, and the WS lifecycle of a run
  * once it is in flight. Shared by the loop actions, the context menu and the stage modal.

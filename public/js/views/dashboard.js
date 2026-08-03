@@ -1,6 +1,5 @@
 /**
  * Dashboard
- * =========
  *
  * A pure status screen: the briefing line, six stat tiles, and a display list of the
  * per-finding agents. Nothing here starts a run.

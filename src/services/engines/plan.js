@@ -8,25 +8,8 @@ const { REVIEW_ROUTES_PER_SHARD } = require('../../config');
 const { toRepoRelative } = require('../paths');
 
 /**
- * Tells the reasoning pass what the deterministic half already covers. Built from each agent's
- * own constructor arguments rather than a second hand-maintained list, so it can never drift
- * from what the engine actually checks.
- *
- * `skipped` and `failed` are load-bearing, not decoration. This text ends with "do not spend
- * effort re-deriving these", so every name in the covered list steers the expensive pass AWAY
- * from a vulnerability class. Listing all built-in agents unconditionally — as this did — tells
- * the model that injection, XSS and secrets are handled on a codebase where half the agents were
- * gated out by shouldRun() and the rest matched almost nothing. Neither half then looks, and the
- * hole is created by the handoff rather than by either engine.
- *
- * An agent that was skipped or that errored is therefore reported as an explicit GAP: the
- * reasoning pass is the only thing that can still cover it.
- *
- * @param {object} engine  loaded sast-engine
- * @param {{skipped?: string[], failed?: string[]}} [coverage]
- */
-/**
- * The same brief, for Opengrep.
+ * Tells the reasoning pass what the deterministic half already covers — the Opengrep version,
+ * and the one actually in use.
  *
  * The agent-based version below enumerates named agents and can therefore say exactly which
  * classes went unchecked. Opengrep has no equivalent: a rule pack is a flat set of hundreds of
@@ -36,6 +19,9 @@ const { toRepoRelative } = require('../paths');
  * here — and is explicit that absence of a rule firing is not proof of absence. Getting this
  * wrong in the other direction is the expensive mistake: telling the reasoning pass a class is
  * "already covered" when nothing checked it is how a real finding gets talked out of existence.
+ *
+ * @param {string} rulePack    the --config value that ran, e.g. `p/default`
+ * @param {object[]} [detFindings]  what the pattern half produced, for the fired-rules list
  */
 function buildOpengrepCoverageSummary(rulePack, detFindings = []) {
   const fired = [...new Set(detFindings.map((f) => f.rule).filter(Boolean))].sort();
@@ -54,6 +40,24 @@ function buildOpengrepCoverageSummary(rulePack, detFindings = []) {
     + 'list as unverified rather than as confirmed clean.';
 }
 
+/**
+ * The same brief, built from the pattern engine's named agents.
+ *
+ * DORMANT — reached only when `scan.agentRoster` is set, which only engines/deterministic.js
+ * does, and nothing has called that since the Opengrep swap. Kept wired, not deleted; see
+ * engines/deterministic.js for why.
+ *
+ * `skipped` and `failed` are load-bearing, not decoration. This text ends with "do not spend
+ * effort re-deriving these", so every name in the covered list steers the expensive pass AWAY
+ * from a vulnerability class. Listing all built-in agents unconditionally tells the model that
+ * injection, XSS and secrets are handled on a codebase where half the agents were gated out by
+ * shouldRun() and the rest matched almost nothing — neither half then looks, and the hole is
+ * created by the handoff rather than by either engine. An agent that was skipped or that errored
+ * is therefore reported as an explicit GAP.
+ *
+ * @param {object} engine  loaded sast-engine
+ * @param {{skipped?: string[], failed?: string[]}} [coverage]
+ */
 function buildCoverageSummary(engine, coverage = {}) {
   const skipped = new Set(coverage.skipped || []);
   // failedAgents entries read "AgentName (reason)" — key on the name alone.

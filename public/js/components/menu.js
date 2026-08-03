@@ -1,6 +1,5 @@
 /**
  * The per-finding agent menu
- * ==========================
  *
  * One "Run <Agent>…" item per entry in agentsList, minus the fix-flow agents (which have their
  * own dedicated controls). Opened by right-clicking an Agent Triage row or by the "…" button on

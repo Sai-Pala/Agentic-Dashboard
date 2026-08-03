@@ -1,6 +1,5 @@
 /**
  * WebSocket connection and message dispatch
- * =========================================
  *
  * One socket for every kind of run. Scan messages carry their own `scan-*` type names so they
  * never collide with the generic per-finding run lifecycle; dispatch splits on that prefix and

@@ -1,16 +1,16 @@
 /**
  * Cross-screen notifications.
- * ===========================
  *
  * A shared component often needs a screen to react — a finished run should refresh the findings
  * list, append to the timeline, and re-render the detail pane if it happens to be open. Wiring
  * that with imports points `components/` at `views/`, which is backwards: a component is meant to
  * be usable by any screen, and importing one makes it usable by exactly that screen.
  *
- * It was also the last thing holding 13 client modules in a single mutually-dependent cluster.
- * Components now announce what happened and do not know who listens; screens subscribe in their
+ * So components announce what happened and do not know who listens; screens subscribe in their
  * own `wire*()` function. Dependencies point one way — `views/` -> `components/` -> `events.js` —
- * and this module imports nothing at all.
+ * and this module imports nothing at all, which is what keeps the client out of one big
+ * mutually-dependent cluster. test/module-graph ratchets that cluster size — an import added
+ * here would show up there as a regression.
  *
  * Subscribe during wiring, before any data loads. main.js already orders it that way.
  */

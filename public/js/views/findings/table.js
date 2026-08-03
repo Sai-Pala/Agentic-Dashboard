@@ -1,6 +1,5 @@
 /**
  * Agent Triage table
- * ==================
  *
  * Column configurations per type tab, the cell renderers, and the sortable table itself. Rows
  * open the finding; the only row-level action is the "…" agent menu.

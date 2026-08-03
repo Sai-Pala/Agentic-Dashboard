@@ -1,17 +1,19 @@
 /**
  * Shape definitions for the records that move through the app.
- * ============================================================
  *
  * Documentation only — this module exports nothing and is never required at runtime. It exists
- * because the two central records are plain object literals with no schema anywhere, and reading
- * a chain like `f.stageRuns.triage.verdict.source` gives no way to know whether any link in it is
- * optional. Editors surface these via JSDoc `@typedef`, so `@param {Finding}` on a function is
- * enough to get completion and a red squiggle on a typo.
+ * because the central records are plain object literals with no schema anywhere, and reading a
+ * chain like `f.stageRuns.triage.verdict.source` gives no way to know whether any link in it is
+ * optional. Editors surface these via JSDoc `@typedef`, so `@param {Finding}` is enough to get
+ * completion and a red squiggle on a typo.
  *
- * Keep in sync with the code that actually builds these:
- *   Finding  ->  src/store/findings/factories.js  (baseFinding + the three factories)
- *   Run      ->  src/services/claude.js           (runRecord in spawnAgentStage)
- *   Scan     ->  src/store/scans.js               (toScanListItem is the authoritative shape)
+ * Nothing enforces these. Keep them in sync with the code that actually builds the records:
+ *   Finding          src/store/findings/factories.js  (baseFinding + the three factories)
+ *   Disposition      src/store/findings/factories.js  (buildDisposition)
+ *   FindingListItem  src/store/findings/list-item.js  (toListItem)
+ *   Run              src/services/claude.js           (runRecord in spawnAgentStage)
+ *   Scan             src/store/scans.js               (toScanListItem) + the scan-only fields
+ *                                                     written by services/scanner.js
  *
  * `null` and `undefined` are meaningfully different here and the annotations say which: a field
  * typed `string|null` is always present and may be empty; an optional field is marked `[name]`
@@ -32,6 +34,25 @@
  * @property {string} [context]      the prompt the agent actually received
  * @property {number} startedAt      epoch ms
  * @property {number|null} finishedAt
+ */
+
+/**
+ * What the app did to a finding after the engine emitted it. Null whenever nothing happened,
+ * which is the common case — so every consumer must guard before reading into it.
+ *
+ * @typedef {object} Disposition
+ * @property {string} [severityFrom]       severity as the engine matched it
+ * @property {string} [severityTo]         severity after adjudication
+ * @property {'up'|'down'} [severityDirection]
+ * @property {string} [severityChangedBy]  which pass rewrote it
+ * @property {boolean} [severityApplied]   whether the ROW shows the new severity. True for the
+ *                                         adjudicator; false for the reasoning pass's
+ *                                         `severity_confirmed`, which sits in the verdict beside
+ *                                         a `severity` that still disagrees with it
+ * @property {'false_positive'|'duplicate'} [closedAs]
+ * @property {string} [closedBy]
+ * @property {boolean} [corroborated]      both engines independently flagged this location
+ * @property {number} [collapsed]          sibling hits of the same rule folded into this row
  */
 
 /**
@@ -57,6 +78,7 @@
  * @property {string|null} packageName     SCA only
  * @property {string|null} packageVersion  SCA only
  * @property {string|null} fixedVersion    SCA only
+ * @property {Disposition|null} disposition
  * @property {string} [sourceScanId] the scan that produced it; DANGLING if that scan was deleted,
  *                                   which costs the finding its Fix and live-Verify ability
  * @property {Run[]} runs            oldest first; the last entry is what the next stage chains from
@@ -64,11 +86,22 @@
  */
 
 /**
+ * The lighter shape every list view receives. Not a Finding: `runs` is replaced by counts and by
+ * `stageRuns`, the per-stage lookup the client reads instead of walking the history itself.
+ *
+ * @typedef {object} FindingListItem
+ * @property {number} runCount
+ * @property {{agent: string, status: string, verdict: object|null}|null} latestRun
+ * @property {{triage: Run|null, remediation: Run|null, fix: Run|null, verify: Run|null}} stageRuns
+ * @property {Disposition|null} disposition
+ */
+
+/**
  * One scan invocation. Not a pipeline, so unlike a Finding it has no `runs` chain.
  *
- * Two fields are deliberately kept OFF the list-item shape and live only on the in-memory record:
- * `moduleRunIds` (cancel bookkeeping) and `surface` (the full attack-surface manifest, large,
- * fetched on demand via GET /api/scans/:id/surface).
+ * Everything up to `agentsSkipped` is on the wire shape (`toScanListItem`). Everything after it
+ * lives only on the in-memory record: too large for a list fetched by nearly every view, or
+ * internal bookkeeping. `surface` has its own endpoint, GET /api/scans/:id/surface.
  *
  * @typedef {object} Scan
  * @property {string} id
@@ -91,6 +124,25 @@
  * @property {number} [agentsRun]      pattern agents this target warranted
  * @property {string[]} agentsSkipped  names gated out by shouldRun(recon) — part of what the
  *                                     scan did NOT cover, so it is persisted, not just relayed
+ *
+ * @property {string[]} [agentsFailed]  "Name (reason)" per agent that errored or timed out
+ * @property {object} [coverage]        what the scan read and what it dropped, and why —
+ *                                      `{root, considered, scanned, dropped, prunedDirs,
+ *                                        prunedDirCount, ignoreFiles}`, or `{error}`
+ * @property {object} [dispositions]    tally of every decision the merge made on the user's
+ *                                      behalf — collapsed, merged, closed, re-severitied
+ * @property {object} [reviewCoverage]  what the reasoning pass reviewed and what it skipped —
+ *                                      `{totalRoutes, reviewedRoutes, skippedRoutes, shards,
+ *                                        adjudicated, adjudicable, shardFiles, unreviewedFiles}`
+ * @property {object} [surface]         full attack-surface manifest; large, own endpoint
+ * @property {string[]} [moduleRunIds]  synthetic child keys, so cancel can kill every in-flight
+ *                                      reasoning call and not just one
+ *
+ * The three below are written only by the DORMANT engines/deterministic.js — absent on every
+ * scan the app currently produces. See that file before relying on them.
+ * @property {object[]} [agentRoster]
+ * @property {object} [engineRecon]
+ * @property {object} [suppression]
  */
 
 /**

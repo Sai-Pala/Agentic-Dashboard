@@ -1,6 +1,5 @@
 /**
  * Agent Triage
- * ============
  *
  * Loads the findings list and renders the subtitle, type tabs and table. Also the entry point
  * other views use to jump here scoped to one scan's findings.

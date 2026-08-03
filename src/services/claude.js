@@ -173,4 +173,6 @@ function runReasoningCall({ scan, targetPath, children, send, index, label, syst
   });
 }
 
-module.exports = { onStreamJson, assistantText, claudeArgs, spawnAgentStage, runReasoningCall };
+// The three helpers above are deliberately not exported: they are the internals of the two
+// spawn functions, and every caller outside this file wants a run, not a framing primitive.
+module.exports = { spawnAgentStage, runReasoningCall };

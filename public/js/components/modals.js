@@ -1,6 +1,5 @@
 /**
  * The two modals
- * ==============
  *
  * The stage modal (pick an agent, review the context, add instructions, start) and the
  * add-finding modal. Nothing here runs an agent without an explicit "Start stage" click.

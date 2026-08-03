@@ -1,6 +1,5 @@
 /**
  * Advancing the Remediation Loop
- * ==============================
  *
  * The click handlers behind Finding Detail's stage boxes and "Run all stages". Remediate is
  * read-only and needs no confirmation; Fix is the one step that writes, so it is gated by a

@@ -1,6 +1,5 @@
 /**
  * The live scan card
- * ==================
  *
  * Card markup, status dot, footer actions and result rows. Cards are created once by
  * beginScanRun() and updated through cached refs — they are never rebuilt from scansList, so a

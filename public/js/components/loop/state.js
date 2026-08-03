@@ -1,6 +1,5 @@
 /**
  * The Remediation Loop state machine
- * ==================================
  *
  * Reduces a finding to where it stands in Triaged -> Remediated -> Fixed -> Verified, and to
  * the single next automatable step. Pure: no DOM, no app state, no rendering.

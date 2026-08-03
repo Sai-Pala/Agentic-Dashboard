@@ -1,6 +1,5 @@
 /**
  * The loop cell in the Agent Triage table
- * =======================================
  *
  * A four-dot track plus a one-line label. Pure status readout — no buttons live here;
  * advancing the loop happens on the finding's own detail page.

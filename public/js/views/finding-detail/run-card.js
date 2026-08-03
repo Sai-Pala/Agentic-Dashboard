@@ -1,6 +1,5 @@
 /**
  * Agent-run cards on Finding Detail
- * =================================
  *
  * Renders any verdict object generically by iterating its key/value pairs, so an agent's .md
  * can add fields without a frontend change. Three fields get dedicated renderers instead of the

@@ -1,14 +1,13 @@
 /**
  * Insights
- * ========
  *
  * How the scan behaved — deliberately not what it found (Agent Triage) and not what the target
  * exposes (Attack Surface). This screen answers a third question those two cannot: can the result
  * be trusted, and on how much of the codebase.
  *
- * It exists because every number here was previously either never captured or shown only in the
- * live scan panel, which is discarded on reload. A scan that read 6 of 161 files and one that
- * read all of them both collapsed to the same timeline entry: "DONE, N findings created".
+ * The numbers here exist nowhere else once a scan ends: the live scan panel is discarded on
+ * reload, and without this screen a scan that read 6 of 161 files and one that read all of them
+ * collapse to the same timeline entry — "DONE, N findings created".
  *
  * WRITTEN FOR SOMEONE IMPROVING THE ENGINE, not for a status check. That is why nothing here is
  * a sample: every excluded file is listed, every agent appears whether or not it ran, and the
@@ -293,7 +292,7 @@ function reviewSection(data) {
  * Where this scan's findings came from.
  *
  * `both` is the number worth watching: two engines independently reporting one location is the
- * strongest signal the app produces, and it used to be discarded rather than recorded.
+ * strongest signal the app produces.
  */
 function provenanceSection(scanId) {
   const mine = state.findings.filter((f) => f.sourceScanId === scanId);

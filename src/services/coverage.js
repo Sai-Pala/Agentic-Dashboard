@@ -1,11 +1,10 @@
 /**
  * What a scan actually looked at.
- * ===============================
  *
  * The engine drops files through six independent mechanisms — a 40-entry skip-directory list,
  * 45 skipped extensions, 14 skipped filenames, `.gitignore`, `.sast-engineignore`, and a 1 MB
- * size cap — and until now reported none of them. A user pointing this at a repository had no
- * way to learn that half of it was never read.
+ * size cap. None of them announce themselves, so without this a user has no way to learn that
+ * half of the repository they aimed at was never read.
  *
  * That matters most for `.gitignore`, which is honoured. A vendored SDK, a generated-but-
  * committed client, or a `build/` directory holding real source is skipped silently and the scan

@@ -1,6 +1,5 @@
 /**
  * Guard-chain classification for the Attack Surface page
- * =====================================================
  *
  * Decides whether a mount or route is doing authorization, only authentication, or nothing.
  * The middle case is the one this exists to surface: a surface guarded by authentication but
@@ -26,34 +25,21 @@ function guardNameSegments(name) {
  * Takes anything carrying a `middleware` array — a mount OR a single route — so the same
  * classification drives both the mounted-router rows and the per-route stat tiles.
  *
- * Two things here were wrong in ways that both pointed the SAME direction — making an
- * unprotected surface look protected, which is the only direction that really matters:
+ * Matching is on WHOLE WORDS split out of the name, never substrings, and against explicit
+ * vocabularies. Both rules exist to stop an unprotected surface reading as protected, the only
+ * direction of error that matters here:
+ *  - A substring test promotes ordinary middleware to full authorization and renders the
+ *    reassuring green "guarded": `validateOracle` contains "acl", `scopedLogger` contains
+ *    "scope", `reclaimSession` contains "claim", `rolexTimer` contains "role".
+ *  - Middleware matching NEITHER vocabulary is not a guard. `helmet` and `bodyParser` are not
+ *    authentication, and in a security view an unrecognised name is not evidence of protection.
  *
- * 1. Any middleware at all counted as authentication, so a route whose only middleware was
- *    `helmet` or `bodyParser` rendered amber "authenticated, not authorized" instead of red
- *    "no guard". Parsing a request body is not a guard.
- * 2. The privilege test was an UNANCHORED substring regex, so incidental letter runs promoted
- *    ordinary middleware to full authorization and rendered the reassuring green "guarded" —
- *    suppressing the warning entirely. Real examples that matched: `validateOracle` and
- *    `oracleClient` (contain "acl"), `scopedLogger` and `descope` ("scope"), `reclaimSession`
- *    and `disclaimerBanner` ("claim"), `rolexTimer` ("role").
- *
- * Now the name is split into words and matched against explicit vocabularies. A middleware
- * whose words match NEITHER vocabulary is treated as not-a-guard: in a security view an
- * unrecognised name is not evidence of protection, and "no guard" is the safe way to be
- * wrong — it invites a look, where a false green does not.
- *
- * Two limitations remain, both known and both preferred to the alternatives:
- *  - A name with no case or delimiter boundaries (`REQUIREADMIN`, `requireadmin`) cannot be
- *    split, so it matches nothing and reads as "no guard". That is a false RED — noisy, but
- *    it errs toward inspection. Reintroducing prefix/suffix matching to catch it would also
- *    re-admit `scopedLogger` (starts with "scope") into the false-green bucket, which is the
- *    failure this fix exists to remove.
- *  - Some words are genuinely ambiguous: `telemetryScope` classifies as authz because "scope"
- *    really is an authorization word in OAuth/JWT terms. Word-splitting cannot tell an OAuth
- *    scope from a telemetry scope, and dropping "scope"/"claim" from the vocabulary would
- *    miss real `requireScope`/`checkClaims` guards. Residual, and narrower than the eight
- *    incidental matches the substring regex produced.
+ * Two accepted limitations, both erring toward inspection rather than false comfort:
+ *  - A name with no case or delimiter boundary (`requireadmin`) cannot be split, so it reads as
+ *    "no guard" — a false red. Prefix matching would fix it and re-admit `scopedLogger` to the
+ *    false-green bucket, which is the worse trade.
+ *  - `telemetryScope` classifies as authz, because "scope" really is an authorization word in
+ *    OAuth/JWT terms. Dropping it would miss real `requireScope`/`checkClaims` guards.
  */
 export function guardKindOf(node) {
   const raw = node && node.middleware;

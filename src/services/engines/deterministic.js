@@ -2,6 +2,16 @@
  * The deterministic half of a hybrid scan: sast-engine's pattern agents plus VerifierAgent.
  * No LLM anywhere. Returns results rather than finishing the scan, since the merge step needs
  * every engine's output together.
+ *
+ * DORMANT — nothing imports this. services/scanner.js calls engines/opengrep.js instead, which
+ * scored better on the benchmark (see docs/Engine-Rework.md). It is parked rather than deleted
+ * because the 11 AI/agentic pattern agents have no Opengrep equivalent and the overlap between
+ * the two engines has not been measured. Do not delete until it has been.
+ *
+ * Two things are dormant with it, and are dead code for as long as this file is unwired:
+ *   services/scan-report.js            — only this file calls summarizeRecon/buildAgentRoster
+ *   plan.js buildCoverageSummary()     — reached only when scan.agentRoster is set, i.e. here
+ * Both still have characterization tests; those tests pass over parked code, not live code.
  */
 
 
@@ -9,6 +19,7 @@ const { DETERMINISTIC_AGENT_TIMEOUT_MS } = require('../../config');
 const { normalizeSeverity } = require('../taxonomy');
 const { toRepoRelative } = require('../paths');
 const { summarizeRecon, buildAgentRoster } = require('../scan-report');
+const { sendScanText } = require('./emit');
 
 async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, { send }) {
   let orchestrator;
@@ -53,25 +64,19 @@ async function runDeterministicPatternScan(engine, scan, targetPath, diffFiles, 
         // there is something to narrate.
         send({ type: 'scan-progress', runId: scan.runId, scanId: scan.id, engine: 'deterministic', done, total });
         if (!agentFindings.length) return;
-        const lines = agentFindings.map((f) => {
+        sendScanText(send, scan, agentFindings.map((f) => {
           const rel = toRepoRelative(targetPath, f.file) || 'unknown file';
           const loc = f.line ? `${rel}:${f.line}` : rel;
           return `[${normalizeSeverity(f.severity)}] \`${loc}\` — ${f.title}`;
-        });
-        send({
-          type: 'scan-event',
-          runId: scan.runId,
-          scanId: scan.id,
-          event: { type: 'assistant', message: { content: [{ type: 'text', text: lines.join('\n') }] } },
-        });
+        }));
       },
     });
     // Recorded on the scan for the same reason agentsSkipped is: the reasoning pass needs to
     // know which classes went unchecked so it does not treat them as already covered.
     scan.agentsFailed = failedAgents;
 
-    // runAll() returns the whole record of how it decided; the app used to keep only `findings`
-    // and `surface`. These three are what makes a scan auditable rather than just a result.
+    // runAll() returns the whole record of how it decided, not just `findings` and `surface`.
+    // These three are what make a scan auditable rather than only a result.
     scan.agentRoster = buildAgentRoster(orchestrator.agents, result.agentResults, skipped);
     scan.engineRecon = summarizeRecon(result.recon);
     scan.suppression = result.suppression || null;

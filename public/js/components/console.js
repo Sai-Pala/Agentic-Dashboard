@@ -1,6 +1,5 @@
 /**
  * The opt-in raw console panel
- * ============================
  *
  * Shared by every live-run surface (scan cards, Finding Detail's run cards). Captures the
  * model's narrated prose only — not tool calls or results — and renders it behind a toggle.

@@ -1,6 +1,5 @@
 /**
  * Timeline drawer
- * ===============
  *
  * Every scan and agent run, newest first, date-grouped, filterable by kind. Not a nav
  * destination — a slide-in drawer opened by the clock button on Hybrid Scan (pre-scoped to

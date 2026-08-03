@@ -16,10 +16,10 @@ const { findings, runIndex, deriveStatus } = require('../store/findings');
 /**
  * The entry checks every fix-flow handler runs before doing anything.
  *
- * Written out three times previously, once per handler, differing only in how many run ids the
- * message carries and one sentence of wording. Validation that is copied is validation that
- * drifts — and this is the gate in front of the only code path in the app that writes to a
- * user's files, so drift here is the expensive kind.
+ * Shared by all three handlers, which differ only in how many run ids the message carries and one
+ * sentence of wording. Validation that is copied is validation that drifts — and this is the gate
+ * in front of the only code path in the app that writes to a user's files, so drift here is the
+ * expensive kind.
  *
  * @param {object} msg                      the raw client message
  * @param {{children: Map, send: Function}} ctx

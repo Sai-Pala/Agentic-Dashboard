@@ -107,6 +107,12 @@ async function runLLMReasoningScan(scan, targetPath, diffFiles, detFindings, sur
     // Which brief depends on which deterministic engine ran. The agent-based summary can name
     // the classes that went unchecked; Opengrep's cannot, and says so rather than implying
     // coverage it has no record of.
+    //
+    // DORMANT: `scan.agentRoster` is set only by engines/deterministic.js, which nothing has
+    // called since the Opengrep swap — so today this always takes the Opengrep branch. The
+    // agent branch is kept wired, not deleted, because deterministic.js is parked pending an
+    // overlap measurement (see engines/deterministic.js). Re-import it there and this lights
+    // up again with no change here.
     const coverageBrief = scan.agentRoster
       ? buildCoverageSummary(engine, { skipped: scan.agentsSkipped, failed: scan.agentsFailed })
       : buildOpengrepCoverageSummary(OPENGREP_CONFIG, detFindings);
