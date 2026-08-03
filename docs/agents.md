@@ -106,9 +106,11 @@ finding is real — that was decided upstream — only whether it is still open.
 
 ## Known gap: incomplete mapping on deterministic findings
 
-Deterministic findings carry `owasp`/`cwe` directly from the matched pattern, but **`asvs` is
-always `null` and `nist_800_53` is always `[]`** — sast-engine has no ASVS or NIST mapping data,
-and filling it in used to be Triage's job specifically.
+Deterministic findings carry `owasp`/`cwe` directly from the matched rule's own metadata, but
+**`asvs` is always `null` and `nist_800_53` is always `[]`** — neither Opengrep's rule packs nor
+the dormant sast-engine patterns carry ASVS or NIST mapping data, and filling it in used to be
+Triage's job specifically. The Opengrep swap did not change this: `cwe` and `owasp` come across
+from `extra.metadata`, and there is nothing there to populate the other two from.
 
 Reasoning-pass findings do not have this gap: the same LLM pass that found the issue assigns the
 full taxonomy in one call.

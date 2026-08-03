@@ -51,6 +51,11 @@ router.get('/api/scans/:id/surface', (req, res) => {
     // describes the application, the other describes the scan of it.
     coverage: scan.coverage || null,
     reviewCoverage: scan.reviewCoverage || null,
+    // DORMANT BLOCK — everything from here to `suppression` is written only by the parked
+    // engines/deterministic.js, so on every scan the app produces today `run` is null and the
+    // rest are empty. The Insights screen drops each section when its data is absent, so this
+    // degrades to a shorter page rather than to a page of zeroes. Served regardless, because
+    // scans recorded before the Opengrep swap still carry it.
     agents: {
       run: scan.agentsRun ?? null,
       skipped: scan.agentsSkipped || [],

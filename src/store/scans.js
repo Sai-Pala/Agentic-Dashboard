@@ -36,6 +36,11 @@ function toScanListItem(scan) {
     // Which pattern agents this target warranted. Persisted rather than only relayed live:
     // "which agents were judged inapplicable" is part of what a scan covered, and a card
     // rebuilt after a reload should not silently imply the engine ran whole.
+    //
+    // DORMANT: only engines/deterministic.js sets these, and nothing has called it since the
+    // Opengrep swap — so both are undefined/empty on every scan produced today. Kept on the wire
+    // shape because that engine is parked rather than deleted; the client hides the badge when
+    // `agentsRun` is absent rather than rendering "0 agents".
     agentsRun: scan.agentsRun,
     agentsSkipped: scan.agentsSkipped || [],
   };

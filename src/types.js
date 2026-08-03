@@ -121,11 +121,15 @@
  * @property {number|null} finishedAt
  * @property {boolean} budgetEnabled
  * @property {number} [reasoningCostUsd]
+ * `agentsRun`, `agentsSkipped` and `agentsFailed` are DORMANT alongside the three at the bottom:
+ * all six are written only by engines/deterministic.js, so no scan the app currently produces
+ * carries them. The first two are still on the wire shape, where they read as a scan that ran
+ * zero agents rather than as a scan from an engine that has none.
  * @property {number} [agentsRun]      pattern agents this target warranted
  * @property {string[]} agentsSkipped  names gated out by shouldRun(recon) — part of what the
  *                                     scan did NOT cover, so it is persisted, not just relayed
- *
  * @property {string[]} [agentsFailed]  "Name (reason)" per agent that errored or timed out
+ *
  * @property {object} [coverage]        what the scan read and what it dropped, and why —
  *                                      `{root, considered, scanned, dropped, prunedDirs,
  *                                        prunedDirCount, ignoreFiles}`, or `{error}`

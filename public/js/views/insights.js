@@ -10,9 +10,13 @@
  * collapse to the same timeline entry — "DONE, N findings created".
  *
  * WRITTEN FOR SOMEONE IMPROVING THE ENGINE, not for a status check. That is why nothing here is
- * a sample: every excluded file is listed, every agent appears whether or not it ran, and the
- * recon evidence that gating decisions were made on is published in full. A count tells you
- * something was dropped; only the list tells you whether dropping it was right.
+ * a sample: every excluded file is listed in full. A count tells you something was dropped; only
+ * the list tells you whether dropping it was right.
+ *
+ * Two of the eight sections — Pattern agents and Detected stack — are DORMANT since the Opengrep
+ * swap, because both are fed by the parked pattern engine. They render nothing on a current scan
+ * rather than rendering zeroes; see agentSection() below. What still fills this page is Inputs,
+ * Files, Reasoning review, Merge and dedupe, Finding sources, and Cost.
  *
  * Reads GET /api/scans/:id/surface, which carries the scan's own record alongside the target's
  * manifest.
@@ -187,6 +191,9 @@ function fileSection(data) {
  * Published rather than interpreted: `shouldRun()` returns a bare boolean with no reason string,
  * so this screen can state that an agent did not run and show what the engine believed about the
  * codebase, but cannot claim which of those beliefs caused it.
+ *
+ * DORMANT with agentSection() above — `recon` is the parked pattern engine's own reconnaissance
+ * pass, and nothing populates it now.
  */
 function reconSection(data) {
   const r = data.recon;
@@ -213,11 +220,18 @@ const AGENT_STATUS = {
   skipped: ['Not applicable', 'plain'],
 };
 
-/** Every agent the engine has, and what happened to it. */
+/**
+ * Every agent the engine has, and what happened to it.
+ *
+ * DORMANT — the roster and the counts both come from the parked pattern engine, so this section
+ * renders nothing for any scan run since the Opengrep swap. Opengrep has no per-agent record to
+ * put here: a rule pack is a flat set with no run/skip decision to report. Kept because scans
+ * recorded before the swap still carry the data, and because the engine is parked, not deleted.
+ */
 function agentSection(data) {
   const roster = (data.agents && data.agents.roster) || [];
   if (!roster.length) {
-    // Pre-roster scans still have the counts.
+    // Older still: scans from before the roster was captured kept only the counts.
     const a = data.agents || {};
     if (a.run == null) return '';
     return section('Pattern agents',

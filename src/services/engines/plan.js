@@ -98,6 +98,9 @@ function renderAdjudicationWorklist(detFindings, targetPath) {
       : '';
     return `[${i}] ${f.title || f.rule || 'Untitled'}\n`
       + `  Rule: ${f.rule || 'n/a'} | Severity as matched: ${f.severity || 'unknown'} | Location: ${loc}`
+      // `verified === true` only ever came from the pattern engine's VerifierAgent. Opengrep
+      // leaves it null, so this annotation is dormant and every finding now reaches the
+      // adjudicator unmarked — which is the honest default, not a regression.
       + `${f.verified === true ? ' | already re-checked against surrounding code' : ''}${flow}\n`
       + `  ${(f.description || '').replace(/\s+/g, ' ').trim()}\n`
       + `  Code:\n${code}`;

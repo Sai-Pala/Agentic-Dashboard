@@ -1,7 +1,14 @@
 /**
- * Lazy loader for the vendored deterministic engine (sast-engine/).
+ * Lazy loader for the vendored sast-engine.
+ *
  * It is real ESM, so it is pulled in via dynamic import() from this CommonJS tree and cached —
  * none of those modules hold per-call state.
+ *
+ * NOT the deterministic scanner any more: Opengrep replaced that half (engines/opengrep.js).
+ * What is still live here is everything else the engine happens to carry — route enumeration and
+ * the worklist renderer, the dependency audit, the plan validator behind Fix, and the file
+ * discovery the coverage manifest is built from. Only `buildOrchestratorAsync` and
+ * `listBuiltInAgents` belong to the dormant pattern engine.
  */
 
 let enginePromise = null;

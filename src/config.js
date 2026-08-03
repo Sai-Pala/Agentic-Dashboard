@@ -54,6 +54,8 @@ const REVIEW_SHARD_CONCURRENCY = 3;
 
 // Hang detector, not a work budget: every pattern agent walks the whole file list, so its work
 // scales with repo size. Anything still running at this point is stuck, not slow.
+// DORMANT — read only by engines/deterministic.js, which nothing calls since the Opengrep swap.
+// The live equivalent is OPENGREP_TIMEOUT_MS below.
 const DETERMINISTIC_AGENT_TIMEOUT_MS = 180_000;
 
 // ── Opengrep ────────────────────────────────────────────────────────────────

@@ -3,8 +3,8 @@
  *
  * Every reasoning finding is born already triaged — Triage is not a live agent stage, so
  * without a synthetic run here the pipeline's first step would point at something that cannot
- * run. The two reasoning factories differ in where that verdict comes from: the pattern engine's
- * VerifierAgent, or the reasoning pass's own assessment.
+ * run. The two reasoning factories differ in where that verdict comes from: the adjudication
+ * pass re-reading a deterministic hit, or the reasoning pass's own assessment of its own finding.
  */
 
 const crypto = require('crypto');
@@ -55,9 +55,13 @@ function triageRun(verdict) {
 }
 
 /**
- * A deterministic pattern finding. Only critical/high go through VerifierAgent, so `verified`
- * is null for the rest — "not checked", not "unverified", which is why those land as
- * needs_review rather than being treated as suspect.
+ * A deterministic finding, today always from Opengrep.
+ *
+ * `f.verified` is ALWAYS null on that path — Opengrep has no second-pass verifier, and null
+ * means "not checked" rather than "unverified", which is why these land at needs_review instead
+ * of being treated as suspect. The `verified === true` branch below is reachable only from the
+ * dormant pattern engine, whose VerifierAgent re-checked critical/high hits; it is kept because
+ * that engine is parked rather than deleted (see services/engines/deterministic.js).
  *
  * An adjudication verdict wins when present: it read the surrounding code with far more context
  * than a regex plus a heuristic has. A finding it calls a false positive is still created —
@@ -113,7 +117,9 @@ function findingFromSastEngine(f, scan, targetPath, adjudication = null, corrobo
         + `pass at this location. Pattern rule: ${f.rule || 'n/a'}. Reasoning: `
         + `${String(corroboration.description || '').trim()}`)
       || f.verifierNote
-      || 'Deterministic pattern match; below the verification severity floor, so not independently re-checked against surrounding code.',
+      // Fallback only. Opengrep always supplies a verifierNote, so this is reached from the
+      // dormant pattern engine's sub-floor findings, or a hand-built one.
+      || 'Deterministic pattern match, not independently re-checked against surrounding code.',
     owasp: f.owasp || null,
     asvs: null, // sast-engine has no ASVS or NIST mapping — see docs/agents.md
     cwe: f.cwe || null,
@@ -137,6 +143,10 @@ function findingFromSastEngine(f, scan, targetPath, adjudication = null, corrobo
     changedBy: adjSeverity ? 'the adjudicator' : null,
     applied: true,
     verdict: verdictLabel,
+    // The right-hand side is unreachable on the Opengrep path and names a component that no
+    // longer runs: `closedAs` is set only for a false_positive/duplicate verdict, and without
+    // an adjudication `verdictLabel` can only be confirmed or needs_review. It survives for the
+    // dormant pattern engine, whose verifier could close a finding on its own.
     closedBy: adjVerdict ? 'the adjudicator' : 'the pattern engine’s verifier',
     corroborated: Boolean(corroboration),
     collapsed,

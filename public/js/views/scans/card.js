@@ -31,6 +31,9 @@ export function makeScanCard(runId, targetPath, meta, containerEl) {
   if (meta.scanType === 'reasoning' && meta.budgetEnabled === false) {
     metaTags.push(`<span class="scan-meta-text" style="color:var(--warn);" title="Reasoning calls have no --max-budget-usd cap for this scan">No budget cap</span>`);
   }
+  // DORMANT: `agentsRun`/`agentsSkipped` come only from the parked pattern engine, so this badge
+  // does not appear on any scan produced today. The truthiness guard is what keeps it that way —
+  // without it an Opengrep scan would render "0/0 agents".
   const nSkippedAgents = (meta.agentsSkipped || []).length;
   if (meta.agentsRun && nSkippedAgents) {
     const tip = `${meta.agentsRun} of ${meta.agentsRun + nSkippedAgents} pattern agents apply to this codebase.\n\n`
