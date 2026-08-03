@@ -1,0 +1,27 @@
+# Excluded from the deterministic pattern engine's file discovery.
+# Read by BaseAgent._loadIgnorePatterns() (sast-engine/rules/core/base-agent.js).
+#
+# Why: the pattern rules are made of the strings they look for, so scanning this repo with
+# itself makes every rule report itself. In auth-bypass-agent.js the regex /\bDEBUG\s*=\s*True\b/
+# matches the title 'Django: DEBUG = True' on the line above it. Measured: 107 of 134 findings
+# came from these two directories, and all 40 that reached adjudication were false positives.
+#
+# Scope is the rule corpus only. enumerate.js, ast-extract.js, remediation-apply.js and
+# commands/ stay in scope deliberately — remediation-apply.js is the one function here that
+# writes to disk. Do not widen this to "sast-engine/".
+#
+# Known side effect: whole-tree analyses now see a smaller repo. UNUSED_DEPENDENCY reports
+# fast-glob as unused; it is not, it is imported by five files under rules/. Treat a
+# low-severity UNUSED_DEPENDENCY hit here with suspicion. UnusedGuardAgent's reference counting
+# has the same blind spot.
+#
+# The reasoning passes are unaffected — they read the target with their own Read/Grep/Glob.
+
+sast-engine/rules/
+sast-engine/utils/
+
+# Golden-master input for engine-golden.test.js, never imported or executed. A real finding
+# from test/fixtures/ means this exclusion regressed.
+test/fixtures/
+
+# Deliberately NOT excluded: *.md. A credential committed into a doc is a real finding.

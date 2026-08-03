@@ -1,0 +1,345 @@
+/**
+ * BaseAgent — Foundation for all security scanning agents
+ * ========================================================
+ *
+ * Every agent in sast-engine extends BaseAgent. It provides:
+ *   - Standard finding format
+ *   - File discovery with skip-list support
+ *   - Severity classification
+ *   - Consistent output interface
+ *
+ * USAGE:
+ *   class MyAgent extends BaseAgent {
+ *     constructor() { super('MyAgent', 'Description', 'category'); }
+ *     async analyze(context) { return [findings]; }
+ *   }
+ */
+
+import fs from 'fs';
+import path from 'path';
+import fg from 'fast-glob';
+import { SKIP_DIRS, SKIP_EXTENSIONS, SKIP_FILENAMES, MAX_FILE_SIZE, loadGitignorePatterns } from '../../utils/patterns.js';
+
+// ---------------------------------------------------------------------------
+// Per-scan file cache
+//
+// MUST be cleared between scans. This engine runs inside a long-lived server: cache a file
+// across scans and a vulnerability the user just fixed would still be reported from stale
+// bytes. The orchestrator calls clearFileCache() at the start of every runAll().
+// ---------------------------------------------------------------------------
+const FILE_CACHE = new Map();
+const FILE_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+let fileCacheBytes = 0;
+
+export function clearFileCache() {
+  FILE_CACHE.clear();
+  fileCacheBytes = 0;
+}
+
+// =============================================================================
+// FINDING FACTORY
+// =============================================================================
+
+/**
+ * Create a standardized finding object.
+ */
+export function createFinding({
+  file,
+  line = 0,
+  column = 0,
+  severity = 'medium',
+  category = 'vulnerability',
+  rule,
+  title,
+  description,
+  matched = '',
+  confidence = 'high',
+  cwe = null,
+  owasp = null,
+  fix = null,
+}) {
+  return {
+    file,
+    line,
+    column,
+    severity,
+    category,
+    rule,
+    title,
+    description,
+    matched,
+    confidence,
+    cwe,
+    owasp,
+    fix,
+  };
+}
+
+// =============================================================================
+// SUPPRESSION FLOOR
+// =============================================================================
+
+/**
+ * Severities an inline `sast-engine-ignore` comment cannot silence.
+ *
+ * The comment was designed for a human deciding a finding is a false positive.
+ * That assumption no longer holds on its own: the code under scan is often
+ * written by an AI agent, and an agent that can emit a line of source can emit
+ * `// sast-engine-ignore` on the line that matters — including via our own
+ * `sast_engine_suppress_finding` tool. Suppression is therefore attacker-writable
+ * for anything an agent touches.
+ *
+ * Critical findings (hardcoded secrets, RCE, confirmed injection) are the ones
+ * where a silent suppression is indistinguishable from a clean scan, so they
+ * are reported regardless. Everything below critical keeps working exactly as
+ * before, so existing suppressions are unaffected.
+ *
+ * An attempt to suppress a floor finding is itself recorded — someone marking a
+ * critical finding as safe is a signal, not a no-op.
+ */
+export const SUPPRESSION_FLOOR_SEVERITIES = new Set(['critical']);
+
+/** Whether a finding of this severity may be silenced by an inline comment. */
+export function isSuppressible(severity) {
+  return !SUPPRESSION_FLOOR_SEVERITIES.has(String(severity || '').toLowerCase());
+}
+
+// =============================================================================
+// BASE AGENT CLASS
+// =============================================================================
+
+export class BaseAgent {
+  /**
+   * @param {string} name        — Agent name (e.g. 'InjectionTester')
+   * @param {string} description — What this agent does
+   * @param {string} category    — Finding category for scoring
+   */
+  constructor(name, description, category) {
+    this.name = name;
+    this.description = description;
+    this.category = category;
+    // Suppression accounting. A scan that silenced findings must never read
+    // the same as a scan that had none to report.
+    this.suppressedCount = 0;
+    this.floorSuppressionAttempts = 0;
+  }
+
+  /**
+   * Run the agent's analysis on a codebase.
+   * Subclasses MUST override this method.
+   *
+   * @param {object} context — { rootPath, files, recon, options }
+   * @returns {Promise<object[]>} — Array of finding objects
+   */
+  async analyze(context) {
+    throw new Error(`${this.name}.analyze() not implemented`);
+  }
+
+  /**
+   * Whether this agent should run given the recon results.
+   * Override in subclasses to skip irrelevant scans.
+   * Default: always run.
+   */
+  shouldRun(recon) {
+    return true;
+  }
+
+  // ── Helpers available to all agents ─────────────────────────────────────────
+
+  /**
+   * Discover all scannable files in a directory.
+   * Respects SKIP_DIRS, SKIP_EXTENSIONS, and MAX_FILE_SIZE.
+   */
+  async discoverFiles(rootPath, extraGlobs = ['**/*']) {
+    const globIgnore = Array.from(SKIP_DIRS).map(dir => `**/${dir}/**`);
+
+    // Respect .gitignore patterns
+    const gitignoreGlobs = loadGitignorePatterns(rootPath);
+    globIgnore.push(...gitignoreGlobs);
+
+    // Load .sast-engineignore patterns
+    const ignorePatterns = this._loadIgnorePatterns(rootPath);
+    for (const p of ignorePatterns) {
+      if (p.endsWith('/')) {
+        globIgnore.push(`**/${p}**`);
+      } else {
+        globIgnore.push(`**/${p}`);
+        globIgnore.push(p);
+      }
+    }
+
+    const allFiles = await fg(extraGlobs, {
+      cwd: rootPath,
+      absolute: true,
+      onlyFiles: true,
+      ignore: globIgnore,
+      dot: true,
+    });
+
+    return allFiles.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      if (SKIP_EXTENSIONS.has(ext)) return false;
+      const basename = path.basename(file);
+      if (SKIP_FILENAMES.has(basename)) return false;
+      if (basename.endsWith('.min.js') || basename.endsWith('.min.css')) return false;
+      try {
+        const stats = fs.statSync(file);
+        if (stats.size > MAX_FILE_SIZE) return false;
+      } catch {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Load .sast-engineignore patterns from the project root.
+   */
+  _loadIgnorePatterns(rootPath) {
+    const ignorePath = path.join(rootPath, '.sast-engineignore');
+    try {
+      if (!fs.existsSync(ignorePath)) return [];
+      return fs.readFileSync(ignorePath, 'utf-8')
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#'));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get the files this agent should scan.
+   * If incremental scanning is active (changedFiles in context), returns only changed files.
+   * Otherwise returns all files. Agents that need the full file list can use context.files directly.
+   */
+  getFilesToScan(context) {
+    return context.changedFiles || context.files;
+  }
+
+  /**
+   * Read a file safely, returning null on failure.
+   *
+   * Cached for the duration of one scan. Every agent walks the same file list, so without this
+   * each file is read once per agent — measured at 14x amplification (1,301 reads of 93 files,
+   * 8.8 MB for 0.6 MB of source). The cache returns identical bytes, so no agent's findings can
+   * change; it only removes repeated I/O.
+   */
+  readFile(filePath) {
+    const hit = FILE_CACHE.get(filePath);
+    if (hit !== undefined) return hit;
+    let content;
+    try {
+      content = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      content = null;
+    }
+    // Bounded: a large repository would otherwise pin every scanned file in memory at once.
+    // Past the cap reads still work, they just stop being cached.
+    if (content === null || fileCacheBytes + content.length <= FILE_CACHE_MAX_BYTES) {
+      FILE_CACHE.set(filePath, content);
+      fileCacheBytes += content === null ? 0 : content.length;
+    }
+    return content;
+  }
+
+  /**
+   * Read a file and return its lines with line numbers.
+   */
+  readLines(filePath) {
+    const content = this.readFile(filePath);
+    if (!content) return [];
+    return content.split('\n');
+  }
+
+  /**
+   * Check if a line has the sast-engine-ignore suppression comment.
+   *
+   * Pass the severity of the finding being considered so the floor can apply:
+   * a critical finding is reported even on a suppressed line (see
+   * SUPPRESSION_FLOOR_SEVERITIES). Called without a severity, behaviour is
+   * unchanged from before the floor existed.
+   *
+   * Either way the outcome is counted, so a report can state how much it was
+   * asked not to say.
+   */
+  isSuppressed(line, severity = null) {
+    if (!/sast-engine-ignore/i.test(line)) return false;
+
+    if (severity !== null && !isSuppressible(severity)) {
+      this.floorSuppressionAttempts++;
+      return false;
+    }
+
+    this.suppressedCount++;
+    return true;
+  }
+
+  /**
+   * Scan file lines against an array of regex patterns.
+   * Returns findings for every match.
+   */
+  scanFileWithPatterns(filePath, patterns) {
+    const content = this.readFile(filePath);
+    if (!content) return [];
+
+    const lines = content.split('\n');
+    const findings = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Suppression is decided per pattern, not per line: the floor depends on
+      // the severity of the specific finding, which isn't known until we know
+      // which pattern matched.
+      const lineMarked = /sast-engine-ignore/i.test(line);
+
+      for (const p of patterns) {
+        const severity = p.severity || 'medium';
+
+        // Collect matches first. Suppression is only meaningful for a pattern
+        // that actually fired, and it counts once per (line, rule) rather than
+        // once per match, so the tally reflects findings silenced.
+        p.regex.lastIndex = 0;
+        const matches = [];
+        let m;
+        while ((m = p.regex.exec(line)) !== null) {
+          matches.push(m);
+          if (!p.regex.global) break;
+        }
+        if (matches.length === 0) continue;
+        if (lineMarked && this.isSuppressed(line, severity)) continue;
+
+        for (const match of matches) {
+          const finding = createFinding({
+            file: filePath,
+            line: i + 1,
+            column: match.index + 1,
+            severity,
+            category: this.category,
+            rule: p.rule,
+            title: p.title,
+            description: p.description,
+            matched: match[0],
+            confidence: p.confidence || 'high',
+            cwe: p.cwe || null,
+            owasp: p.owasp || null,
+            fix: p.fix || null,
+          });
+          // Attach surrounding code context (3 lines before/after)
+          const start = Math.max(0, i - 3);
+          const end = Math.min(lines.length, i + 4);
+          finding.codeContext = lines.slice(start, end).map((l, idx) => ({
+            line: start + idx + 1,
+            text: l,
+            highlight: (start + idx) === i,
+          }));
+          findings.push(finding);
+        }
+      }
+    }
+
+    return findings;
+  }
+}
+
+export default BaseAgent;

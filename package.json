@@ -1,16 +1,22 @@
 {
-  "name": "findings-agent-app",
+  "name": "agentic-dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "Local test harness that invokes Claude Code headless as findings-triage agents and streams live output to a browser UI over WebSocket.",
+  "description": "Local AppSec tool: scans a directory with a deterministic pattern engine plus Claude Code reasoning passes, then walks each finding through a propose/apply/verify fix pipeline. Streams live to a browser UI over WebSocket.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@babel/parser": "^7.29.8",
     "express": "^4.19.2",
     "fast-glob": "^3.3.2",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0"
   }
 }

@@ -98,8 +98,14 @@ export function validatePlan(root, plan) {
       return { ok: false, reason: `protected path: ${f.path}` };
     }
 
-    const abs = path.resolve(root, f.path);
-    if (!abs.startsWith(path.resolve(root))) {
+    // Containment must compare against root + separator. A bare `abs.startsWith(root)` is a
+    // string-prefix test with no path-boundary awareness, so with root "/home/u/app" the path
+    // "../app-secrets/creds.js" resolves to "/home/u/app-secrets/creds.js", which starts with
+    // "/home/u/app" and passed. The write then landed outside the directory the user confirmed
+    // in the Fix dialog — the single thing that gate exists to guarantee.
+    const resolvedRoot = path.resolve(root);
+    const abs = path.resolve(resolvedRoot, f.path);
+    if (abs !== resolvedRoot && !abs.startsWith(resolvedRoot + path.sep)) {
       return { ok: false, reason: `path escapes target directory: ${f.path}` };
     }
     const exists = fs.existsSync(abs);
@@ -107,6 +113,19 @@ export function validatePlan(root, plan) {
     if (f.create || f.append !== undefined) {
       if (!exists && !isSafeNew) {
         return { ok: false, reason: `cannot create new file at ${f.path}` };
+      }
+      // `create: true` against a file that already exists is a whole-file overwrite, and this
+      // branch ends in `continue` — skipping the find-string validation below entirely. So a
+      // plan could replace any existing file wholesale, with no find string and therefore no
+      // check that the model was even looking at the current contents, by setting one boolean.
+      // That defeats the entire purpose of this function: never write something that does not
+      // match the live file. Overwriting an existing path is only allowed for the explicitly
+      // safe companion files (.env.example, .gitignore) that SAFE_NEW_FILES already names.
+      if (f.create && exists && !isSafeNew) {
+        return {
+          ok: false,
+          reason: `refusing to overwrite existing file ${f.path} — use edits with a find string, not create`,
+        };
       }
       if (f.create && typeof f.content !== 'string') {
         return { ok: false, reason: 'create entry missing content' };

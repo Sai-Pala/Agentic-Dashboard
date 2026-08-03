@@ -1,0 +1,44 @@
+# Runs the checks that were previously only enforced by remembering to run them.
+#
+# Lint first, then tests: lint takes seconds and catches the typo'd-identifier class of bug, so
+# failing there early avoids waiting on a 30s suite to learn the same thing.
+name: CI
+
+on:
+  push:
+    branches: [main, Development]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly the lockfile and fails if
+      # package.json and package-lock.json have drifted, which is itself worth catching.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # --test-concurrency=1 is load-bearing, not caution. The REST and WS suites each boot a
+      # real server on a real port; run in parallel on a loaded CI box they intermittently miss
+      # their readiness timeout and fail as if the code regressed. Observed three times locally
+      # in one session. Serial costs a few seconds and removes the false failures entirely.
+      - name: Test
+        run: node --test --test-concurrency=1 "test/**/*.test.js"
+
+      # The scanner must not be broken by a change to the code it scans. This asserts the engine
+      # still loads and produces findings against the checked-in fixture — a smoke test for the
+      # vendored ESM boundary, which a pure unit test would not exercise.
+      - name: Engine smoke test
+        run: node --test "test/engine-golden.test.js"

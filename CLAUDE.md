@@ -1,1686 +1,241 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) working in this repository.
 
 ## What this is
 
-A local Node app combining a deterministic security scanner with a set of specialized AppSec
-agents that invoke Claude Code headless (`claude -p`), streaming their reasoning live to a
-browser UI over WebSocket and parsing a structured JSON verdict out of each run. Finding
-*detection* is a mix: SCA Scan is purely deterministic (`sast-engine/`'s dependency-audit
-wrapper, no LLM at all) and also standalone — it's its own top-level page for a fast,
-LLM-free check; Reasoning Scan is a **hybrid of three engines** — `sast-engine/` (vendored from
-the open-source `ship-safe` project) runs 31 regex/heuristic pattern agents, a structural
-`UnusedGuardAgent` (whole-app, finds controls defined but never applied), and a code-context
-`VerifierAgent`, in parallel with a real `claude -p` reasoning pass (`agents/scan.md`), in
-parallel with that same dependency audit SCA Scan uses on its own — over the same directory, and
-all three result sets are merged/deduped — the deterministic engine covers known vulnerability
-categories fast and consistently, the reasoning engine covers business-logic/authorization/
-attack-surface reasoning no fixed rule set can do, and the dependency audit is folded in because
-it's cheap enough that there's no reason not to always run it alongside the other two. Finding *analysis* (Threat
-Model, Remediation, Verify) still uses `claude -p` against each finding, unchanged. Triage sits
-in between: it's not a live agent anymore (its old `.md` file is gone), but every finding still
-gets a triage verdict synthesized at creation time — from the deterministic engine's
-verification pass, from the reasoning pass's own assessment (it triages what it finds in the
-same call), or a neutral placeholder for a manually added finding. The UI is a "mission control" style app with a
-global left nav ordered to mirror the actual finding pipeline — Dashboard / Reasoning Scan /
-SCA Scan / Control Scan / Agent Triage / Threat Model / Reports — with a theme toggle and
-Settings in the nav footer instead of the main list. There used to be a dedicated Agent
-Configuration admin screen here too (editing `agents/*.md` files from the browser); it's been
-removed — see the Agent Configuration bullet below for what replaced it. Reasoning
-Scan, SCA Scan, and Control Scan additionally sit grouped under a small non-clickable `SCANS`
-section label (`.nav-section-label`) and are visually indented (`.nav-item-indent`, both
-collapsing back to a plain centered icon when the sidebar is collapsed) — the flat list
-otherwise read as seven equally-weighted items with no hint that these three are all "kick off
-a whole-directory run against a target path" actions (two produce findings, one produces a
-compliance report — see the Control Scan bullet below for why it's grouped here despite that
-difference); the indent groups them without adding a second click target (the label itself
-does nothing — clicking any of the three still works exactly as any other nav item). Timeline
-is deliberately *not* one of these nav items — see the Timeline bullet below for why and where
-it lives instead. Four nav items carry a live status badge (`renderNavBadges()`, called from
-`upsertTimelineEntry()`, `upsertControlAssessment()`, and `renderNavStatus()` so it stays
-current from any view — `upsertControlAssessment()` needs its own explicit call since Control
-Scan runs never flow through `upsertTimelineEntry()` the way scans do):
-**Reasoning Scan** shows a pulsing yellow dot while any non-SCA scan is `status: 'running'`
-(`scansList`, filtered to `scanType !== 'sca'`); **SCA Scan** shows the same pulsing yellow dot,
-filtered the other way (`scanType === 'sca'`) — split so a running SCA scan doesn't make the
-Reasoning Scan page look like something's happening there when it isn't, and vice versa;
-**Control Scan** shows the same pulsing yellow dot while any `controlAssessmentsList` entry is
-`status: 'running'`; **Agent Triage** shows a red count pill of findings whose `status !==
-'closed'`. When the
-sidebar is collapsed, `#global-nav.collapsed .nav-item .nav-badge` forces every badge — dot
-or count pill alike — to the same 8×8 corner dot (text hidden via `font-size: 0`, the count
-still readable from the badge's `title` tooltip on hover); without this override the wider
-count pill overlapped the nav icon instead of sitting in its corner like the plain status
-dots do.
+A local, single-user AppSec tool. It scans a target directory for security findings, then walks
+each finding through a fix pipeline. Two things run the scan: a deterministic engine (Opengrep,
+no LLM) and `claude -p` reasoning passes. Results merge into one finding list, streamed live to a
+browser UI over WebSocket.
 
-- **Dashboard** — a pure status/briefing screen: the Briefing banner, a `.quick-actions` row
-  of two prominent cards ("Start a scan" / "View timeline", `#dash-scans-link`/
-  `#dash-timeline-link` — the latter opens the timeline drawer, see the Timeline bullet below,
-  not a dedicated view) linking into those destinations, stat tiles (in progress, not started,
-  in review, remediation ready, total findings, total agent runs), and an Agents panel (every
-  per-finding agent from `agentsList` — built-in or custom — so it grows automatically as new
-  agents are added; the whole-app agents, Scan/App Threat Model/Control Scan, are deliberately
-  excluded since `agentsList` itself is already filtered to per-finding agents server-side, see
-  below). The panel (`#dash-agents-panel`) is a plain display list now, not a link — it used to
-  navigate to a dedicated Agent Configuration admin screen, which has been removed (see the
-  Agent Configuration bullet below). It holds no form of its own — `renderDashboard()` only
-  refreshes the briefing/stats/agents panel, nothing else. The quick-actions row replaced
-  an earlier `.dash-footer` bar that crammed the same two links into a thin text strip
-  alongside a "`{n} findings · {m} total runs`" summary — that summary was pure duplication of
-  numbers the stat tiles already show directly above it, and the two links read as an
-  afterthought; removed the redundant text and gave the links real button-card treatment
-  instead. An earlier design also kept a persistent connection/findings-count/agents-ready/
-  scans-count status block in the sidebar (`#nav-status`) — removed as redundant with the
-  per-page nav badges, which already surface running/attention state contextually; the sidebar
-  now only carries the theme toggle, Settings, and a small connection indicator.
-- **Reasoning Scan** (displayed as **"Hybrid Scan"** in the UI — nav item, page `<h1>`, form
-  title, scan-type chips, Agent Triage type tab, and the Timeline pill all say "Hybrid Scan"/
-  "Hybrid" now, since it's a better description once three engines run rather than a
-  reasoning-only pass — but the internal `scanType: 'reasoning'` value, function names like
-  `runHybridReasoningScan()`, and every reference to "the reasoning half/pass/engine" as one of
-  the three engines inside this bullet are unchanged and deliberately not renamed, to avoid
-  conflating the page-level display name with the LLM-reasoning-engine concept the rest of this
-  bullet still needs to refer to precisely) — the scan kickoff form and its live cards, on their
-  own top-level page: a target-directory input, branch/app fields, and a Start button — followed by
-  `#scan-live-container` (2-column grid of live scan cards). Starting a scan optimistically
-  pushes into both `scansList` and `timelineEntries` so the Dashboard briefing and timeline
-  drawer update before the server round-trip completes.
+`sast-engine/` is still vendored and still loaded, but it is **no longer the deterministic
+scanner** — Opengrep replaced that half. What the app uses it for now is route enumeration, the
+dependency audit, and the file-discovery rules the coverage manifest is built from. Its 491
+pattern rules are dormant; see `src/services/engines/deterministic.js` for why they are parked
+rather than deleted.
 
-  **This scan runs three engines in parallel over the same directory, and their results are
-  merged.** This replaced two earlier designs in sequence: originally this page spawned
-  `claude -p` against `agents/scan.md` and let it freely reason over the whole directory with no
-  fixed rule set behind it (inconsistent results, easy to miss known patterns); that was then
-  replaced with a purely deterministic engine, which fixed the consistency problem but meant
-  Reasoning Scan could no longer catch anything a fixed rule set can't — business-logic flaws,
-  authorization/access-control gaps that only make sense in context, multi-file reasoning.
-  Current design keeps both — plus, more recently, a third engine folded in alongside them:
-  - **Deterministic half**: `sast-engine/` (adapted, MIT-licensed, from the open-source
-    `ship-safe` project, fully self-contained in this repo — see `sast-engine/LICENSE`): 31
-    regex/heuristic pattern agents (SQLi, SSRF, auth bypass, hardcoded secrets, supply-chain,
-    IaC misconfig, LLM/agentic-security patterns, and more — see `sast-engine/agents/index.js`
-    for the full list) run in parallel over the repo, followed by a deterministic second-pass
-    `VerifierAgent` that confirms or downgrades each finding by reading its surrounding code —
-    no LLM call anywhere in this half (`runDeterministicPatternScan()` in `server.js`).
-
-    **Only the agents relevant to the target actually run**, decided by each agent's
-    `shouldRun(recon)` against `ReconAgent`'s output. This used to be nearly vacuous: `BaseAgent`
-    defaults `shouldRun()` to `return true`, and only three agents overrode it meaningfully, so a
-    plain Express API was paying for a full Roblox/Luau pass, a React Native Hermes bytecode pass,
-    and every AI/agentic/MCP/RAG/model-scanning agent on every scan. Two of those were gated on
-    signals `ReconAgent` *already computed and then discarded* — it detects the Roblox toolchain
-    (Rojo/Wally project files, `.rbxl*`/`.rbxm*`) and `react-native`, and `RobloxSecurityAgent` /
-    `HermesSecurityAgent` returned `true` regardless.
-
-    `ReconAgent` now also collects `mcpConfigs` / `aiFrameworks` / `vectorStores` /
-    `agentConfigs` / `modelFiles` — deliberately mirroring the file lists and dependency names
-    the consuming agents themselves open, since a signal that doesn't match what an agent
-    actually reads is worse than no signal: it gates the agent off its own real input. Filenames
-    are matched case-insensitively (`CLAUDE.md` vs `claude.md`, `AGENTS.md` vs `agents.md` — the
-    convention is not consistent about case, and a case miss silently disables the agent), and
-    Python manifests (`requirements.txt`, `pyproject.toml`, `Pipfile`) are read as text alongside
-    `package.json` so a langchain/chromadb project is recognised at all.
-
-    **The selection is visible in the UI, not just in the logs.** `onScopeReady(realTotal,
-    skippedNames)` now reports *which* agents were filtered out, not only how many survived —
-    a bar reading "17/17 agents done" makes gating invisible, since it reads as though 17 is
-    the whole engine. Three surfaces show it: the live scan card's Pattern-match bar
-    (`updateDetBar()`, "17/17 agents done · 15 n/a" with a tooltip naming each skipped agent),
-    a chip in the card's meta row (`makeScanCard()`, "17/32 agents"), and — the durable one —
-    the timeline drawer's expanded scan row ("17 of 32 pattern agents applied to this codebase
-    · 15 not applicable"). That last one matters because scan cards are only ever created by
-    `startScan()` and are **never** rebuilt from `scansList`, so a page reload loses them
-    entirely; the timeline row refetches `GET /api/scans/:id` every time it opens, and the
-    record carries `agentsRun`/`agentsSkipped` (`toScanListItem()`) for exactly this reason.
-
-    Measured effect (`nothing was deleted` — every agent is still registered and still runs where
-    it applies): Express + `pg` → **17** of 32; `openai` + `@modelcontextprotocol/sdk` → **25**
-    (MCP/LLMRedTeam/Agentic\* switch on, RAG stays off with no vector store); Rojo/Wally + `.luau`
-    → **15** (Roblox on, every AI agent off); langchain + chromadb via `requirements.txt` → **21**
-    (RAG on, MCP correctly off). Recon itself costs 3–35ms.
-
-    One distinction is load-bearing and easy to collapse by accident: `AgentConfigScanner` and
-    `MemoryPoisoningAgent` gate on `agentConfigs` because the config file *is* their subject — a
-    poisoned `CLAUDE.md` is the threat they detect. `AgenticSecurityAgent`, `ManagedAgentScanner`,
-    `AgentAttestationAgent` and `AgenticSupplyChainAgent` deliberately do **not**, because they
-    assess whether the *application* is agentic, and a `CLAUDE.md` only means someone edits the
-    repo with an assistant. Gating that second group on `agentConfigs` fires them on the large and
-    growing share of repos that merely contain an assistant config.
-
-    **An agent that doesn't finish is reported, not silently counted as clean.** The
-    orchestrator has always recorded `success: false` for an agent that errored or timed out,
-    but nothing read that field: `onAgentDone` took the findings (empty) and advanced the
-    progress bar, so a scan that *could not finish* checking for SQL injection looked exactly
-    like a scan that found none. That is the single confusion a security tool cannot afford,
-    and it was live until it was found while reasoning about large-repo behaviour.
-    `runDeterministicPatternScan()` now collects failures into `failedAgents` and emits a
-    `scan-warning` naming each one and stating plainly that those vulnerability classes were
-    **not checked**. The per-agent deadline was also raised from the orchestrator's own 30s
-    default to `DETERMINISTIC_AGENT_TIMEOUT_MS` (180s): every agent walks the whole file list,
-    so its work scales with repo size while that deadline did not. It is a hang detector, not a
-    work budget — a small repo is unaffected (agents finish in well under a second) and a large
-    one gets the room it needs.
-
-    Two of those 31 were added to close specific structural holes, and both are different in
-    kind from the other 29 rather than being more pattern lists:
-    - **`SecretsAgent`** (`secrets-agent.js`) runs `SECRET_PATTERNS` over **working-tree
-      files**. Before it, that ~50-pattern list had exactly one consumer — `GitHistoryScanner`,
-      which greps `git log --max-count=50` — so secret detection depended entirely on git: a
-      non-git directory found nothing at all, a secret committed 51 commits ago was invisible,
-      and a secret never committed (still live, never reviewed) could not be found by
-      construction. It also implements the `requiresEntropyCheck` flag that 11 patterns in
-      `patterns.js` had been declaring with nothing acting on it, so the generic
-      api_key/secret/password/connection-string patterns previously had no false-positive
-      control whatsoever. Specific-prefix patterns (`AKIA…`, `sk_live_…`) report
-      unconditionally; generic ones are filtered by Shannon entropy plus placeholder and
-      env-reference detection. `GitHistoryScanner` is unchanged and still covers the genuinely
-      historical case (committed, then deleted from the tree) that a working-tree scan can't see.
-    - **`TaintFlowAgent`** (`taint-flow-agent.js`) is the only agent here that isn't line-local.
-      `BaseAgent.scanFileWithPatterns()` tests each regex against one physical line, so every
-      other agent requires the taint source and the sink on the *same* line — which ordinary
-      code (`const t = req.query.t;` then a sink two lines later) simply isn't. It tracks
-      variables assigned from request data through assignment, concatenation, template literals
-      and destructuring into seven sink families (SQL, shell, filesystem, eval, outbound HTTP,
-      HTML response, redirect). Intra-procedural only, resets taint at function/handler
-      boundaries, clears taint through sanitizers/casts, and **only fires when the source is on
-      an earlier line than the sink** — so it's purely additive and never restates a same-line
-      finding another agent already reports. One subtlety worth preserving if this is ever
-      rewritten: comment-stripping must be quote-aware (`stripLineComment()`), because a naive
-      `//` strip truncates `https://…` mid-URL and silently drops the flow through it.
-        Three precision mechanisms exist because the agent would otherwise flag correctly-written
-      code — the failure mode that matters most, since a scanner that cries wolf on the exact
-      patterns developers are told to write gets ignored.
-      (1) A per-sink **`safeWhen`** predicate suppresses a hit when the *call shape itself* is
-      safe regardless of taint: `PARAMETERIZED_QUERY` (a quoted statement literal followed by a
-      bindings argument — deliberately not matching a template literal, which is the bug) and
-      `ARGV_ARRAY_CALL` (execFile/spawn with an argv array, no shell). (2) Assignment through a
-      **literal ternary** or a bare comparison clears taint — `req.query.x === 'a' ? 'a' : 'b'`
-      collapses input to a fixed set, and a boolean carries no payload. (3) **`_applyGuard()`**
-      clears taint for variables validated by an early-return guard (`if (!/^[a-f0-9]{32}$/
-      .test(id)) return …`), since code below only runs for values that passed. Critically it
-      clears *only the variables named in the condition*: a guard on `parsed.hostname` says
-      nothing about a different variable fetched later, which is exactly the SSRF-allowlist-
-      bypass this engine must keep finding. Any rework of the guard logic needs to preserve that
-      distinction specifically — it is the difference between precision and a missed SSRF.
-  - **Reasoning half**: two `claude -p` calls (`runLLMReasoningScan()` in `server.js`), run
-    *after* the deterministic half rather than alongside it, because both take its output as
-    their input. This replaced a design that partitioned the target into up to 24
-    file-count-sized modules and spawned a scoped call per module plus an unscoped
-    cross-cutting pass, three concurrently, each with its own scaled dollar cap and a `$12`
-    per-scan ceiling on top (`partitionReasoningModules()`, `splitFileGroup()`,
-    `moduleBudgetUsd()` — all deleted). That design made cost scale with *repo size*, and had
-    the expensive engine re-reading every file the free one had just read while knowing nothing
-    about what it found — a union of two engines, not a hybrid. The two passes are:
-    - **Adjudicate** (`agents/adjudicate.md`, capped at `REASONING_ADJUDICATE_BUDGET_USD`,
-      `$1.50`) — takes the deterministic findings with their code context and decides which are
-      real. This is the pass that removes false positives, which pattern matching structurally
-      cannot do for itself: it matches *syntax*, not *meaning*, so it cannot tell a genuine SQL
-      injection from a parameterized query sitting next to a string concatenation. Its verdicts
-      flow back through `findingFromSastEngine()`'s existing synthetic `triage` run (via a 4th
-      `adjudication` parameter), so a finding it calls `false_positive` lands at
-      `status: 'closed'` through `deriveStatus()`'s existing branch — **still created, still
-      inspectable in Agent Triage**, just out of the open queue. Nothing is ever dropped: a
-      wrong adjudication costs visibility, not evidence, and `adjudicate.md` is explicitly told
-      to prefer `needs_review` over `false_positive` whenever the evidence is incomplete. The
-      run's `verdict.source` is `'reasoning-adjudication'` rather than `'sast-engine-verifier'`
-      so Finding Detail can tell which one decided. Bounded at `ADJUDICATE_MAX_FINDINGS` (40,
-      taken most-severe-first); anything past the cap keeps its pattern-engine verdict and the
-      shortfall is reported in a `scan-warning` rather than silently ignored.
-    - **Review** (`agents/scan.md`, unchanged, capped at `REASONING_REVIEW_BUDGET_USD`, `$3.50`)
-      — takes the enumerated attack surface (`renderWorklist()`: every route with its resolved
-      middleware chain, every mount and its guards, every security control with its real call
-      count) and asks the authorization and business-logic questions no fixed rule set can
-      express. It is *also* handed the deterministic findings' locations under a "do NOT report
-      these again" instruction, so it doesn't spend budget rediscovering the same hardcoded
-      secret the free engine already found — that avoidance is the other half of what makes
-      this a hybrid rather than two independent scans reconciled afterwards.
-
-      **The review pass is sharded by attack surface** (`planReviewShards()`), not by files, and
-      its `$3.50` cap is now *per shard* with `REASONING_REVIEW_TOTAL_USD` (`$8`) bounding the
-      scan. Sharding exists because **the budget cap was never the binding constraint** — one
-      call cannot genuinely answer four questions about several hundred routes, and long before
-      the dollar cap binds the *context window* does. `claude -p` responds to a full context by
-      compacting, which silently discards its own earlier analysis, so simply removing the cap
-      buys a larger bill and the same missing coverage without saying so. Bounding routes per
-      call is the only thing that actually fixes it.
-
-      Routes are grouped **by file** (sibling handlers must be reviewed together — the coupon-
-      stacking and refund flaws in the measured fixture are only visible when routes sharing
-      state are seen side by side), scored by risk (no middleware `+3`; middleware present but
-      none matching a privilege vocabulary `+2` — the authenticated-but-not-authorized case
-      that reads as protected and isn't; plus capped contributions from sinks and existing
-      findings in the same file), then packed highest-risk-first into shards of
-      `REVIEW_ROUTES_PER_SHARD` (40). A file with more routes than that becomes its own
-      oversized shard rather than being split, since splitting one router across two calls is
-      exactly the sibling-context loss this design exists to avoid.
-
-      40 is chosen so the measured 31-route fixture stays a **single shard** — identical cost
-      and behaviour to before sharding existed. With the budget cap on, at most
-      `REVIEW_MAX_SHARDS` (6) run, ~240 routes; anything beyond that is reported in a
-      `scan-warning` naming how many routes were **not** reviewed. With the cap off (the form's
-      existing toggle — the user has explicitly chosen completeness over cost) the limit rises
-      to `REVIEW_MAX_SHARDS_UNCAPPED` (24) and the per-scan ceiling is not enforced. At most
-      `REVIEW_SHARD_CONCURRENCY` (3) shards run at once.
-
-      A shard's file list is **focus, not a sandbox**: the prompt says these are the routes it
-      is responsible for and that it should not report issues rooted in files outside the list
-      (another shard owns those), but explicitly permits reading anything in the repository —
-      answering "could this data belong to someone else" almost always means following the call
-      into a service or model file elsewhere. A target with **no HTTP surface at all** (a
-      library, CLI, or worker) yields one unscoped shard, which is exactly the pre-sharding
-      behaviour.
-    - **The two passes run concurrently** (`Promise.all` over `adjudicatePass()`/`reviewPass()`)
-      — they share no data with *each other*, only with the deterministic half that already
-      finished, so sequencing them just adds the shorter one's wall clock to every scan for
-      nothing. Measured before this was fixed: adjudication alone took 268s with the review pass
-      only starting afterwards, which made a scan slower than the module-partitioned design it
-      replaced — the opposite of the point.
-    - **Neither pass scales with repo size.** Adjudication scales with finding count, review
-      with endpoint count. A large codebase therefore costs roughly what a small one does, which
-      is what removed the need for a per-scan ceiling at all: worst-case spend is now the sum of
-      the two per-call caps, by construction.
-    - The cap is still a **per-scan toggle**, not a hardcoded constraint — the Hybrid Scan
-      form's "Budget cap" On/Off pill (`#scan-budget-toggle` → `scanBudgetEnabled` →
-      `msg.budgetEnabled` → `scan.budgetEnabled`), defaulting On. `handleScanMessage()` reads it
-      as `msg.budgetEnabled !== false` so an old client that never sends the field still gets the
-      safe default. With it off, `--max-budget-usd` is omitted from the spawn args entirely
-      rather than passed as some enormous number, so the budget-exhaustion detection path below
-      simply never triggers — no special-casing needed. Surfaced after the fact as an amber
-      "No budget cap" chip on the scan card (`toScanListItem()`'s `budgetEnabled`).
-    - **Budget exhaustion is still detected distinctly, not swallowed as a clean "nothing
-      found."** The CLI exits non-zero with a final `stream-json` `result` event carrying
-      `subtype: 'error_max_budget_usd'` and a real `total_cost_usd`; `runReasoningCall()`
-      captures that event and reports a specific message via `scan-warning`. Findings reported
-      before the cutoff are kept rather than discarded because the process technically errored —
-      the scan paid for those tokens either way.
-    - **Real dollar spend is aggregated, not estimated** from token/tool-call counts: each
-      call's `total_cost_usd` sums into `totalCostUsd`, rides live on `scan-progress`'s `costUsd`
-      field, and persists as `scan.reasoningCostUsd` (`toScanListItem()`) so it's visible via
-      `GET /api/scans/:id` after the fact too.
-    - Each pass's child process is registered under its own synthetic `` `${scan.runId}::mod${i}` ``
-      key in `children` (tracked on `scan.moduleRunIds`) rather than the scan's own runId, so the
-      WS `cancel` handler and the `ws.on('close')` cleanup can kill both in-flight calls. The key
-      name kept its `mod` prefix through the module design and back out of it again — nothing but
-      cancel bookkeeping reads those keys, so renaming them would be churn.
-    - A **`scan-warning` message type** exists for this app's own non-fatal notes, distinct from
-      `scan-stderr` (raw CLI chatter, still silently discarded client-side). It renders as a small
-      amber `.scan-warning-msg` banner on the scan card, appended rather than replaced so several
-      notes stay visible, and never touches `run.status` or the elapsed timer. Used for: one
-      engine erroring while others succeeded, the adjudication overflow above, budget exhaustion,
-      and the "N/M reasoning passes had issues" partial-failure summary. This distinction exists
-      because that summary *was* originally sent as `scan-stderr` and therefore silently dropped
-      by the same client code that discards CLI noise — a real induced failure produced no visible
-      signal anywhere in the UI despite the server correctly describing it.
-    - Both passes' system prompts still carry a **coverage summary** (`buildCoverageSummary()`),
-      built from `listBuiltInAgents()` — one line per registered agent, using the exact
-      `name`/`description`/`category` strings passed to its own `super()` call. Deliberately not
-      a second hand-maintained file (it would drift the first time an agent changed) and not each
-      pattern's full regex/fix text (hundreds of entries, real prompt bloat). ~800 tokens, fixed,
-      and it can never go stale because it reads from the same constructor that defines the
-      agent's detection logic.
-    - A **"diff" scope** scan narrows the review pass's worklist to the changed-file list and
-      tells it to review nothing else; adjudication is unaffected, since it reviews findings
-      rather than files.
-  - **SCA half**: a dependency audit (`runDeterministicScaScan()`), the same engine slice the
-    standalone SCA Scan page's own flow uses (`runStandaloneScaScan()` — see the SCA Scan bullet
-    below for what the audit itself does) — folded in here too since it's fast, free of LLM
-    cost, and there's little reason a Reasoning Scan shouldn't always also check dependencies.
-    **A failed audit is now reported as a failure rather than as a clean result**
-    (`assertNoAuditError()` in `sast-engine/commands/deps.js`): `npm` exits non-zero for two
-    unrelated reasons — "vulnerabilities found" (expected) and "couldn't run the audit at all"
-    (a failure) — and writes JSON to stdout in *both* cases, so the original
-    `if (err.stdout)` check treated a broken audit as a successful one, handed the error payload
-    to the parser, found no `vulnerabilities` key, and returned an empty list with
-    `error: null`. Measured: a repo with no lockfile reported **0** dependency findings while
-    carrying **11** real advisories (2 critical). Anything that can't be positively identified
-    as a real report — an `error` key, unparseable JSON, or a payload missing the keys npm
-    always emits — now throws, so `runDepsAudit()`'s existing error path fires and the message
-    reaches the UI as a `scan-warning`. A directory with no manifest at all is still a clean
-    `pm: null` / no-error outcome, since "nothing to audit" is a legitimate result.
-    Runs concurrently with the other two, but signals its *own* completion the moment it
-    resolves (`scan-progress {engine:'sca', done:1, total:1}`) rather than waiting for
-    `Promise.all` below — it's typically the fastest of the three by far (one shell-out, no
-    per-file work), so the client's third engine bar reaches "Done" well before the
-    other two finish. Ignores scope entirely — a dependency audit always reads the whole
-    manifest/lockfile, "diff" scope or not.
-  - **Merge**: `runHybridReasoningScan()` awaits all three (`Promise.all`), then deduplicates
-    on three axes:
-    - *Reasoning vs. deterministic*: a reasoning-pass finding whose file+line sits within 2
-      lines of a deterministic finding in the same file is dropped (`parseFileLine()` + a small
-      proximity check); anything without a resolvable line (most business-logic/attack-surface
-      findings, and every SCA finding — package/version-keyed, not file+line-keyed) always
-      survives, since there's nothing to compare it against.
-    - *Reasoning vs. reasoning* (`isDuplicateOfReasoning()`): retained from the module-based
-      design, where the reasoning half was several independent `claude -p` calls that nothing
-      stopped from reporting the same issue — in practice the same unwired-auth gap came
-      back 2-3x per scan and the same IDOR twice. With a single review pass this rarely fires,
-      but it still guards against one call reporting the same issue twice. Titles vary far too
-      much between calls for text comparison to catch this ("requireAuth … applied to zero
-      routes" vs. "Payment, order, and profile endpoints registered without requireAuth"), but
-      they land on the same line consistently, so location is the signal. Findings are sorted
-      most-severe-first before deduping, so when two calls disagree on severity for one issue —
-      `critical` in one call, `medium` in another — the surviving copy is the more
-      severe reading rather than whichever call happened to finish first.
-    - *Deterministic vs. itself* (`dedupeAdjacentSameRule()`): collapses a rule firing on
-      *consecutive* lines of one file, e.g. "no security headers configured" flagged once per
-      `app.use()` call (5 rows → 2). Adjacency is load-bearing, not incidental: three separate
-      SQL injections in one file are three real findings and must stay three, so distance is
-      what separates "one condition observed repeatedly" from "several distinct sites".
-    Together these took redundant rows from 23% to 16% of a run, where what remains is
-    legitimately distinct sites sharing a title. All three behaviours have unit tests covering
-    the measured duplicates plus explicit "must not collapse" guards. If one or two engines error out, the scan still succeeds on
-    whichever results did come back (a `scan-warning` note flags each failure) — only failing
-    outright if all three do.
-
-  **The "Pattern match" bar used to permanently stall below 100%, found via a live repro
-  scan.** `runDeterministicPatternScan()` originally seeded its `total` from
-  `orchestrator.agents.length` (29, every registered pattern agent) before calling
-  `orchestrator.runAll()`, but many agents are gated behind a `shouldRun(recon)`
-  framework-relevance check (`mobile-scanner`, `supabase-rls-agent`, and 11 others —
-  `sast-engine/agents/orchestrator.js`'s `relevantAgents` filter) that most repos don't satisfy;
-  a skipped agent's slot in `total` can never be filled by `onAgentDone`, since that callback
-  only fires for agents the orchestrator actually ran. On an ordinary small repo this
-  reliably left the bar stuck at, e.g., `27/29` for the rest of the scan's duration — looking
-  identical to a hung pattern-match half even though it had already finished. Fix: `runAll()`
-  now accepts an `options.onScopeReady(realTotal)` callback, invoked with `relevantAgents.length`
-  right after `shouldRun` filtering and before the per-agent loop starts;
-  `runDeterministicPatternScan()` uses it to correct `total` (and re-send a `scan-progress` with
-  the corrected total) before any `onAgentDone` call can fire, so the bar's denominator always
-  matches what will actually complete.
-
-  Both halves stream live: the deterministic half's `onAgentDone` callback (a hook added on top
-  of ship-safe's own orchestrator, which only reported progress via terminal spinners) relays
-  each completed agent's findings as a synthetic `scan-event` carrying one `[severity] message`
-  line per finding; the reasoning half streams its own *real* narration the normal way a
-  `claude -p` stage always has — now interleaved *across every concurrently-running module*, not
-  just one call, since the client can't tell (or need to tell) which module produced a given
-  narration line any more than it could tell deterministic from reasoning narration before. Both
-  event streams share the same `scan-event` type and arrive interleaved in whatever order each
-  engine produces them — the client's existing `trackScanCandidates()`/`SEV_TAG_RE` parser
-  doesn't care which one produced a line, so **no front-end changes** were needed to support the
-  hybrid design. Tool-call/token counters on the card only reflect the reasoning half's real
-  activity (the deterministic half has none to report) and now accumulate across every module's
-  events, not one. The "Reasoning" progress bar (`updateReasoningModuleProgress()` in
-  `index.html`) shows real `X/N modules done` progress on a "Full" scope scan with more than one
-  module — driven by its own `scan-progress {engine:'reasoning'}` message, sent once per
-  completed module, mirroring the deterministic bar's `{engine:'deterministic'}` message exactly.
-  A "diff" scope scan (or a full scan whose directory only yielded one module) reports `total <=
-  1`, so there's nothing module-like to show — the bar falls back to the indeterminate
-  tool-call-count estimate it always used (`updateReasoningBar()`). If some but not all modules
-  error out, the scan still succeeds on the surviving modules' findings alone (a `scan-stderr`
-  note reports how many of N failed, e.g. "2/4 reasoning modules failed: ..."); if *every* module
-  in the reasoning half fails, that's treated the same as the whole engine erroring for the
-  purposes of the det/llm dual-failure handling described below. Diff-only scope restricts both halves to the same changed-file list — `options.onlyFiles`
-  on `orchestrator.runAll()` for the deterministic half (a small addition on top of ship-safe's
-  own orchestrator, since most of the 29 agents read `context.files` directly rather than
-  opting into `context.changedFiles` individually), and the changed-file list appended to
-  `scan.md`'s prompt for the reasoning half.
-
-  **Every finding this scan produces is already triaged, and each half assigns it differently.**
-  Deterministic findings: `findingFromSastEngine()` in `server.js` synthesizes a `triage` run
-  straight from the `VerifierAgent`'s `verified`/`verifierNote`/`confidence` output (`verdict:
-  'confirmed'` when verified, `'needs_review'` otherwise — only critical/high findings actually
-  get checked by `VerifierAgent`, so anything below that floor lands as `needs_review` too, not
-  because it's suspect but because it was never independently re-checked); `cwe`/`owasp` come
-  straight from the pattern that matched, `asvs` is always `null` and `nist_800_53` is always `[]`
-  (sast-engine has no mapping for either). Reasoning-pass findings: `findingFromLLMScan()` instead takes the
-  *real* triage verdict `scan.md` assigned itself in the same pass (`verdict`,
-  `severity_confirmed`, `confidence`, `priority`, and — unlike the deterministic half — genuine
-  `owasp`/`asvs`/`cwe`/`nist_800_53` mapping, since the model doing the reasoning is also the one
-  filling in the mapping; see "Taxonomy convention" below for what this does and doesn't close
-  of the framework-mapping gap). Both kinds of synthetic run carry a `source` field
-  (`'sast-engine-verifier'` vs. `'reasoning-scan'`) so Finding Detail can distinguish them.
-  `agents/triage.md` stays deleted — Triage is still not a live agent stage anywhere in this
-  app; see the Agent Triage bullet's "Pipeline shape" discussion below for what that changes
-  about the Remediation Loop.
-- **SCA Scan (page removed)** — this app used to have a dedicated top-level SCA Scan page
-  (target directory, branch/app, Start button, live cards, its own clock-icon timeline button,
-  no scope toggle since a dependency audit always reads the whole manifest/lockfile) driving a
-  standalone dependency-only check. It's gone — now that a dependency audit always runs as part
-  of every Hybrid Scan (see the Reasoning Scan bullet's "SCA half," above), a separate
-  dependency-only entry point was redundant. `runDeterministicScaScan(engine, scan, targetPath,
-  {send})` in `server.js` (still calling sast-engine's `runDepsAudit(targetPath)` — shells out to
-  whichever package manager's own audit tool is present, `npm audit --json`/`yarn audit --json`/
-  `pnpm audit --json`/`pip-audit`/`bundle-audit`, auto-detected from lockfiles) is now only ever
-  called as `runHybridReasoningScan()`'s third concurrent engine; the standalone wrapper that
-  used to drive it to completion on its own (`runStandaloneScaScan()`) was deleted along with
-  the page, since nothing called it anymore. SCA findings still carry no synthetic triage run
-  and never enter the Remediation Loop (see the Agent Triage bullet below) — nothing about that
-  changed. The `'sca'` nav item, `#view-sca`, its clock button, its nav badge, and the client-side
-  `startScaScan()`/DOM refs are all gone from `index.html` too; the Timeline drawer's separate
-  "SCA" filter pill was removed at the same time (see the Timeline bullet below) since there's no
-  longer a distinct SCA-kind scan record to filter to — every scan record's `scanType` is always
-  `'reasoning'` now (findings still individually carry `'sca'` vs `'reasoning'`, unaffected).
-- **Timeline** — every scan *and* every per-finding agent run, newest first, date-grouped,
-  filterable by a `kind` tag (`scan` / `triage` / `threat_model` / `remediation`, color-coded
-  via `AGENT_META` in `index.html`). This is **not a top-level nav destination** — it used to
-  be, but a dedicated Timeline tab read as one more place to check for "what's happening,"
-  competing with the per-page nav badges that already answer that question contextually.
-  Instead it's a slide-in drawer (`#timeline-drawer` + `#timeline-drawer-backdrop`,
-  `openTimelineDrawer()`/`closeTimelineDrawer()`) opened by a small clock-icon button
-  (`.clock-btn`) in the `view-header` of Hybrid Scan and Threat Model — each button opens the
-  *same* drawer and reuses the *same* list (`#timeline-list` — untouched markup/JS, just
-  relocated from a full page into the drawer), but pre-scopes it to that page's own activity:
-  Hybrid Scan passes `openTimelineDrawer('scan')`, Threat Model passes
-  `openTimelineDrawer('threat_model')`. The filter pills (`#timeline-filters`,
-  `renderTimelineFilters()`) are **All**, **Hybrid Scan**, then one per agent kind
-  (`agentsList`). There used to be a separate **SCA** pill alongside "Reasoning Scan" here (plus
-  a `timelineScanTypeFilter` mechanism narrowing which `scanType` the shared `'scan'` kind
-  matched) — removed once the standalone SCA Scan page went away: every scan record's
-  `scanType` is `'reasoning'` now, so a second pill narrowing to a `scanType` that can never
-  occur would just be a dead filter. One plain kind-based pill (`makePill('scan', 'Hybrid Scan',
-  ...)`, same pattern the agent-kind pills already used) covers every scan record. The
-  Dashboard's "View timeline" quick-action opens the same drawer with no preset
-  (`openTimelineDrawer('all')`). The Escape key and clicking the backdrop both close it
-  (folded into the same document-level `keydown`/`click` handlers the context menu and modals
-  already used, rather than adding a second listener). Scan rows are expandable in place
-  (click toggles a `.timeline-row-body` showing the findings that scan produced, reusing
-  `renderScanFindingsBody()`); agent-run rows instead navigate to that finding in Agent Triage
-  on click. `GET /api/timeline` server-side merges `findings` runs and `scans` into one array
-  tagged with `kind` before sorting by `startedAt`. A running-dot per clock button
-  (`updateTimelineClockDots()`, replacing the single shared `#nav-badge-timeline` the old nav
-  item carried) turns yellow while that page's own scope has something running, or green if
-  nothing in scope is running but something finished anywhere since the drawer was last opened
-  (`timelineUnseenDone`, still a single global counter — matches the old badge's behavior of
-  clearing on any drawer open, regardless of scope).
-- **Agent Triage** — a sortable table (`renderFindingsTable()`), not a Kanban board: findings
-  are split into type tabs (`findingsTypeFilter`: `all`/`reasoning`/`sca` internally, labeled
-  All / Hybrid / SCA — `FINDINGS_TYPE_LABEL` — `#findings-type-tabs`,
-  styled as a `.group-toggle` segmented control) because each type's useful columns differ —
-  Reasoning shows a merged **Location** column (file path if it's a code-pattern finding,
-  endpoint+method if it's an attack-surface one — a reasoning-scan finding can be either, or
-  even both, now that there's no separate DAST scanType to gate the field on) plus Rule/CWE,
-  then **Remediation Loop**; SCA shows Package + Fixed-in, then a plain **Status** column
-  instead (`FINDINGS_COLUMNS` in `index.html` — the `sca` config uses `key: 'status'`, not
-  `'loop'`; see below for why). Severity/Title/Remediation Loop/Status columns are click-to-sort
-  (`findingsSort`, toggling asc/desc on the same header, both `'status'` and `'loop'` keys
-  sorting by the same `STATUS_ORDER_MAP`). Every row carries a trailing **`.ft-actions-col`**
-  (`.ft-actions-cell`, a small flex row) holding a single small three-dot button (reusing the
-  `.console-toggle-btn` icon-button style) that opens the exact same per-agent dropdown as
-  right-clicking the row — added because right-click alone isn't discoverable, especially
-  without a mouse; the button just calls `openFindingContextMenu()` positioned under itself via
-  `getBoundingClientRect()`, same pattern as the Finding Detail page's own three-dot menu button
-  (see below). The Remediation Loop's advance/run-all controls used to live here too
-  (`findingLoopActionsHtml()`) — removed; advancing the loop now happens entirely from the
-  finding's own detail page (the Triage/Remediate/Fix/Verify boxes + "run all" button, see
-  below), so this column's only action is the agent menu, and the loop cell (below) is purely
-  read-only.
-  There's no row-selection checkbox column, and no per-row "quick remediate" wrench either — an
-  earlier design had a wrench icon here running the advisory, read-only Remediation agent with
-  one click; removed because a completed quick-remediate run never actually moved the
-  Remediation Loop forward (it never wrote anything), which read as "this button does nothing"
-  even though it had produced real advisory guidance visible on Finding Detail — confusing
-  enough in practice that it was simpler to cut than to explain. Before that wrench, an even
-  earlier design had these same checkboxes plus a page-header "Auto-remediate selected (N)" bulk
-  button running the same read-only call across every checked row — also removed, for being a
-  redundant second path once the wrench existed. Both of those advisory-preview entry points are
-  gone now; running Remediation happens from the finding's own detail page (the
-  Triage/Remediate/Fix/Verify boxes + "run all stages" button, see the Finding Detail bullet
-  above), not from this table at all.
-
-  **The Remediation Loop column** (`findingLoopCellHtml()`, reasoning findings only — see
-  below for SCA) is the main way this table communicates progress through the full pipeline —
-  Found → Triaged → Remediated → Fixed → Verified, matching "Pipeline shape" below exactly.
-  **Triaged is always already "done" the moment a finding exists** — Triage is no longer a live
-  agent stage at all (`agents/triage.md` was deleted; see the Reasoning Scan bullet above and
-  "Pipeline shape" below): every finding gets a synthetic `triage` run pushed at creation time,
-  either from sast-engine's `VerifierAgent` output (scan-sourced) or a neutral placeholder
-  (manually added via "+ Add", or this app's own seed data). **Remediated and Fixed are two
-  separate stages, not one** — this is the app's newest redesign (see the redesign history
-  below for what it replaced): Remediate is a read-only stage (agent `remediation`) that
-  proposes a fix — fix guidance, `corrected_code`, and, if the model is confident in an exact
-  edit, an `edit_plan` — without writing anything; Fix is a separate, later stage (a synthetic
-  `fix` agent, no `.md` file of its own — see the Architecture section below for why) that
-  deterministically applies whatever Remediate proposed, with no LLM call of its own. A small
-  **status track** (`loopTrackHtml()`: four tiny circular `.loop-seg` dots for Triaged /
-  Remediated / Fixed / Verified — 7px, the same small-dot convention the sidebar's `.nav-badge`
-  uses, not a wide bar — each gray/pending, amber/running with a pulse, green/done, or
-  red/attention) sits above a one-line status label — `findingLoopCellHtml()` is a pure status
-  readout now, no buttons live inside this column. The column header reads just **"Loop"**, not
-  "Remediation Loop" — table cells clip overflowing text at the cell boundary in this app's
-  browser rendering regardless of `overflow` CSS (a quirk of `<th>`/`<td>` layout, not something
-  `overflow:visible` can override), so the fuller label didn't fit once the column was narrowed
-  and just silently truncated to "REMEDIATION" — shortening the label was simpler than widening
-  the column back out. The column's `<th>`/`<td>` carry `data-col="loop"` specifically so CSS
-  can cap its rendered width (`width`/`max-width: 104px`) — `table.findings-table` otherwise
-  uses the browser's default auto layout (no `table-layout:fixed`), which would hand this
-  column any left-over horizontal space in the row even though four tiny dots and a short label
-  never need it. "Found" isn't a fifth dot here — a finding is always already "found" the moment
-  it exists, so a node for it never carried real information; an earlier 4-dot-track design
-  (Found/Fixed/Verified/Triage, back when Fixed was a single combined stage) included a Found
-  node anyway before being condensed to just the stages that can actually change state.
-
-  This table used to also render advance ("→") and "run all stages" ("»") buttons in the row's
-  own actions column (`findingLoopActionsHtml()`, `.loop-advance-btn`/`.loop-run-all-btn`) — that
-  function and both button styles are gone. Advancing the loop now happens exclusively from the
-  finding's own detail page: four boxes (Triage/Remediate/Fix/Verify) plus a "run all stages"
-  button, in the exact same visual language (state colors, running/done/attention) this table's
-  status track still uses (see the Finding Detail bullet above, and "Progressing the loop" below
-  for how clicking a box or the run-all button actually dispatches). This table's Loop column is
-  now a pure, unclickable status readout — its only row-level action is the "…" agent menu.
-
-  State is derived by `findingLoopState()` from `findingStageRuns()`, which needs each stage's own latest run
-  independently (not just the single overall latest) — a list-item finding (from `GET
-  /api/findings`) carries that precomputed server-side as `.stageRuns` (`toListItem()` in
-  `server.js`, via `latestRunByAgent()` scanning `finding.runs` for the last run of each agent
-  type, including the synthetic `fix` agent now), while a full cached finding (from `GET
-  /api/findings/:id`, e.g. Finding Detail's context menu) only has the raw `.runs` array —
-  `findingStageRuns()` derives the same shape from that when `.stageRuns` isn't present. Found is
-  always "done" — the finding exists; Triaged/Remediated/Fixed/Verified only ever move because of
-  their own `triage`/`remediation`/`fix`/`verify` run specifically, so Threat Model (a separate,
-  optional deep-dive — see the context-menu bullet below) never touches this column. "Remediated"
-  is "done" the moment a `remediation` run completes at all, whether or not it proposed an
-  `edit_plan` — a proposal that declines to guess at an edit (per `agents/remediation.md`'s
-  guidance) is still a completed proposal. "Fixed" is different: it requires the latest `fix`
-  run's verdict to carry a real `applied_diff` — a completed `fix` run without one (the apply
-  step erroring, e.g. a stale plan that no longer matches the live file) reads as `attention`, not
-  `done`; showing "Fixed" and offering "Verify the fix" when nothing was actually written would
-  be actively misleading, not just imprecise. There's also a fourth possible state for "Fixed"
-  beyond the usual pending/running/attention/done: **`unavailable`** — Remediate finished but
-  proposed no `edit_plan` at all, so there's nothing for Fix to apply; the track renders this as
-  a plain pending-looking dot (there's no dedicated dot color for "not applicable," see
-  `loopTrackHtml()`) but the status label still calls it out explicitly (see below).
-  `findingLoopNextAction()` reduces that state to the one thing the advance button would do
-  next — `'triage'` | `'remediate'` | `'fix'` | `'verify'` | `null` (busy, or nothing left);
-  triage issues (never run, or errored) would come first if they ever occurred — nothing else
-  should happen before a finding's been triaged — but in practice this branch is now
-  unreachable, since every finding already carries a triage run from creation time (see above);
-  it's kept only as a defensive fallback. A `verified === 'attention'` state maps back to
-  `'remediate'`, not another `'verify'` or a retry of `'fix'`, since Verify already said the fix
-  didn't hold and the actionable next step is a fresh proposal, not re-checking the same unfixed
-  state; a `fixed === 'attention'` state maps back to `'remediate'` too, for the same
-  reason — the applied plan likely went stale against the live file, so retrying the exact same
-  apply would just fail again. `fixed === 'unavailable'` resolves `findingLoopNextAction()` to
-  `null` — there's nothing left to automate once Remediate has explicitly declined to propose an
-  edit. The table's status label reads: triaged, not yet a fix proposed → accent "Triaged";
-  a fix proposed, not yet applied → accent "Fix proposed"; Remediate declined to propose an edit
-  → plain "No fix proposed"; any stage `running` → a plain "Proposing fix…"/"Applying fix…"/
-  "Verifying…" hint; Remediate failed → red "Propose failed"; Fix failed to apply → red "Apply
-  failed"; Verify came back `still_vulnerable`/`partially_fixed`/`inconclusive` → red "Not fixed
-  yet"; Verify came back `verified_fixed` → green "Verified fixed" + a small `.loop-view-diff`
-  link (`onViewDiffClick()`, just calls `openFindingDetail()` — see below for why there's no
-  popup to open). None of these carry a button anymore — purely a status readout, click the row
-  (or the matching box on Finding Detail) to act on it. The equivalent logic on Finding Detail
-  (`fdLoopBoxesHtml()`) disables whichever box is otherwise actionable when
-  `findingSourcePath()` can't resolve a directory for the finding (no `sourceScanId` —
-  manually-added findings have nowhere to write to); the "run all stages" button is *always*
-  gated on a known path there, since Remediate/Fix are unconditionally part of that chain, and
-  both disable themselves client-side the instant they're clicked
-  (`e.currentTarget.disabled = true`) so a fast double-click can't fire two real runs/pipelines
-  against the same directory at once — the next render (on that run's `done`/`error`) replaces
-  the node anyway, so nothing needs to re-enable it. A `status === 'closed'` finding (false
-  positive/duplicate) shows neither track nor boxes — the loop doesn't apply to something
-  dismissed as not real. This column has gone through several redesigns: a plain status *badge*
-  plus a pencil icon requiring horizontal scroll to see, gated by a page-level **Read-only**
-  checkbox that silently changed what the same pencil did; a one-click-does-everything "Fix &
-  Verify" button with a 3-segment flat-bar stepper; a dot-track-plus-single-advance-button
-  version scoped to just Found → Fixed → Verified (Triage excluded, reachable only from the row
-  menu); a version that folded Triage into a 4-dot track and reintroduced a "run everything"
-  shortcut as its own dedicated button rather than a row-menu item — a "Push loop ahead" menu
-  item briefly existed for the same purpose and was removed for reading as a near-duplicate of
-  the bulk "Auto-remediate selected" button that existed at the time (single-finding + real
-  writes vs. bulk + advisory-only); a version that condensed that 4-dot track (Found/Triage/
-  Fixed/Verified) into three tiny dots (dropping the redundant "Found" node) and relocated the
-  advance/run-all buttons out of the loop cell entirely into the row's own actions column — an
-  intermediate pass first replaced the dots with wide flex-stretched rectangle bars before a
-  follow-up shrank them back down to tiny dots (the bars read as too heavy for a status readout,
-  and stretched to fill whatever width the column's auto-layout happened to grant it — see
-  above for why that width is now explicitly capped) — done at the same time the
-  wrench/quick-remediate button and the checkbox-driven bulk button before it were both removed
-  outright, and the advance/run-all buttons moved onto the finding's own detail page as three
-  boxes (Triage/Fix/Verify) plus a "run all stages" button; and now this one, which splits the
-  combined "Fix" stage into a read-only **Remediate** (propose) stage and a separate
-  write-capable **Fix** (apply) stage — a user request to make the pipeline show the proposed
-  fix before anything is written, rather than proposing and applying in the same click — growing
-  the track back out to four dots (Triaged/Remediated/Fixed/Verified) and the detail page's boxes
-  to four (Triage/Remediate/Fix/Verify). Fix itself makes no LLM call at all now — it
-  deterministically applies whatever `edit_plan` the most recent Remediate run proposed (see
-  "Progressing the loop" below) — so the split also means a wasted apply attempt against a
-  finding with no real fix (an architectural issue, or one Remediate correctly declined) no
-  longer costs an LLM call, only a Remediate call.
-
-  **SCA findings don't get a Remediation Loop at all** — `findingLoopCellHtml()` special-cases
-  `f.scanType === 'sca'` to just render the plain `'status'` cell (a taxonomy badge) instead,
-  since an SCA finding's fix is "bump the dependency to the `Fixed in` version already shown in
-  its own column," not a code edit this app's agents reason about; implying an editable loop
-  there would be misleading. This branch is only reachable from the **All** type tab, which
-  shares the `'loop'` column key across both finding types — the dedicated **SCA** tab instead
-  uses `{ key: 'status', label: 'Status' }` directly in its own `FINDINGS_COLUMNS` entry, so its
-  header never says "Remediation Loop" in the first place. The exclusion goes further than just
-  the column: `openFindingContextMenu()` filters `SCA_EXCLUDED_AGENTS = [...FIX_FLOW_AGENTS,
-  'threat_model']` out of an SCA finding's menu entirely — none of the four per-finding
-  code-analysis agents have anything meaningful to say about a dependency version bump, so
-  rather than leave them in as options that would just produce confused or irrelevant output,
-  an SCA row's "…" menu (or Finding Detail's own three-dot menu button) shows only whatever
-  custom agents exist beyond the four built-ins, or — in the common case where there are none —
-  a single disabled "No agent actions apply — update the package instead" item.
-  `renderFindingDetailActions()` mirrors this when deciding whether to disable its own menu
-  button, and skips rendering the Triage/Remediate/Fix/Verify boxes entirely for an SCA finding
-  (see Finding Detail below) — there's no loop to show.
-
-  **Progressing the loop** — one entry point now, on the finding's own detail page (see Finding
-  Detail below for the Triage/Remediate/Fix/Verify boxes and "run all stages" button that
-  replaced the table's old advance/run-all buttons) — run exactly what you asked for and nothing
-  more, confirm before writing (Fix is the only stage that ever writes — Remediate is read-only
-  and needs no confirmation, unlike the old combined "Fix" stage this replaced). Neither path
-  ever runs Triage live anymore — a finding's triage run already exists from the moment it was
-  created (see the Reasoning Scan bullet above), so the loop's real work starts at Remediate:
-  - **`onLoopAdvanceClick()`** (any of Finding Detail's four boxes — only one is ever clickable
-    at a time, since this is a strictly linear pipeline and `findingLoopNextAction()` always
-    resolves to a single next stage regardless of which box is clicked) — looks up
-    `findingLoopNextAction()`. If it's `'triage'` or `'verify'`, fires an ordinary read-only
-    `startStage(id, next, ...)` (no confirmation needed — nothing is written; the `'triage'`
-    case is still handled defensively — see the Remediation Loop column bullet above — but
-    shouldn't be reachable in practice). If it's `'remediate'`, calls `startRemediatePreview()`
-    directly with **no confirmation** — Remediate never writes, so there's nothing to gate —
-    which sends `{type: 'remediate_preview', runId, findingId, context, instruction, path}`; the
-    server runs Remediation read-only (`Read,Grep,Glob`, no apply) and stops. If it's `'fix'`,
-    confirms once via `confirmApplyWrite()` (a native `confirm()` naming the exact target
-    directory and the clean-git-tree requirement — the friction point instead of a hidden mode
-    toggle) and then calls `startRemediateFix()`, which sends `{type: 'remediate_fix', runId,
-    findingId, path}` — no `context`/`instruction` needed, since Fix doesn't call an LLM at all;
-    it deterministically applies whatever `edit_plan` the most recent `remediation` run proposed
-    (server-side, `handleRemediateFixMessage()` looks that run up from `finding.runs` itself,
-    fails with a clear error if there's no usable plan) and stops. Advancing the loop this way is
-    always a deliberate click per stage.
-  - **`onLoopRunAllClick()`** (Finding Detail's "Run all stages" button) — always restarts the
-    remaining pipeline fresh (Remediate → Fix → Verify) rather than trying to resume from
-    wherever the finding currently stands; simpler to reason about, and matches "run all stages"
-    literally (there's no live Triage stage left to include). Confirms once via
-    `confirmRunAll()` (same git-clean-tree framing, since Fix is unconditionally part of the
-    chain even though Remediate alone wouldn't need it) and then calls `startRemediateAll()`,
-    which sends `{type: 'remediate_all', remediationRunId, fixRunId, verifyRunId, findingId,
-    context, instruction, path}` — three client-generated runIds for what the server turns into
-    up to three real, sequential stages. Only the first (Remediate) gets an optimistic "running"
-    placeholder at click time — Fix's and Verify's placeholders arrive via the server's own
-    `started` message once each stage actually begins, since the chain doesn't yet know whether
-    they'll even run (Remediate proposing no usable `edit_plan`, or Fix failing to apply, both
-    stop the chain early — see below).
-
-  Server-side, `checkCleanGitTarget()` (the **clean git working tree** gate — `git status
-  --porcelain`, refusing an uncommitted or non-git directory outright, so anything that writes
-  is trivially revertible entirely outside this app — see "Security posture" below),
-  `spawnAgentStage()` (the spawn/relay/close logic, kept as its own function purely to keep the
-  handlers below readable), and `applyRemediationPlan()` (validates and applies a Remediation
-  verdict's `edit_plan` — see below) back three handlers in `server.js`, one per stage plus one
-  for the chained flow: `handleRemediatePreviewMessage()` (`remediate_preview`) runs one
-  Remediation stage — **read-only** (`--allowedTools 'Read,Grep,Glob'`, no `Edit`/`Write` — see
-  "Security posture" for why that changed), asking it to propose an `edit_plan` in its verdict if
-  it's confident in an exact edit — and stops there; nothing is ever written by this handler, so
-  it has no git-clean gate at all, only a plain "is this a real directory" check.
-  `handleRemediateFixMessage()` (`remediate_fix`) is the one write-capable handler and
-  deliberately makes **no `claude` call of its own** — it looks up the finding's most recent
-  `remediation` run, pulls its `edit_plan` (erroring with "No proposed fix to apply yet — run
-  Remediate first" if there isn't a usable one), checks the git-clean gate, then calls
-  `applyRemediationPlan(targetPath, { edit_plan: plan })`, which validates the proposed edit
-  against the real file (`sast-engine/remediation-apply.js`'s `validatePlan()` — the `find`
-  string must match exactly once, whitespace-tolerant fallback if not; protected paths like
-  `.env`/lockfiles/`node_modules` are refused outright) and only then writes it (`applyPlan()`),
-  captures `git diff` right after, and pushes a new run record under the synthetic `fix` agent
-  name with `{ verdict: 'applied' | 'not_applied', applied_diff }` as its verdict (real evidence
-  of what actually changed, independent of what Remediate claimed) — if the plan fails
-  validation, the run is marked `error` instead (surfaces as "Apply failed" in the loop, see
-  above) so a bad plan doesn't sit looking identical to "no fix needed yet."
-  `handleRemediateAllMessage()` checks the git-clean gate once up front (Fix, further down the
-  chain, is guaranteed to need it even though Remediate alone wouldn't), runs Remediate the same
-  read-only/`edit_plan` way, and — only if it proposed a usable plan — applies it the same
-  deterministic way `handleRemediateFixMessage()` does (inlined rather than calling that handler
-  directly, so the chain can push its own `fix`-agent run record under the client-supplied
-  `fixRunId`), and — only if the apply step actually wrote something — runs Verify the normal
-  read-only way with the applied `fix` verdict folded into its prompt. All three handlers push
-  onto `finding.runs` and relay via the *exact same* `started`/`event`/`done` message shapes the
-  generic per-finding `run` path already uses — the client needed no new message-type handling
-  for run lifecycles at all. There's no popup for the diff — `runCardHtml()` on the Finding
-  Detail page already renders any `fix` run's `applied_diff` as its own colored diff block
-  (`diffLineHtml()`, hand-rolled `+`/`-`/`@@` line coloring, no external diff library) right
-  alongside that run's other verdict fields, so "see what changed" is just "look at the finding,"
-  not a separate screen — an earlier design auto-popped a modal titled "Fix applied" instead,
-  removed for reading as messy/redundant with content the detail page already showed (and for a
-  real accuracy bug: it auto-opened before a chained Verify run had even started, so its wording
-  risked implying a confirmation that hadn't happened yet). `precheckRunIds` (renamed from
-  `applyWriteRunIds` when Remediate's read-only precheck joined the same tracking — a directory
-  that no longer exists can fail before any run record exists server-side even though nothing
-  would have been written) tracks which runIds belong to a flow with a server-side precheck, so
-  a precheck failure — which never gets a run pushed server-side, so it can't rely on the normal
-  error-badge-on-a-run treatment — can be surfaced via the client's `error` handler calling
-  `alert()` on those runIds directly (for the chained flow, the precheck error is tagged with the
-  first stage's runId, since that's the only one with a client-side placeholder before the
-  server responds). Verify's
-  `still_vulnerable`/`partially_fixed` verdict sends the finding back to `in_review` exactly like
-  a normal (non-write) Verify run would, and a Triage verdict of `confirmed`/`needs_review`
-  behaves like any other Triage run — no separate status logic was needed, `deriveStatus()`'s
-  existing branches (see the Verify bullet above) already cover both paths since they only look
-  at the finding's latest run, not how that run was triggered. A **Scan** filter sits beside the
-  type tabs — not a native
-  `<select>` but a small custom popover (`.scan-filter-dropdown`, `#findings-scan-filter-btn` +
-  `#findings-scan-filter-menu`, `renderFindingsScanFilter()`), each item formatted as e.g.
-  "Reasoning scan on `<path>` started 2h ago" / "SCA scan on `<path>` started..."
-  (`scanFilterLabel()`) rather than the old dropdown's bare path text — populated from
-  `scansList` (newest first), it restricts the table to one scan's findings via
-  `finding.sourceScanId` (`findingsScanScoped()`); the type tabs' counts and the empty-state
-  message both react to it too, and a scan that produced no findings still on record (or whose
-  findings were all removed) is left out of the menu rather than becoming a dead-end filter.
-  Three other places link into this same filtered view via `openFindingsFilteredByScan(scanId)`:
-  the Finding Detail page (a "Found by scan of `<path>`" line under the badges, if the finding
-  has a `sourceScanId`), a completed scan card's "View in Agent Triage →" action
-  (`updateScanCardActions()`, Reasoning Scan page), and a timeline drawer scan row's expanded
-  body ("View all in Agent Triage →", `renderScanFindingsBody()`) — added because discovering
-  the scan filter only via the popover wasn't obvious enough on its own.
-  `openFindingsFilteredByScan()` just sets `findingsScanFilter` and calls `showView('findings')`.
-  `findingsScanFilter` (not the popover button's DOM text) is the single source of truth for
-  which scan is selected, read fresh on every `renderFindingsScanFilter()` call rather than
-  scraped back from whatever the button currently displays — a past version of this filter used
-  a native `<select>` where reading `.value` back as a fallback silently discarded a
-  programmatically-set filter, which is why the state now flows one direction only (JS variable
-  → rendered button text, never the reverse). Clicking a row navigates to a
-  full-page **Finding Detail** view (`#view-finding-detail`, `openFindingDetail()` /
-  `renderFindingDetail()`) rather than a modal or panel — earlier rounds tried a right-docked
-  panel, then in-Kanban-card expansion, then reverted to a bare Kanban board with no detail
-  view at all; a dedicated full page (not an overlay squeezed next to other content) is what
-  finally gave the code block and verdict history room to be readable. That page shows: type/
-  severity/status badges, a meta grid (File, or Package/Fixed-in, or Endpoint/Method depending
-  on `scanType`), the description, a syntax-highlighted code block when `finding.code` is
-  present (`highlightCode()` — a hand-rolled regex tokenizer, no external highlighting
-  library, consistent with this app's no-external-deps/hand-drawn-icon aesthetic), and an
-  **Agent runs** section (`runCardHtml()`) listing every run against this finding with its
-  verdict badges/fields rendered generically (same key-badging convention described in "The
-  verdict contract" below).
-
-  The page header's actions (`renderFindingDetailActions()`, `fdLoopBoxesHtml()`) used to be a
-  single "Agent Runs ▾" dropdown covering everything, including Triage/Remediation/Verify with
-  custom instructions via the stage modal. That's gone — replaced by **four boxes, one per
-  fix-flow stage** (Triage / Remediate / Fix / Verify, mirroring the Agent Triage table's
-  loop-seg states: pending/running/done/attention, plus Fix's `unavailable` state when Remediate
-  proposed nothing to apply), plus a **"Run all stages"** button, plus a small **three-dot menu
-  button** for everything else. Each box always shows a short, fixed one-line caption describing
-  what that stage does ("Confirms it's real" / "Proposes a fix to review" / "Writes the fix to
-  your code" / "Re-checks the live code") below its label, in addition to its current status —
-  added because the boxes alone (icon + one-word status) didn't make it obvious what clicking one
-  would actually do. The header row itself is stacked below the title (`#view-finding-detail
-  .view-header { flex-direction: column; }`, an override of the base `.view-header`'s row
-  layout used by every other page) rather than sitting beside it — on a long title that wraps to
-  two lines, four boxes squeezed into whatever width was left of a row layout read as cramped;
-  giving the actions their own full-width row fixes that regardless of title length. Only one box
-  is ever clickable at a time — `findingLoopState()` models a strictly linear pipeline, so
-  `findingLoopNextAction()` always resolves to exactly one next stage, and whichever single box
-  comes back enabled dispatches the same `onLoopAdvanceClick()` the Agent Triage table's old
-  advance button used to call (see "Progressing the loop" above) — there's no independent
-  per-stage click logic to keep in sync with it. The run-all button calls `onLoopRunAllClick()`,
-  same as before. Both are skipped entirely for an SCA finding (`fdLoopBoxesHtml()` returns `''`
-  — no loop applies, see the Agent Triage bullet above) and show a plain "Closed — remediation
-  loop not applicable" note for a
-  closed finding.
-
-  The three-dot menu button (`#fd-agent-menu-btn`) opens the exact same dropdown menu right-
-  clicking an Agent Triage table row does (`openFindingContextMenu()`, positioned under the
-  button via its `getBoundingClientRect()`) — built by iterating `agentsList` (whatever agent
-  `.md` files exist, built-in or custom), so a new custom agent shows up there with no code
-  change. Triage, Remediation, and Verify (`FIX_FLOW_AGENTS`) are filtered out of this menu
-  entirely, since the boxes above are now their dedicated controls; running any of the three
-  with custom instructions via the stage modal is no longer possible at all (a deliberate
-  trade-off — the boxes are faster for the common case, at the cost of that flexibility). What's
-  left is just Threat Model — a separate, optional deep-dive that deliberately doesn't sit on
-  the fix-flow path — plus whatever custom agents exist beyond the four built-ins; SCA findings
-  lose Threat Model from this menu too (`SCA_EXCLUDED_AGENTS`, see below), leaving only custom
-  agents or a single disabled placeholder item. Both paths converge on `openFreshStageModal()`.
-  Note: `openFindingContextMenu()`'s button click handler calls `e.stopPropagation()` — without
-  it, the click bubbles to the document-level "click outside closes the menu" listener and
-  closes the menu in the same tick it opened. An "Export" button (`GET /api/findings/export.csv`)
-  downloads all findings + latest verdicts.
-- **`remediation_generated` status** — `deriveStatus()` in `server.js` derives an accent-colored
-  "Remediation generated" badge (`statusLabel()`/`.badge.remediation_generated`) once a finding's
-  latest run is `agent === 'remediation'` with a non-null `corrected_code` (a field on
-  `agents/remediation.md`'s output contract: the full corrected version of the finding's `code`
-  snippet, not just prose fix guidance — `null` when there's no `code` snippet to correct, or
-  the fix is architectural) and a `confirmed`/`needs_review` verdict (checked *before* the
-  existing `remediation_ready` case, but *after* the `false_positive`/`duplicate` → `closed`
-  case), via the same `updateFindingListItem()` hook every other status change flows through.
-  This status predates the Remediation Loop's write-capable design and originally covered the
-  advisory-only "quick remediate" wrench button and, before that, a bulk "Auto-remediate
-  selected" checkbox flow — both since removed (see the actions-column paragraph above) for
-  reading as dead-weight next to the loop's own advance button, since neither ever moved the
-  loop itself to "Fixed." The status is still reachable today, though, without either of those:
-  a Remediate run whose model filled in `corrected_code` as guidance but declined to propose an
-  `edit_plan` (a legitimate "this needs a human, not a guess" outcome, see
-  `agents/remediation.md`) lands here too — `corrected_code` present, no `fix` run exists at all
-  since there was nothing for Fix to apply, so the Remediation Loop column reads "No fix
-  proposed" (the loop's `fixed === 'unavailable'` state — see the Agent Triage bullet above),
-  while the finding's overall status still surfaces that useful guidance exists via this badge.
-  Click into the finding for the full guidance (root cause, fix guidance, `corrected_code`) via
-  Finding Detail's normal Agent runs section, same as any other verdict — there's no dedicated
-  results screen for this.
-- **Threat Model** — a read-only, cross-finding view of every finding with a completed
-  Threat Model run whose verdict is `confirmed` or `needs_review` (`latestThreatModelEntries()`
-  — findings never threat-modeled just don't appear, no placeholder queue). Entirely derived
-  client-side from the same `timelineEntries` cache the timeline drawer uses (loaded on
-  whichever comes first, `openThreatModelView()` ensures it itself via `loadTimeline()` if
-  needed) — no dedicated endpoint. Rendered as a **category × severity heat map**
-  (`buildThreatHeatmap()`, plain HTML/CSS `<button>` cells, no charting library or SVG) instead
-  of a card grid, a radial hub-and-spoke, or the top-down tree that briefly replaced it: rows
-  are OWASP categories (`verdict.owasp`, sorted by finding count descending, row label colored
-  by the *worst* severity in that category via `worstOfList()`), columns are the fixed severity
-  scale (Critical…Informational, `HEATMAP_SEVERITY_COLS`), and each cell is shaded by how many
-  findings land in that category+severity combination (`--heat-intensity`, a per-cell CSS
-  custom property scaled `0.28–1.0` against that row's own max count) — this replaced the tree
-  (which itself replaced an even earlier radial layout) because a grid answers the actual
-  triage question — "which category+severity combination has the most findings" — at a glance,
-  where a tree only showed category-level counts and made you read every branch to compare
-  severities within it. Clicking a non-empty cell (`.tm-heat-cell.has-findings`) filters
-  `entries` in JS by that cell's `data-category`/`data-sev` and calls
-  `renderTmCellFindings(cellEntries)`: for the common case of exactly one matching finding it
-  jumps straight to that finding's report; for more than one it shows a small row of pill
-  buttons (`#tm-cell-findings`, one per finding title) above the report so the user picks which
-  one to read — the "report" a cell represents, surfaced without needing a separate list view.
-  Either way the report itself is `renderAttackPathFlow()`: four connected boxes — Attacker
-  (generic, not agent data) → Preconditions → Attack Path → Blast Radius — using the exact prose
-  those three verdict fields already contain, plus a "View finding →" button into the full
-  Finding Detail page. This needed no new agent capability; it's purely a different way to look
-  at data `agents/threat_model.md` already produces. A finding can carry more than one Threat
-  Model run over its lifetime (re-run after a code fix, or re-run after Triage's picture
-  changes) — `allThreatModelEntriesForFinding()` returns all of them (newest-first) for a given
-  finding, and whenever there's more than one, `renderAttackPathFlow()` shows a **Run**
-  `<select>` above the flow (`#tm-run-select`, `renderThreatModelDetail()`) so a specific
-  historical run can be picked instead of always showing the latest. Because the heat map
-  itself only aggregates each finding's *latest* run (`latestThreatModelEntries()`, filtered to
-  `confirmed`/`needs_review`, tracked in `tmMapFindingIds` — a `Set` of the finding IDs
-  currently represented on the map, checked instead of re-querying the DOM for a specific
-  finding's cell, since a cell aggregates a whole category+severity bucket rather than mapping
-  1:1 to one finding), a finding whose most recent run is `false_positive` (or whose
-  selected-in-the-dropdown run just isn't the current one) may not be represented in any cell
-  right now — in that case the detail panel adds a "Not shown on the map above" hint rather
-  than silently implying it belongs to a cell it isn't counted in.
-  A finding's full-page detail view also links here directly: any `threat_model` entry in its
-  **Agent runs** list (`runCardHtml()`) gets a "View in Threat Model →" button
-  (`openThreatModelForFinding(findingId, runId)`) that navigates to this tab and opens that
-  exact run's attack-path flow, regardless of whether it's the finding's current/latest run or
-  whether it's even represented on the diagram right now. `showView()` takes an optional
-  `{ skipInit: true }` second argument so this navigation can swap the visible view without
-  triggering the view's normal auto-load (which would otherwise race with the explicit
-  load/select this function already does).
-
-  The Threat Model page opens with its own **"New app threat model"** form (`#atm-path-input`/
-  `#atm-branch-input`/`#atm-app-input`/`#atm-instruction-input`/`#atm-start-btn`,
-  `startAppThreatModel()`) — target directory, optional branch/app labels, optional focus-area
-  instructions, and a Start button, styled like the Reasoning Scan page's New Scan form but with its
-  own pink `.atm-start-btn` accent. This used to be a toggle pill on the scan form itself
-  ("Also: Threat-model this app," firing alongside a scan) but was pulled out into its own
-  standalone form here — whole-app threat modeling is conceptually unrelated to a findings
-  scan (no shared data, just often the same target directory) and putting its kickoff action
-  on the screen that actually shows its results reads more clearly than a checkbox buried in
-  an unrelated form.
-
-  Below that form, an **App-level Threat Models** section (`renderAppThreatModelSection()`)
-  lists every whole-app run (`agents/app_threat_model.md` — a distinct agent from the
-  per-finding `threat_model.md`: it takes a directory, not a finding, and produces a single
-  holistic architecture report — trust boundaries, data flows, a `top_risks` list, and
-  recommendations — rather than a per-finding verdict). These runs are **not** tied to any
-  finding or scan (no foreign key to `scans` — `startAppThreatModel()` fires an independent WS
-  message straight from this form) and so aren't part of the OWASP heat map above; they get
-  their own list (`appThreatModelsList`, from `GET /api/app-threat-models`, kept live via
-  `upsertAppThreatModel()`/`handleAppThreatModelServerMessage()` — distinct WS message types
-  `app-threat-model-started/event/stderr/done/error`, same rationale as `scan-*` types: avoid
-  the client's generic per-finding/scan message handlers colliding on the same `runId`-keyed
-  lookup). Each row is its own **accordion**, not a click-to-select-into-a-side-panel: clicking
-  a row's summary (`.atm-row-summary`) toggles `toggleAppThreatModelRow(runId)`, which sets
-  `expandedAtmRunId` (single-expand state — only one run's report is open at a time) and
-  re-renders; the full report (summary, trust boundaries, data flows, severity-badged risk
-  cards with OWASP/CWE chips, recommendations, via `renderAppThreatModelDetail()`) is embedded
-  directly beneath the clicked row (`.atm-row-body`, only present in the HTML when
-  `r.runId === expandedAtmRunId`) instead of appearing in a separate panel elsewhere on the
-  page — this replaced an earlier design with a standalone `#atm-detail-panel` that a row
-  selection populated at the bottom of the list, which read as two disconnected things
-  happening in different places for one click. Whenever a run is expanded, a **"Viewing scan:
-  ..."** label (`#tm-viewing-label`, `updateTmViewingLabel()`) appears in the page's view header
-  in accent color, naming that run's path/app/relative-time, so which report is on screen is
-  never ambiguous — it's hidden when nothing is expanded. Server-side,
-  `appThreatModels`/`appThreatModelRunIndex` (in `server.js`) mirror the `scans`/`scanRunIndex`
-  pattern exactly, including being checked alongside them in `cancel` handling and the
-  WebSocket `close` cleanup — a run whose tab/connection closes mid-run lands in `status:
-  'cancelled'` server-side and renders as a "Cancelled" row/detail (not "Done" — a first pass
-  at this only handled `running`/`error`/else-`done`, which misrendered a cancelled run as
-  done since there's no cancel button in this UI to test that path against; fixed by
-  explicitly branching on `'cancelled'` in both `renderAppThreatModelSection()` and
-  `renderAppThreatModelDetail()`). `app_threat_model` is excluded from `GET /api/agents` (like
-  `scan`) since it isn't a per-finding pipeline agent — it doesn't show up in the Agent Triage
-  stage modal's agent dropdown or the "run after scan" pill row.
-
-  `renderAppThreatModelDetail()` also draws a diagram, not just prose — it groups `top_risks`
-  by `owasp` locally and calls the same shared `buildThreatHeatmap()` the per-finding page uses,
-  just with a `getSeverity` callback reading `risk.severity` instead of
-  `verdict.severity_confirmed`, since a whole-app report has no per-finding verdict to pull
-  from. Risk cards also carry `data-owasp`/`data-severity` attributes now (in addition to their
-  existing `data-risk-index`) so a heat-map cell click can cross-highlight every matching card,
-  not just one by index: clicking a cell compares its `data-category`/`data-sev` against each
-  `.atm-risk-card`'s dataset in JS (not a CSS attribute selector, to avoid escaping arbitrary
-  category-name text into a selector string), toggles `.selected` on every match, and scrolls
-  the first match into view; clicking a risk card directly still just self-highlights.
-
-  Running rows also carry live stats — tool/file/token counts and elapsed time — the same way
-  scan cards do (`appThreatModelRuns`, a `scanRuns`-style Map of tracking objects, and the same
-  shared `trackRunToolActivity()`/`trackRunTokens()` functions scan cards use). A context-window
-  fill bar used to sit alongside these (`CONTEXT_WINDOW_TOKENS`, `updateContextBar()`, one per
-  surface — scan cards, App Threat Model rows, Control Scan rows) but was removed as not
-  actually informative — a rough 200k-token constant this app has no way to verify against the
-  actual configured limit, rendered as a percentage that didn't tell you anything actionable.
-  `run.lastContextTokens` (what fed it) is gone too. The tricky part with these live rows: this
-  view's `#tm-content` can be rebuilt from scratch at any moment a run is live (any timeline
-  update while this view is open re-renders it, per `upsertTimelineEntry`), which would
-  normally destroy the live row's DOM and orphan its cached element refs. `appThreatModelRowHtml()`
-  works around this by baking the tracking object's *current* counters directly into the
-  fresh HTML string (so a rebuild never visually resets progress), and
-  `reattachAppThreatModelLiveRefs()` (called at the end of every `renderThreatModelView()`)
-  re-queries the fresh DOM and re-points the tracking object's refs at it, so the next
-  stream-json event's direct DOM mutation (`handleAppThreatModelRawEvent()` — deliberately
-  *not* routed through `upsertAppThreatModel()`, to avoid a full re-render on every single
-  event) lands on the currently-attached node.
-- **Control Scan** — a top-level page for RMF/ISSO staff (renamed from "Controls Assist" —
-  shorter, and reads more like a peer to "Reasoning Scan"/"SCA Scan" in the nav, since it's the
-  same kind of whole-directory action just for a different purpose — now grouped with them
-  under the `SCANS` nav section label, see the intro above), structurally the same
-  form-plus-accordion-list pattern as the Threat Model page's "App-level Threat Models"
-  section (own store, own WS message-type family, own live stats) but entirely independent
-  of it: it exists to help draft SSP (System Security Plan) content, not to find
-  vulnerabilities. `agents/controls_assist.md` reads a whole directory (like
-  `app_threat_model.md`) and, instead of a threat narrative, identifies which NIST 800-53
-  controls the *application layer* provides evidence for — deliberately not every control in
-  the baseline, since most families (PE, PS, CP, MA, MP, and often parts of AT/CA/PL/RA) are
-  satisfied by the hosting platform or org process, not app code. Every control in the
-  verdict's `controls` array carries `applicability` (`app_addressed | partially_addressed |
-  inherited | not_applicable`) and `implementation_status` (`implemented |
-  partially_implemented | planned | not_applicable | null`) — this is the mechanism that
-  keeps the agent honest about scope rather than claiming coverage it can't back up, plus a
-  `narrative`/`evidence`/`gaps` per control. Server-side: `controlAssessments`/
-  `controlAssessmentRunIndex` (in `server.js`) mirror `appThreatModels`/
-  `appThreatModelRunIndex` exactly — same record shape, same `cancel`/WS-close/session-clear
-  wiring — REST at `GET /api/control-assessments(/:id)`, WS messages
-  `controls-assist-started/-event/-stderr/-error/-done`. Client-side: `caRowHtml()`/
-  `renderControlsAssistDetail()` reuse the exact same `.atm-row`/`.atm-row-summary`/
-  `.atm-row-body` CSS scaffold and the same `trackRunToolActivity()`/`trackRunTokens()`/
-  `updateContextBar()` helpers app-level threat models use for live tool/file/token/elapsed
-  stats — only the detail body differs: controls are grouped by NIST family (plain-card list,
-  `.ca-family-group`/`.ca-control-card`) rather than a severity heat map, since applicability/
-  implementation-status isn't a severity scale and forcing it through `buildThreatHeatmap()`
-  would misrepresent it. A **"Download SSP draft (.md)"** button
-  (`buildControlAssessmentMarkdown()` + `downloadTextFile()`, a plain Blob/`URL.createObjectURL`
-  download, no server round-trip) turns the report into pasteable Markdown grouped the same
-  way, directly serving the "assists with SSP creation" goal rather than leaving the narrative
-  stuck on-screen. Like App Threat Model, these runs create no findings and aren't part of
-  `GET /api/timeline` (no foreign key to a finding or scan), so there's no clock-icon drawer
-  button on this page.
-- **Agent Configuration (removed)** — this app used to have a dedicated nav-footer admin screen
-  for creating/editing/deleting `agents/*.md` files from the browser (`agentConfigList`,
-  `agentDetailsCache`, `openAgentModal()`/`renderAgentCards()`, all now deleted from
-  `index.html`). It's gone — editing an agent's prompt is now a plain file-system edit to
-  `agents/<name>.md`, same as any other file in this repo. The **server-side** REST surface it
-  used (`GET/POST/PUT/DELETE /api/agents(/:name)` in `server.js`, `BUILTIN_AGENTS`,
-  built-in-agents-can't-be-deleted 403 handling) was left in place — `GET /api/agents` is still
-  how `agentsList` is populated for the stage modal dropdown and per-finding menus, only the
-  admin UI on top of the write endpoints was removed. The Dashboard's Agents panel
-  (`#dash-agents-panel`) used to be a shortcut into this screen; it's a plain, non-clickable
-  display list now (see the Dashboard bullet above). Client-side `NON_FINDING_AGENTS` (the
-  "Whole-app" badge mirror this screen used) was removed too, along with the screen it only
-  existed for.
-- **Reports** — a placeholder top-level screen (`#view-reports`), added ahead of any actual
-  reporting feature so the nav slot and page shell exist for whatever gets built there next
-  (an exportable compliance/findings report was the motivating idea, per the intro's
-  `GET /api/findings/export.csv` and the FedRAMP/FISMA framework-mapping requirement described
-  under "Taxonomy convention" below — this screen would be the natural home for a richer,
-  formatted version of that same data). Currently just a "Coming soon" message
-  (`.placeholder-panel`); no server-side support, no data, no wiring beyond the nav
-  item/`showView()` toggle.
-- **Theme toggle** — lives in the nav footer itself, not inside the Settings screen (`#nav-theme-btn`,
-  a `role="switch"` slider — `.theme-switch`/`.theme-switch-knob`, replacing an earlier plain
-  icon+label button) — a label ("Dark theme"/"Light theme") next to a small pill track whose
-  knob slides and swaps the sun/moon icon inside it (same `#nav-theme-icon-moon`/
-  `#nav-theme-icon-sun` elements as before, just re-styled) based on `aria-checked`.
-  `applyTheme()`/`renderThemeToggle()` are unchanged in behavior — persisted to `localStorage`
-  under `appsecops-theme`, applied flash-free by an inline `<script>` at the very top of `<head>`
-  that reads `localStorage` before any CSS renders; `renderThemeToggle()` now also sets
-  `aria-checked` (`true` = dark) on the switch button so its knob position/color stay in sync
-  with the current theme.
-- **Settings** — a nav-footer entry (not a top-level nav item, deliberately tucked away), with
-  an Environment panel that states plainly, in-product, that scans run with this machine's own
-  filesystem permissions and are not sandboxed to any directory allowlist, and a red-bordered
-  **Danger zone** panel with a single "Clear session" button (`clearSession()`) that, after a
-  `confirm()` prompt, calls `POST /api/session/clear` to permanently wipe every finding, scan,
-  app-level threat model, and control assessment on the server — a full reset back to empty, no
-  reseed. The server refuses (`409`) if anything across `findings`/`scans`/`appThreatModels`/
-  `controlAssessments` has `status: 'running'`, since it can't kill in-progress child processes
-  from a plain REST route (`children` is scoped inside `wss.on('connection')`, not reachable
-  from there) — `clearSession()` surfaces that error via
-  `alert()`. On success, the client resets every corresponding in-memory cache
-  (`findings`/`scansList`/`appThreatModelsList`/`timelineEntries`/`findingCache`/
-  `scanDetailCache`), stops and clears any live `scanRuns`/`appThreatModelRuns` tracking
-  objects, clears both live-scan containers, and re-renders whichever view is currently open.
-
-**Pipeline shape**: `Scan → Agent Triage → Remediate → Fix → Verify` is the conceptual path, but
-**no agent ever runs automatically** — every run requires an explicit, reviewable action so
-there's always an audit trail before anything executes against a finding (an earlier version
-defaulted straight to a combined propose-and-apply Remediation on click, which read as
-auto-fixing without review — this was a deliberate correction, and splitting that combined stage
-into a read-only Remediate and a separate write-capable Fix, per the redesign described in the
-Agent Triage bullet above, pushed the same principle one step further: a human sees the proposed
-fix before anything is written, not just before the whole pipeline starts). The
-Triage/Remediate/Fix/Verify boxes and "run all stages" button on the finding's own detail page
-(see the Finding Detail bullet above) are the exception to "always opens a stage modal first" —
-each still requires an explicit click per finding/step, just skips the modal, because reviewing
-context ahead of a routine next-step click would slow down the exact workflow they exist to
-speed up (a native `confirm()` naming the target directory gates Fix specifically — the one
-stage that writes — not Remediate or Verify, both of which are read-only). Finding Detail's own
-three-dot menu button and the
-right-click context menu (or its visible three-dot equivalent) on an Agent Triage table row open
-the same dynamic per-agent menu (one "Run <Agent>…" item per entry in `agentsList`, minus the
-fix-flow agents now that the boxes cover them — see the Finding Detail bullet above) as
-shortcuts into the same small stage modal (agent dropdown + editable context + optional
-instructions, `openFreshStageModal()`) — none of them run instantly. Triage itself is no longer
-in that menu at all (or any menu) — it's not a live agent stage anymore (see the Reasoning Scan
-bullet above), so every finding already carries a triage verdict from creation time and
-`remediation.md` still has to be able to stand on its own for the rare case where that's
-somehow missing: if there's no prior verdict in its context, it does that confirm/severity/
-framework-mapping assessment itself before writing fix guidance (see the "check your context
-before you start" section at the top of `agents/remediation.md`).
-
-**Verify** (`agents/verify.md`) is the newest stage, closing a gap the pipeline used to have no
-answer for: nothing previously confirmed a fix actually worked, only that Remediation had
-*proposed* one. It's a genuinely different kind of stage from Threat Model/Remediation —
-those two reason primarily over the finding's already-captured `code` snippet and whatever
-`Read`/`Grep` happens to turn up in this app's own directory (the fixed `cwd` every per-finding
-run gets by default); Verify's whole point is to re-check the *current* state of the finding's
-real target codebase, which requires it to be spawned with a different `cwd`. The client resolves
-that path from the finding's `sourceScanId` (via `findingSourcePath()` in `index.html`, walking
-`sourceScanId` → the matching `scansList` entry's `path`) and sends it as an optional `path`
-field on the WS `run` message; `server.js`'s per-finding run handler validates it's still a real
-directory and, only then, spawns with `cwd: path` and `--allowedTools 'Read,Grep,Glob'` instead
-of the usual `cwd: process.cwd()` / `Read,Grep` — Glob is added because Verify may need to
-relocate a file, not just re-read one at a known path. Findings with no `sourceScanId`
-(manually added via "+ Add") fall back to the old default `cwd`, which for Verify's purposes is
-effectively "no live access" — `verify.md` is written to recognize that (sanity-check whether
-what it actually read plausibly matches the finding at all) and return `inconclusive` rather
-than reasoning over an unrelated repository. The stage modal surfaces this transparently: a
-hint line under the agent dropdown (`updateStageModalVerifyHint()`, only shown when `verify` is
-selected) states either "Will re-check the live code at: <path>" or "No known source directory
-for this finding — review will be based on the saved snippet only," resolved fresh whenever the
-agent dropdown changes. Verify's own verdict vocabulary (`verified_fixed | still_vulnerable |
-partially_fixed | inconclusive`) doesn't reuse Triage's `verdict` values on purpose — it isn't
-re-litigating whether the finding is real, only whether it's still open. `deriveStatus()` in
-`server.js` derives a new `verified_fixed` status when the latest run is `agent === 'verify'`
-with `verdict === 'verified_fixed'`; the other three verdict values all fall through to the
-existing generic `in_review` default, which is the right outcome for "still needs work" and
-"couldn't confirm either way" alike — `still_vulnerable`/`partially_fixed` send the finding back
-into the queue, `inconclusive` just doesn't advance it. `agents/scan.md`,
-`agents/app_threat_model.md`, and `agents/controls_assist.md` are three further agent files but
-are *not* per-finding pipeline agents — `GET /api/agents` (`NON_FINDING_AGENTS` server-side)
-filters all three out of the Threat Model/Remediation/Verify list on purpose;
-`GET /api/agents?all=1` is the unfiltered variant Agent Configuration uses instead (see its
-bullet above). (`agents/triage.md` used to be a fourth agent file in this category — deleted
-when Triage moved to a synthetic verdict assigned at finding-creation time instead of a live
-agent stage; see the Reasoning Scan bullet above.)
+Everything is in-memory and session-lifetime. There is no database, no auth, no build step.
 
 ## Commands
 
-```
+```bash
 npm install
-npm start          # runs `node server.js`, serves http://localhost:4500
+npm start     # node server.js — http://localhost:4500
+npm test      # node --test "test/**/*.test.js" — 520 tests, ~30s
+npm run lint  # eslint . — tuned to catch bugs, not taste; see eslint.config.js
 ```
 
-There is no build step, lint script, or test suite — `package.json` has only `start`.
-Before invoking, `claude auth status` must succeed (the server spawns the CLI
-non-interactively and does not handle auth itself).
+`claude auth status` must succeed before any LLM-backed feature works; the server spawns the
+CLI non-interactively and does not handle auth itself.
 
-To exercise the pipeline manually: open `http://localhost:4500` (lands on Dashboard), go to
-Reasoning Scan, enter a directory path on this machine under "New scan" and click "Start
-scan" — watch its live card right there, then check Agent Triage once it completes (or open
-the timeline drawer via the clock icon and expand the row there). Click a finding's row in the
-Agent Triage table (or a timeline agent-run row) to open its full-page detail view. From there,
-click one of the Triage/Remediate/Fix/Verify boxes in the page header to run just the next real
-step — Remediate proposes a fix (no confirmation, nothing written), Fix writes it (one
-confirmation), then a Verify check once that's done, one click each — needs a finding that came
-from a scan, the boxes are disabled otherwise; or click "Run all stages" to chain the remaining
-steps under one confirmation. For anything else (Threat Model, custom agents), click
-the small three-dot menu button next to those (or right-click a table row for the same menu) to
-pick an agent, review the context/instructions in the small stage modal, and explicitly start
-it; nothing runs without that step. Watch the page itself update — no separate screen. The
-detail page's Agent runs section updates live once a run finishes (or shows a "running"
-placeholder immediately, via an optimistic push in
-`startStage()`). There is no automated test for the WebSocket flow — verification is manual,
-through the browser.
+There is no build step. `public/` is served as-is — the client is native ES
+modules (`<script type="module">`), so **adding a bundler would be a regression**, not an
+upgrade.
 
-## Architecture
+## Repo map
+
+Layered: routes are controllers, services hold the logic, store holds the data. The browser
+side has no routes or database, so it only grows the layer it has — views.
 
 ```
-server.js          Express + ws. In-memory findings store (seeded with sample data on
-                    boot) and a separate in-memory scans store, behind a small REST API,
-                    plus a WebSocket handler that spawns `claude -p` per per-finding agent
-                    run (Threat Model, Remediation, Verify), relays stream-json lines live,
-                    and extracts the final JSON block from the accumulated assistant text.
-                    SCA Scan calls into sast-engine/ directly (see below), no `claude -p`
-                    involved. Reasoning Scan is a hybrid — sast-engine/ runs first (seconds,
-                    free), then its output drives two concurrent `claude -p` passes:
-                    adjudicate (agents/adjudicate.md, over its findings) and review
-                    (agents/scan.md, over the enumerated attack surface), whose results are
-                    merged/deduped (runHybridReasoningScan()); both sides
-                    relay scan-events in the same shape (one real, one synthetic to match
-                    it) so the client needed no changes to keep showing live progress from
-                    either.
-sast-engine/        Deterministic security-scanning engine, adapted (MIT license, see
-                    `sast-engine/LICENSE`) from the open-source `ship-safe` project and now
-                    fully self-contained in this repo, trimmed to just what this app uses:
-                    `agents/` (31 regex/heuristic pattern agents, plus the structural
-                    `UnusedGuardAgent`, plus ReconAgent and VerifierAgent, orchestrated by
-                    `orchestrator.js`), `enumerate.js` (attack-surface enumeration — see
-                    below), `commands/deps.js`
-                    (wraps the project's own package-manager audit tool for SCA Scan), and
-                    `remediation-apply.js` (validates and applies a Remediation verdict's
-                    proposed `edit_plan` against the real file — the only place any agent's
-                    output can reach disk in this app). Its own `package.json` sets `"type":
-                    "module"` so it can stay real ESM without converting server.js's
-                    CommonJS; server.js loads it via dynamic `import()` (`loadSastEngine()`).
+server.js               ~40 lines: build the app, mount routers, attach ws, listen.
+src/
+  config.js             every constant and every tunable number
+  routes/               controllers — parse the request, call a service, respond
+    agents  findings  scans  session  timeline
+  types.js              JSDoc @typedef only — no runtime code, imported for editor checking
+  services/             logic, no req/res
+    scanner.js          orchestrates the three engines and merges them
+    engines/            opengrep.js (the deterministic half)  reasoning.js  sca.js
+                        plan.js (shard planning)  emit.js (the shared scan-event frame)
+                        deterministic.js — DORMANT, the old pattern engine; nothing calls it
+    claude.js           spawning `claude -p`, relaying stream-json
+    remediation.js      the fix flow
+    sast-engine.js      loads the vendored ESM engine via dynamic import()
+    coverage.js         what a scan read and what it silently dropped
+    scan-report.js      agent roster + recon summary (DORMANT with deterministic.js)
+    merge.js  taxonomy.js  verdict.js  paths.js
+  store/                the in-memory data
+    findings/           state  status  list-item  factories  flow  csv  (index re-exports)
+    scans.js
+  ws/                   index.js (dispatch) + scan  run  fix  origin
 
-                    **`enumerate.js`** is not a scanner — it reports no vulnerabilities and
-                    makes no LLM call. It extracts what *exists*: every HTTP route with its
-                    resolved middleware chain, every mount and its guards, every dangerous
-                    sink, and every security-relevant function together with its real call
-                    count. `enumerateSurface()` returns that manifest; `renderWorklist()`
-                    formats it as prompt text. The orchestrator computes it once per run and
-                    puts it on `context.surface` (accepting `options.surface` when the caller
-                    already built one, so it is never computed twice per scan), and returns it
-                    on the run result. Two consumers:
-                      1. **The reasoning review pass.** It is handed every route and sink,
-                    plus whole-app mount/unused-control context, as an
-                    explicit worklist with four questions it must answer per route. This is
-                    also what bounds the pass's scope now that the target is no longer
-                    partitioned into modules — the worklist grows with endpoint count, not
-                    file count, so one call covers a whole repository. This
-                    exists because "review these files for vulnerabilities" produces a skim —
-                    the model reports what looks interesting. Authorization and business-logic
-                    flaws are not interesting-looking; they are *absences*, found only by
-                    asking the same questions about every endpoint. Enumeration converts free
-                    reading into forced answers. Measured at ~1,300 tokens per call on the
-                    31-route fixture, and bounded rather than fixed: each section has a
-                    hard cap (WORKLIST_MAX_ROUTES/_MOUNTS/_UNUSED/_SINKS_PER_KIND in
-                    enumerate.js) with an explicit "+N more not reviewed" line on overflow,
-                    so a large application cannot spend a call's whole budget on its own
-                    instructions.
-                      2. **`UnusedGuardAgent`** (`unused-guard-agent.js`), which turns the same
-                    manifest into findings no line-local rule can produce, because the evidence
-                    is an absence spread across the tree: a security control defined and
-                    exported but never called (`SECURITY_CONTROL_NEVER_APPLIED`), a safe helper
-                    that exists while callers use the unsafe alternative
-                    (`SAFE_HELPER_NEVER_USED`), a privileged router mounted with no guard at
-                    all (`PRIVILEGED_ROUTER_MOUNTED_UNGUARDED`), and a privileged surface
-                    guarded by authentication but never authorization
-                    (`PRIVILEGED_SURFACE_AUTHENTICATED_NOT_AUTHORIZED` — reported at the mount,
-                    not at the unused control, because the mount is where the middleware has to
-                    be added). That last one is the "admin gated by requireUser while
-                    requireAdmin sits unused" case, which is more dangerous than having no
-                    control at all: a reviewer reading auth.js sees a hardened system.
-                      Extraction runs off a real parse tree (`ast-extract.js`, `@babel/parser`
-                    — pure JS, one parser for JS/TS/JSX/TSX), falling back to the regex path in
-                    `enumerate.js` **per file** when a file won't parse, so a syntax error
-                    degrades one file instead of blanking it. `options.forceRegex` still selects
-                    the regex path, which is how the two were diffed before the AST became the
-                    default. That migration happened because every extraction bug found was the
-                    same category — a regex losing to syntax: routes enumerated out of `/* */`
-                    doc comments and out of string literals, `__dirname` inside
-                    `path.join(__dirname, …)` read as a security guard, `https://` truncated by
-                    comment-stripping. Measured on this repo, the switch removed **7 phantom
-                    routes and lost 0 real ones**, and dropped sinks 275 → 158 (the regex was
-                    matching function *definitions* like `async function query(sql)` as SQL
-                    calls). One trap that is silent and severe if reversed: a non-computed
-                    member property (`db.verifyPassword`) MUST count as a reference — excluding
-                    it as "a property, not a variable" reports every function reached through a
-                    CommonJS namespace import as never called.
-                      Two further implementation details are load-bearing and easy to reintroduce
-                    as bugs. Reference counting must exclude a function's *own body* (a recursive
-                    helper nothing else calls is still unused) and must exclude *multi-line*
-                    `module.exports = { … }` blocks — an earlier version excluded only the
-                    first line of such a block, which made every exported function look called
-                    and silently defeated the whole check. Likewise the privilege-check
-                    vocabulary needs a case-insensitive regex while the camelCase predicate
-                    check (`canX`/`isX`) needs a case-sensitive one; folding them into one `/i`
-                    regex stops `requireAdmin` matching `admin`. Confidence is capped at medium
-                    for the unused-function rules, since textual reference counting cannot see
-                    a function invoked dynamically or wired by a framework decorator.
-public/index.html   The whole app: global nav (theme toggle slider + Settings entry in the nav
-                    footer — no Agent Configuration screen anymore, see that bullet above) with
-                    Dashboard (briefing + stats + a plain, non-clickable agents panel),
-                    Reasoning Scan (the scan kickoff form — target/branch/app, scope in the
-                    header — plus its live scan cards and a timeline-drawer clock button), SCA
-                    Scan (target/branch/app, no scope toggle, its own live cards, its own clock
-                    button), an Agent Triage table split into Reasoning/SCA type tabs with
-                    click-to-sort columns, a per-scan filter popover, a per-row "…" agent-menu
-                    button, a Remediation Loop column (reasoning findings only, a pure read-only
-                    4-segment status track — no buttons in this table anymore; advancing the
-                    loop happens on the finding's own detail page instead), a full-page Finding
-                    Detail view per finding (meta grid, syntax-highlighted code block, Triage/
-                    Remediate/Fix/Verify boxes + a "run all stages" button + a three-dot agent
-                    menu, and an Agent runs history), a Threat Model
-                    page (per-finding OWASP
-                    x severity heat map plus a "New app threat model" form and its own
-                    accordion-style App-level Threat Models list, also heat-mapped, plus a
-                    clock button), a Control Scan page (its own "New control scan"
-                    form plus an accordion list of runs grouping identified NIST 800-53
-                    controls by family, for SSP drafting), a Reports
-                    placeholder, a slide-in timeline drawer shared by three clock buttons, a
-                    right-click context menu on table rows for the same agent actions, and
-                    modals for adding a finding / running a stage with custom instructions.
-agents/*.md         Agent system prompts (passed via --append-system-prompt). Plain
-                    markdown, no code — this is the only place agent-specific analysis
-                    logic lives (`scan.md`, `adjudicate.md`, `threat_model.md`,
-                    `remediation.md`, `verify.md`, `app_threat_model.md`,
-                    `controls_assist.md` — `triage.md`
-                    was deleted when Triage moved to a synthetic verdict assigned at
-                    finding-creation time; `scan.md` itself was deleted and then revived
-                    once Reasoning Scan became a hybrid of sast-engine + a real reasoning
-                    pass — see the Reasoning Scan bullet above). `adjudicate.md` is the
-                    reasoning half's first pass: it reviews the deterministic engine's
-                    findings rather than searching for new ones, and is in
-                    NON_FINDING_AGENTS so it never appears as a per-finding stage a user
-                    can start. `fix` is a second synthetic
-                    agent name alongside `triage` — its runs carry `agent: 'fix'` on
-                    `finding.runs` (see the Agent Triage bullet's Remediation Loop
-                    description) but there is no `agents/fix.md`: the Fix stage makes no
-                    `claude` call at all, it deterministically applies whatever `edit_plan`
-                    the real `remediation.md` agent already proposed (see "Security
-                    posture" below) — `remediation.md` itself is unchanged by the split,
-                    since it already described exactly this "propose an edit_plan, a
-                    separate deterministic step applies it" contract before the split
-                    existed. New
-                    *per-finding* agent = new .md file, no server changes needed beyond it
-                    existing on disk (see "not yet built" below on hardcoded assumptions
-                    elsewhere) — unless it needs live-codebase access like Verify does, in
-                    which case the client just needs to send a `path` on its `run` message
-                    (see the Verify bullet under "Pipeline shape"); that plumbing is
-                    generic, not specific to `verify.md`.
-                    `app_threat_model.md`, `controls_assist.md`, and `scan.md` are three
-                    exceptions — each is invoked through its own dedicated code path
-                    (`handleAppThreatModelMessage` / `handleControlsAssistMessage` /
-                    `handleScanMessage` in server.js), not the generic per-finding `run`
-                    path, because all three need a different tool set (`Glob` in addition to
-                    `Read`/`Grep`), a different `cwd` (the target directory, not the app's
-                    own), and a different output shape (`app_threat_model.md`/
-                    `controls_assist.md` each return their own holistic report object;
-                    `scan.md` returns a `{"findings": [...]}` array, one of two sources
-                    `handleScanMessage` merges into Reasoning Scan's results — see the
-                    Reasoning Scan bullet above) rather than a single per-finding verdict
-                    object.
+public/
+  index.html            markup only
+  app.css
+  js/
+    main.js             entry point: wiring order, nothing else
+    state.js            the shared mutable state — one object, see docs/ui.md
+    api.js  ws.js  router.js  nav.js  events.js (cross-screen pub/sub — see below)
+    views/              one folder or file per screen
+      dashboard  scans/  findings/  finding-detail/  surface  timeline  settings
+      insights            how a scan behaved: coverage, gating, cost
+      surface-guards.js   shared by surface + insights, not a screen
+    components/         UI used by more than one view
+      loop/ (state cell boxes actions)  runs  modals  menu  console
+    lib/                format  html  icons  highlight  meta
+
+sast-engine/            vendored from `ship-safe` (MIT — see sast-engine/LICENSE). Real ESM.
+                        rules/ holds the pattern agents. See docs/scan-engine.md.
+prompts/*.md            agent system prompts, passed via --append-system-prompt.
+                        See docs/agents.md.
+test/                   node:test characterization suites. See "Testing" below.
 ```
 
-**Findings store**: `findings` (Map, in `server.js`) is session-lifetime only — reset on
-restart, seeded from `seedFindings()` with six sample AppSec findings (five reasoning, one
-SCA — enough to populate both Agent Triage type tabs on first run). Every finding has
-a `scanType` (`reasoning | sca`, `FINDING_SCAN_TYPES`) plus a handful of
-optional type-specific fields: `code` (reasoning, syntax-highlighted on the detail page),
-`packageName`/`packageVersion`/`fixedVersion` (SCA), `endpoint`/`method` (reasoning, for an
-attack-surface finding). Every reasoning finding — seeded, scan-sourced, or manually added via
-`POST /api/findings` — gets a synthetic `triage` run (`placeholderTriageRun()`, or
-`findingFromSastEngine()`'s real sast-engine-derived version for scan-sourced ones) pushed
-onto its `runs` array at creation time, since Triage is no longer a live agent stage anywhere
-in this app (see the Reasoning Scan bullet above) — without this, the Remediation Loop's first
-stage would be permanently stuck pointing at a stage that can no longer run. Each finding
-also owns that `runs` array; each run record (`{runId, agent, status, verdict, fullText, ...}`)
-is how the pipeline persists and how chaining works — when starting a fresh stage, the
-client's `buildBaseContext()` (`index.html`) embeds the finding's own fields *and*, if a run
-already exists, the most recent run's full verdict JSON, so each agent explicitly sees what
-the previous one concluded rather than re-deriving it. A finding created by a scan
-additionally carries `sourceScanId`. REST surface: `GET /api/findings`, `POST /api/findings`,
-`GET /api/findings/:id`, `GET /api/findings/export.csv` (all findings + latest verdict
-fields, one row each), and `GET /api/timeline` (flattens every finding's `runs` into one
-array, newest first — what the timeline drawer fetches the first time it's opened, or the
-Threat Model page fetches on load if the drawer hasn't been opened yet; live runs after that
-are patched into the client's copy directly from WebSocket messages, not re-fetched).
+Two names that used to collide: `prompts/` holds LLM prompt files, `sast-engine/rules/` holds
+regex pattern rules. Both were called `agents/` once; they are unrelated.
 
-**Scans store**: `scans` (Map, in `server.js`) is the same session-lifetime pattern as
-`findings`, separate Map. A scan record is `{id, path, status, findingIds, startedAt,
-finishedAt, error}` — it doesn't hold a `runs` chain like a finding does, since a scan is
-one invocation, not a pipeline. REST surface: `GET /api/scans`, `GET /api/scans/:id`
-(includes the full finding list-items it produced, via `findingIds`).
+## The pipeline
 
-**App-level threat models store**: `appThreatModels` (Map, in `server.js`) is a third,
-independent session-lifetime store, same pattern again. A record is `{id, runId, path, app,
-branch, instruction, status, verdict, error, startedAt, finishedAt}` — `verdict` here is the
-whole-app report object (`summary`/`trust_boundaries`/`data_flows`/`top_risks`/
-`recommendations`), not a per-finding verdict, and there's no `findingIds`/`runs` chain since
-these runs never create findings. REST surface: `GET /api/app-threat-models`,
-`GET /api/app-threat-models/:id`.
+`Scan → Triage → Remediate → Fix → Verify`
 
-**Control assessments store**: `controlAssessments` (Map, in `server.js`) is a fourth,
-independent session-lifetime store, same pattern as `appThreatModels`. A record is `{id,
-runId, path, app, branch, instruction, status, verdict, error, startedAt, finishedAt}` —
-`verdict` here is the whole-app control-identification report (`system_description`/
-`summary`/`controls`/`inherited_note`/`recommendations`), where each entry in `controls` is
-`{control_id, control_name, family, applicability, implementation_status, narrative,
-evidence, gaps}`. No `findingIds`/`runs` chain, same reason as app-level threat models. REST
-surface: `GET /api/control-assessments`, `GET /api/control-assessments/:id`.
+**No agent ever runs automatically.** Every stage requires an explicit click, so there is always
+an audit trail before anything executes against a finding.
 
-**Request flow (per-finding agents)**: browser opens a WebSocket → user starts a stage →
-client sends `{type: "run", runId, findingId, agent, context, instruction}`, optionally with a
-`path` field (see the Verify bullet above — only `startStage()` populates this, and only for
-`agent === 'verify'`) → server reads `agents/<agent>.md`, spawns `claude -p
-"<instruction>\n\nFinding context:\n<context>" --append-system-prompt "<agent .md contents>"
---output-format stream-json --verbose --allowedTools "Read,Grep" --permission-mode
-acceptEdits` with `cwd = the app's own directory` — *unless* a valid `path` was given, in which
-case `cwd` becomes that directory and `--allowedTools` becomes `"Read,Grep,Glob"` instead → each
-parsed stdout line is relayed immediately as `{type: "event", runId, findingId, event}` (this is
-the "live" part) → on process exit, the server regex-searches the accumulated assistant text for
-a fenced ` ```json ` block, records the verdict against the finding's run history, and sends
-`{type: "done", runId, findingId, code, verdict, fullText}`.
+| Stage | What it does | LLM? | Writes? |
+|---|---|---|---|
+| Scan | Finds issues across a directory | partly | no |
+| Triage | Confirms the finding is real | **no** — synthesized at creation time | no |
+| Remediate | Proposes a fix (`fix_guidance`, `corrected_code`, `edit_plan`) | yes | no |
+| Fix | Applies the proposed `edit_plan` | **no** — deterministic | **yes** |
+| Verify | Re-checks the live code | yes | no |
 
-**Request flow (scans)**: client sends `{type: "scan", runId, path, scanType, scope,
-baseBranch, branch, app}` → server validates `path` exists and is a directory (and, for
-`scope: "diff"`, that `baseBranch` diffs cleanly via `git diff --name-only`) → dispatches to
-`runHybridReasoningScan()` or `runStandaloneScaScan()` (`server.js`) depending on `scanType`.
-SCA (`scanType: 'sca'`, the standalone SCA Scan page): `runStandaloneScaScan()` loads
-sast-engine once, calls `runDeterministicScaScan()` — `runDepsAudit(path)` shells out to
-whichever package manager's own audit tool is present — **no `claude -p` involved** — and drives
-it straight to `finish()`/`fail()`. Reasoning (`scanType: 'reasoning'`, the default):
-`runHybridReasoningScan()` starts the SCA audit in the background, then **awaits
-`runDeterministicPatternScan()` first** (`buildOrchestratorAsync(path)` +
-`orchestrator.runAll(path, { onlyFiles, onAgentDone })`, no `claude -p`, relays each completed
-pattern-agent's findings via `onAgentDone` as a synthetic `{type: "scan-event", ...}` shaped like
-an assistant-text stream-json block). Its findings — collapsed via `dedupeAdjacentSameRule()` —
-and its enumerated `surface` are then passed into `runLLMReasoningScan()`, which runs its two
-`claude -p` passes concurrently (`cwd` set to the target path, `--allowedTools "Read,Grep,Glob"`,
-each capped via `--max-budget-usd`; see the Reasoning Scan bullet above), relaying their
-stream-json events the same way any other per-finding stage does. The ordering is the point: the
-free engine's output is what scopes the expensive one. `runDeterministicScaScan()` (the same
-engine slice the standalone SCA Scan page uses, see above — no `claude -p`, ignores
-`scope`/`diffFiles` entirely since a dependency audit always
-reads the whole manifest) shares no data with either and is simply awaited at the end. All three
-send the same `{type: "scan-event", runId, scanId, event}`
-shape regardless of which one produced it, so the client's live-card parser
-needs no changes — see the Reasoning Scan bullet above; SCA additionally sends its own
-`{type: "scan-progress", engine: 'sca', done: 1, total: 1}` the moment it resolves, independent
-of the others, since it's typically the fastest of the three by far. Once all three resolve,
-the server dedupes (drops a reasoning-pass finding whose file+line is within 2 lines of a
-deterministic one in the same file — SCA findings have no file+line to collide with either
-engine's, so they're never deduped against anything) and builds a Finding per surviving result
-(`findingFromSastEngine()` for the deterministic engine, `findingFromLLMScan()` for the
-reasoning engine — each attaches its own kind of synthetic `triage` run, see "Findings store"
-above — `findingFromDepVuln()` for the SCA engine, which attaches none) and sends
-`{type: "scan-done", runId, scanId, findings: [...]}`.
-`scan-started`/`scan-event`/`scan-stderr`/`scan-error`/`scan-done` remain deliberately distinct
-type names from the generic per-finding message types, same collision-avoidance reasoning as
-before (`scanRunIndex` is still a separate `runId`-keyed lookup from `runIndex`/`children`). The
-reasoning engine's `claude` child process *is* registered in `children` (keyed by the scan's own
-`runId`, same as any other per-run agent) so `cancel` can kill it mid-run — the deterministic
-and SCA engines never spawn a child, so `scanRunIndex` alone is enough to track an in-flight
-deterministic/SCA scan and let `cancel` mark it `status: 'cancelled'` so its `onAgentDone`
-callback (deterministic) or in-flight `.then()` (SCA) stops relaying events/progress and the
-completion handler skips creating findings. This suppresses all visible effects but doesn't
-abort the underlying `orchestrator.runAll()`/`runDepsAudit()` promise early — the relevance-gated agents (or
-the audit subprocess) keep running to completion in the background either way (they're regex
-passes over files or a single quick shell-out, not long-running child processes, so
-in practice this finishes quickly regardless).
+Two of these are synthetic agents with no `.md` file:
 
-**Request flow (app-level threat models)**: client sends `{type: "app_threat_model", runId,
-path, app, branch, instruction}` → same directory validation as scans, spawns `claude -p`
-with `agents/app_threat_model.md` as the system prompt, `--allowedTools "Read,Grep,Glob"`,
-`cwd` set to the target `path` → events relay as `{type: "app-threat-model-event", runId,
-id, event}` (again distinct type names —
-`app-threat-model-started`/`-event`/`-stderr`/`-error`/`-done` — same collision-avoidance
-reasoning as the `scan-*` types) → on close, `extractVerdict()` is expected to return the
-holistic report object directly (not wrapped in a `findings` array like `scan.md`, and not a
-single finding's verdict like the per-finding agents) and is stored as-is on the record's
-`verdict` field, then `{type: "app-threat-model-done", runId, id, code, verdict}` is sent.
-No findings are created and no existing finding is touched by this flow.
+- **Triage** — every finding gets a triage verdict pushed onto `finding.runs` at creation time,
+  from the engine's `VerifierAgent` output, from the reasoning pass's own assessment, or as a
+  neutral placeholder for a manually-added finding. Without it the pipeline's first stage would
+  point at a stage that cannot run.
+- **Fix** — makes no `claude` call at all. It reads whatever `edit_plan` the most recent
+  Remediate run proposed and applies *that*. This is why Remediate and Fix are separate stages:
+  a human sees the proposed edit before anything is written.
 
-**Request flow (control assessments)**: client sends `{type: "controls_assist", runId, path,
-app, branch, instruction}` → same directory validation as app-level threat models, spawns
-`claude -p` with `agents/controls_assist.md` as the system prompt, `--allowedTools
-"Read,Grep,Glob"`, `cwd` set to the target `path` → events relay as `{type:
-"controls-assist-event", runId, id, event}` (again distinct type names —
-`controls-assist-started`/`-event`/`-stderr`/`-error`/`-done` — same collision-avoidance
-reasoning as `scan-*`/`app-threat-model-*`) → on close, `extractVerdict()` is expected to
-return the control-identification report object directly, stored as-is on the record's
-`verdict` field, then `{type: "controls-assist-done", runId, id, code, verdict}` is sent. No
-findings are created and no existing finding is touched by this flow either.
+SCA findings (dependency audit) skip the loop entirely — the fix is "bump the version", not a
+code edit.
 
-**Multiple concurrent runs**: a single WebSocket connection tracks runs in a `runId`-keyed
-`Map` of child processes (`children` in `server.js`), shared by per-finding runs, app-level
-threat models, control assessments, and — for a Reasoning Scan — the reasoning half's `claude`
-process(es) (the deterministic half never spawns a child, see "Request flow (scans)" above, but a
-scan's `runId` is still tracked independently in `scanRunIndex` regardless of whether a child
-exists under it) — not a single in-flight run, so multiple stages/scans/whole-directory runs
-can be running at once from one browser tab. A reasoning scan is the one exception
-to "one runId, one child": each of its two concurrent passes (see the Reasoning Scan
-bullet above) is registered under its own synthetic `` `${scan.runId}::mod${i}` `` key instead,
-tracked on the scan's own `moduleRunIds` array, since a single scan has both of these
-processes in flight at once. `{type: "cancel", runId}` kills a specific run's child process if it has one, marks
-it `status: 'cancelled'` either way (checked against `runIndex`, `scanRunIndex`,
-`appThreatModelRunIndex`, and `controlAssessmentRunIndex`), and — specifically for a scan —
-additionally walks `scanIndexed.moduleRunIds` to kill every one of that scan's in-flight module
-children too, since none of them are reachable via the scan's own `runId` lookup. Closing the
-tab/connection kills every still-running child tied to it regardless of key naming
-(`ws.on('close')` iterates `children` directly and kills unconditionally) and separately marks
-every still-`running` entry in `scanRunIndex` as `cancelled` up front, so a modular scan's status
-bookkeeping doesn't depend on its module keys happening to match a real runId.
+## Data model
 
-**Why `claude -p` instead of the Messages API directly**: `--output-format
-stream-json` already emits structured events (assistant text, tool calls, final
-result) with no custom parser needed, and the agents already exist as `.md`
-prompt files used manually in a terminal — this automates that same invocation
-rather than replacing it.
+Two session-lifetime `Map`s under `src/store/`, both reset on restart, both starting empty (there is
+no seed data).
 
-**The verdict contract**: every agent's `.md` file ends with an instruction to
-close its response with exactly one fenced JSON block. The server does not
-validate or enforce a schema — `extractVerdict()` in `server.js` just regexes
-for the first ` ```json...``` ` block and parses it. The client's `runCardHtml()`
-(finding detail page's Agent runs section) renders any verdict object generically by
-iterating key/value pairs (badging a fixed set of known fields: `verdict`,
-`severity_confirmed`, `confidence`, `priority`), so schema changes in an agent's `.md` need
-no frontend change unless new behavior should key off a new field specifically (e.g.
-`deriveStatus()` in `server.js` keys off `verdict`/`next_agent`). The generic key/value fields
-(everything not in `VERDICT_BADGE_FIELDS`/`VERDICT_SKIP_FIELDS` — `root_cause`, `owasp`,
-`preconditions`, `attack_narrative`, `nist_800_53`, etc.) render as `.fd-verdict-grid`, one
-full-width row per field (`verdictFieldLabel()` title-cases the raw snake_case key into a small
-label line, with the value on its own line below) — this used to be a multi-column CSS grid
-(`grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))`), which was fine for short
-scalar fields like `confidence`/`cwe` but put paragraph-length fields (`fix_guidance`,
-`preconditions`, `attack_narrative`, `blast_radius`) into a cramped 200px column right next to
-unrelated short fields — switched to a single-column row stack since this contract has to render
-arbitrary future agent fields generically and can't assume they're all short.
+- **`findings`** — each finding owns a `runs` array. A run record (`{runId, agent, status,
+  verdict, fullText}`) is how the pipeline persists *and* how chaining works: when starting a
+  stage, the client embeds the finding's fields and the most recent run's full verdict JSON, so
+  each agent sees what the previous one concluded rather than re-deriving it. A scan-produced
+  finding also carries `sourceScanId`.
+- **`scans`** — one invocation, not a pipeline, so no `runs` chain. `toScanListItem()` is the
+  authoritative shape. Two fields are deliberately kept off it: `moduleRunIds` (cancel
+  bookkeeping) and `surface` (the full attack-surface manifest — large, fetched on demand by
+  `GET /api/scans/:id/surface`).
 
-**No live per-finding stats/activity feed, but an opt-in raw console**: per-finding runs
-(Threat Model/Remediation) don't render a live tool/token/file counter or a parsed
-activity feed while running — `handleServerMessage()` in `index.html` still only acts on
-`done`/`error` for the Timeline row and (if that finding's detail page happens to be open) the
-Agent runs section, via `refreshFindingAfterRun()` → `updateFindingListItem()`. `startStage()`
-does push one optimistic "running" placeholder into the finding's cached `runs` array so the
-detail page shows the run as in-progress immediately rather than staying blank until it
-finishes, but there's still no token-by-token or tool-by-tool *stats* feed — showing every
-tool call/result plus raw stream-json by default was tried once already and read as noise
-rather than the two things an AppSec tester actually wants: what was found, and why (normally
-surfaced only once, in the finished verdict). Scan cards on the Reasoning Scan/SCA Scan pages
-have the same *shape* of live feed (severity chip row + scrolling live-findings list via
-`trackScanCandidates()`/`SEV_TAG_RE`), fed from different sources depending on the scan.
-SCA Scan and Reasoning Scan's deterministic half have no LLM narrating `[severity] ...` lines
-(that was `agents/scan.md`'s whole job, back when a scan was purely a `claude -p` call) — for
-these, `server.js`'s `runDeterministicPatternScan()`/`runDeterministicScaScan()` synthesize an
-assistant-text-shaped `scan-event` per completed agent/audit result, carrying that same
-`[severity] message` line format, purely so `trackScanCandidates()` keeps working unmodified.
-Reasoning Scan's *reasoning* half (`runLLMReasoningScan()`) is real `claude -p` calls again —
-`agents/scan.md` still exists and still narrates real `[severity]` lines as it reasons, exactly
-as it always did, just now once per module on a "full" scope scan instead of once for the whole
-directory (see the Reasoning Scan bullet above); those events interleave with the deterministic
-half's synthetic ones — and with each other, across every concurrently-running module — in
-whatever order each side produces them, and the client can't tell (or need to tell) the
-difference. Tool/token counters on a Reasoning Scan card during a live run reflect only the
-reasoning half's real activity (the deterministic half has none to report); an SCA Scan card's
-counters stay at zero throughout, since nothing behind it is an LLM call.
+Deleting a scan leaves its findings in place with a now-dangling `sourceScanId`.
+`findingSourcePath()` returns `null` rather than throwing, but such a finding silently loses the
+ability to run Fix or a live-code Verify.
 
-What *is* available everywhere, opt-in: a small terminal-icon **console toggle button**
-(`consoleToggleButtonHtml()`/`consolePanelHtml()` in `index.html`) next to every live run —
-Reasoning/SCA scan cards, App Threat Model rows, Control Scan rows, and Finding Detail's
-per-finding run cards. Clicking it reveals a `<pre class="console-panel">` streaming the
-model's raw narrated prose (assistant text blocks only, not tool calls/inputs/outputs — the
-same noise tradeoff above, just made opt-in instead of removed outright) as it arrives, via
-the shared `trackConsoleText()` appending onto each run's `consoleText` buffer and, if the
-panel is currently attached to the DOM, directly onto it too. On an SCA Scan card, or the
-deterministic-only findings within a Reasoning Scan card, this shows the same synthesized
-`[severity] message` lines already visible in the live-findings list above it (there's no
-separate LLM prose to distinguish it from) — a little redundant there, but harmless; on a
-Reasoning Scan card it also carries the reasoning half's real narrated prose, same as any other
-`claude -p` stage. This is deliberately **live-only,
-not replayable**: nothing is persisted server-side beyond what already existed (`fullText` is
-still discarded after `extractVerdict()` parses it for scan/app-threat-model/control-scan
-runs), so a run's console content only exists for as long as its tracking object survives in
-the browser tab — reload the page or let the object get GC'd and a finished run's reasoning is
-gone, same as the counters next to it. Each of the four surfaces needed its own small amount
-of plumbing since each already had a different live-tracking shape: `stageConsoles` (new Map,
-`index.html`) is per-finding's *only* live tracking object, since those runs otherwise track
-nothing else live; the other three surfaces just gained `consoleText`/`consoleOpen`/
-`consoleEl` fields alongside their existing `toolCount`/`tokenCount`/etc. `trackConsoleText()`
-is called from each surface's raw-event handler (`handleScanRawEvent`,
-`handleAppThreatModelRawEvent`, `handleControlsAssistRawEvent`, and inline in
-`handleServerMessage()`'s per-finding `event` branch) right alongside the existing
-tool/token/candidate trackers. Because App Threat Model, Control Scan, and Finding Detail all
-fully rebuild their row/card HTML on every re-render (unlike scan cards, which are created
-once and updated via cached refs), those three surfaces persist `consoleText`/`consoleOpen` on
-the run object across rebuilds and reattach `consoleEl` afterward
-(`reattachAppThreatModelLiveRefs()`/`reattachControlsAssistLiveRefs()`/`reattachConsoleRefs()`
-respectively) — otherwise every stream-json event or accordion toggle would silently wipe an
-open panel back to empty. The toggle button always calls `e.stopPropagation()` since it sits
-inside a clickable row/summary that would otherwise also fire its own click handler (expanding
-an App Threat Model/Control Scan accordion, in particular).
+REST: `/api/findings` (+ `POST`, `/:id`, `/export.csv`), `/api/scans` (+ `/:id`, `/:id/surface`,
+`DELETE`), `/api/agents`, `/api/timeline`, `POST /api/session/clear`.
 
-**Taxonomy convention**: severity/confidence/priority definitions live inside
-each agent's `.md` file and must stay byte-identical across agents (copy, don't
-redefine) — they're meant to match the org's existing `owasp-code-review`
-Claude skill so findings read consistently whether a human or an agent
-produced them. `agents/remediation.md` is now the canonical source for these definitions
-(it used to point to `agents/triage.md`, which is deleted — Triage is no longer a live agent
-at all, see the Reasoning Scan bullet above); `threat_model.md` and `verify.md` both point to
-`remediation.md` instead. OWASP/ASVS/CWE/NIST 800-53 framework mapping (`owasp`, `asvs`,
-`cwe`, `nist_800_53`) is required (not optional) whenever an agent's verdict
-is `confirmed` or `needs_review` — this program runs under FedRAMP
-Moderate/High and FISMA, and the mapping feeds compliance reporting downstream (surfaced
-today in each finding's detail page and in `GET /api/findings/export.csv`). `threat_model.md`
-reuses the taxonomy as-is; `remediation.md` (the canonical definition) assigns it itself when
-there's no prior verdict to carry forward — see "Pipeline shape" above — and both only add
-stage-specific fields on top
-(`preconditions`/`attack_narrative`/`blast_radius` for threat_model;
-`root_cause`/`fix_guidance`/`corrected_code`/`edit_plan`/`verification_steps`/`effort` for
-remediation — `corrected_code` is `null` unless the finding's context included a `code`
-snippet and the fix is a meaningful drop-in replacement; `edit_plan` is `null` unless
-remediation is running in apply mode and confident in an exact edit, see "Progressing the
-loop" above; see the `remediation_generated` status bullet above for `corrected_code`).
+WebSocket message types: `run`, `scan`, `remediate_preview`, `remediate_fix`, `remediate_all`,
+`cancel`. Scan messages use a distinct `scan-*` reply family (`scan-started`/`-event`/`-stderr`/
+`-warning`/`-error`/`-done`) so the client's generic `runId`-keyed handlers cannot collide with
+them.
 
-**A known gap, partially closed by the reasoning-pass half**: sast-engine's *deterministic*
-findings (`findingFromSastEngine()` in `server.js`) carry `owasp`/`cwe` directly from whichever
-pattern matched, but **`asvs` is always `null` and `nist_800_53` is always `[]`** for these —
-sast-engine has no ASVS or NIST 800-53 mapping data at all, and that used to be Triage's job specifically.
-Reasoning Scan's *other* half doesn't have this gap: `agents/scan.md`'s findings
-(`findingFromLLMScan()`) come with real `asvs`/`nist_800_53` mapping already, since the same LLM
-pass that found the issue also assigns its full taxonomy in one call (see the Reasoning Scan
-bullet above). So in practice: a finding from the deterministic half sits with incomplete
-framework mapping until a later Remediation/Threat-Model pass fills it in (`remediation.md` will
-still try, per "check your context before you start" — see below); a finding from the reasoning
-half already has it. This is a known, accepted asymmetry rather than something hidden — not yet
-resolved with, say, a static ASVS/CWE→NIST-control lookup table for the deterministic half,
-which would be the natural next step if closing that specific gap (as opposed to relying on the
-reasoning half to cover it) becomes worth doing.
+## Conventions that must not break
 
-`app_threat_model.md` reuses only the `severity` scale and the `owasp`/`cwe` pair (per entry
-in its `top_risks` array) — it has no `verdict`/`confidence`/`priority`/`asvs`/
-`nist_800_53` fields at all, since it isn't triaging a finding, just flagging structural
-risks in a holistic report; framework mapping there is best-effort context, not the
-compliance-feed requirement described above. `controls_assist.md` departs from this taxonomy
-furthest of all — no `severity`/`confidence`/`priority`/`verdict` fields either, since it
-isn't assessing risk at all. Instead each entry in its `controls` array carries its own
-two-field scale: `applicability` (`app_addressed | partially_addressed | inherited |
-not_applicable`) and `implementation_status` (`implemented | partially_implemented | planned
-| not_applicable | null`) — purpose-built to keep the agent from over-claiming coverage for
-controls that are normally satisfied by the hosting platform or org process rather than
-application code (see the Control Scan bullet above). `verify.md` also breaks from the
-Triage-derived taxonomy on purpose: its `verdict` field uses its own vocabulary
-(`verified_fixed | still_vulnerable | partially_fixed | inconclusive`), not
-`confirmed`/`needs_review`/`false_positive`/`duplicate`, because it isn't re-litigating whether
-the finding is real — that was already decided upstream — only whether it's still open. It
-keeps `confidence` (reusing Triage's scale, see the Verify bullet above) but has no
-`priority`/framework-mapping fields at all, since it's not re-triaging.
+These are load-bearing. Each has cost real bugs before.
 
-**Security posture**: this is a local single-user dev tool. No auth on the
-WebSocket or REST endpoints; `--permission-mode acceptEdits` and `--allowedTools`
-("Read,Grep" for per-finding agents by default, "Read,Grep,Glob" for app-level threat models,
-control assessments, Remediation's apply mode, and — only when a `path` was resolved — Verify
-runs too) are set loosely for a fast test loop, not for anything beyond localhost use. Both
-`agent` names and `runId`s from client messages are validated against `^[a-zA-Z0-9_-]+$` before
-being used (agent name is joined into a filesystem path) — don't relax either when adding
-features. App-level threat models and control assessments are a deliberate widening of that
-posture: both spawn `claude` with `cwd` set to **any directory path the client sends**, gated
-only by "does this path exist and is it a directory" (`fs.statSync` in
-`handleAppThreatModelMessage` / `handleControlsAssistMessage`) — there's no allowlist of
-scannable roots. Reasoning Scan and SCA Scan widen the same posture without spawning `claude`
-at all now: `orchestrator.runAll()` reads arbitrary files under the client-supplied path
-directly via Node's own `fs`, and `runDepsAudit()` shells out to whatever package-manager audit
-command it auto-detects (`npm audit`, `pip-audit`, etc.) with that path as `cwd` — same trust
-boundary, different mechanism. The generic per-finding `run` handler accepts the same kind of
-client-supplied `path` for the same reason (see the Verify bullet above) — the client only ever
-populates it from a finding's own recorded scan path, never from arbitrary user input, but the
-server applies the identical "exists and is a directory" check and nothing more, so the trust
-boundary is the same one the scan-family handlers already accept. That's consistent with "local
-single-user tool trusted by its one user," not with exposing this app beyond localhost; don't
-add auth-free network exposure without revisiting this.
+1. **`agent` names and `runId`s from client messages are validated against `^[a-zA-Z0-9_-]+$`**
+   before use — the agent name is joined into a filesystem path. Do not relax either.
+2. **The server binds loopback only** (`HOST`, default `127.0.0.1`). A bare `server.listen(PORT)`
+   binds every interface and puts this unauthenticated surface on the local network.
+3. **The WebSocket validates `Origin`.** The same-origin policy does not cover WebSockets, so
+   without this any page the user visits can drive the fix flow and write to their repo
+   (cross-site WebSocket hijacking). Loopback binding does not help — the request comes from the
+   user's own browser.
+4. **Nothing reaches disk from inside a `claude` invocation.** No agent gets `Edit`/`Write`.
+   The one function that writes (`applyRemediationPlan`) is a separate, later step a human
+   triggers after reading the proposal.
+5. **Fix requires a clean git working tree** (`checkCleanGitTarget`). Every edit that lands is
+   then inspectable via `git diff` and revertible via `git checkout`, entirely outside this app.
+6. **Path containment uses `root + path.sep`**, never a bare `startsWith` — `/repo-evil` passes a
+   bare prefix check against `/repo`.
+7. **A scan engine that fails is reported, not counted as clean.** An agent that errors or times
+   out emits a `scan-warning` naming the vulnerability classes that were *not checked*. A tool
+   that shows "no findings" when it could not look is the one failure mode a security tool
+   cannot afford.
 
-**No agent in this app gets `Edit`/`Write` tools anymore** — this changed from the app's
-earlier design, where the write-capable Remediation stage was explicitly the one exception, and
-changed again with the Remediate/Fix split: **no agent call ever reaches disk at all now, not
-even indirectly** — Remediate (`remediate_preview`, fired from the loop cell's Remediate box)
-always runs fully read-only (`Read,Grep,Glob`) and proposes an `edit_plan` in its verdict — a
-structured list of exact `find`/`replace` strings (see `agents/remediation.md`'s output
-contract) — but never triggers an apply itself. Fix (`remediate_fix`, fired one step at a time
-by the loop cell's Fix box, or chained via `remediate_all`) is the one write-capable step, and
-it makes **no `claude` call at all** — it's a plain deterministic function
-(`applyRemediationPlan()` in `server.js`) that reads whatever `edit_plan` the most recent
-Remediate run already proposed and applies *that*. `applyRemediationPlan()` calls
-`sast-engine/remediation-apply.js`'s `validatePlan()` (the `find` string must match the real
-file exactly once — or via a whitespace-tolerant fallback — and the path must not be a protected
-one like `.env`/lockfiles/`node_modules`) before `applyPlan()` writes anything, so a proposed
-edit that doesn't cleanly match the live file (it drifted since Remediate ran, or the model
-hallucinated it) is rejected rather than corrupting the file or falling back to a fuzzier match.
-This is a strictly higher-trust posture than giving the model direct tool access, now with an
-extra layer beyond what "the model can describe but never execute" already gave: the one
-function that touches disk isn't even reached from inside a `claude` invocation — it's a
-separate, later step a human explicitly triggers after reading what got proposed. The one
-remaining guardrail carried over from before: `checkCleanGitTarget()` refuses to let Fix run
-unless `git status --porcelain` against the target directory comes back both git-tracked and
-clean, so every edit that does land is trivially inspectable (`git diff`, surfaced back to the
-user automatically) and revertible (`git checkout`) entirely outside this app — that check
-happens once, before Fix starts (or, for the chained flow, once up front before Remediate even
-runs), and doesn't prevent a validated multi-file plan from touching more of the tree than the
-one file the finding named, the same way nothing stops Remediate from proposing an incorrect
-fix. Treat Fix as the highest-trust action in the app: same "local single-user tool" posture as
-the rest of it, just with real consequences if the target directory isn't what the user thinks
-it is.
+Deeper per-area invariants live in `docs/scan-engine.md` (extraction and gating traps) and
+`docs/agents.md` (the verdict contract).
 
-**Not yet built**: disk persistence (both the findings store and the scans store are
-in-memory and reset on restart — there's no SQLite/JSON-file layer yet), CSV *ingestion*
-(export exists — `GET /api/findings/export.csv` — but importing an external scanner's CSV
-to seed findings, the original `findings-dashboard.jsx` workflow, does not), the
-dashboard merge itself (`findings-dashboard.jsx`'s Azure DevOps ticket creation currently
-does a browser-side `fetch()` that's expected to hit CORS — if that logic moves into this
-app, it should move server-side, where Node has no CORS problem), and the **Reports** screen
-(currently a bare placeholder — no data, no server endpoint, see the Reports bullet above).
+## Security posture
 
-**Reasoning-engine design, current shape**: the reasoning half is deterministic-first and
-two-pass (adjudicate + review, concurrent — see the Reasoning Scan bullet above). This replaced
-module-scoped scanning with size-aware splitting/merging and a cross-cutting pass, which was an
-earlier attempt at the same goal (bounding token spend and hallucination surface) that solved it
-by *subdividing the input* rather than by *deriving the scope from the deterministic engine's
-output*. That earlier design worked but had cost scale with repo size and left the two engines
-blind to each other; both its splitting algorithm and its partial-failure reporting also shipped
-with real bugs found later (a split that silently failed on a repo with one top-level directory;
-a failure summary sent as `scan-stderr`, which the client discards). Bounded-context triage of
-deterministic findings is now **built** — that's the adjudication pass, though it works from the
-finding's captured code context rather than the grep-based blast radius originally sketched.
-Not yet built: self-consistency voting (run a
-discovery-mode task 2-3 times, surface only findings that repeat, as a cheap hallucination
-filter before acting on a finding); stricter citation enforcement (reject/downgrade a finding
-that doesn't cite a real, verifiable file:line — today `extractVerdict()` just parses whatever
-JSON comes back with no validation against the actual file); real per-endpoint route enumeration
-for a finer-grained discovery scope than the current file-count-based module split (`ReconAgent`'s
-existing `apiRoutes` is only a file-level heuristic, not real endpoint+method extraction); a
-token-spend budget/kill-switch surfaced per finding rather than only as a per-call CLI-level cap;
-and a "promote to pattern" UI action for feeding a repeated reasoning-mode finding back into
-sast-engine as a new deterministic rule.
+Local single-user dev tool, trusted by its one user. Beyond the loopback bind and the Origin
+check above, there is no auth on the WebSocket or REST endpoints, and `--permission-mode
+acceptEdits` is set for a fast loop.
+
+The trust boundary is deliberate and wide: **any directory path the client sends** is gated only
+by "does this exist and is it a directory". The engine reads arbitrary files under it, and the
+SCA half shells out to the detected package manager's audit command with it as `cwd`. That is
+consistent with "local tool, one trusted user" — do not add auth-free network exposure without
+revisiting it.
+
+Treat Fix as the highest-trust action in the app.
+
+## Testing
+
+`test/` holds **characterization** tests: they lock in *current* behaviour, not desired
+behaviour. A failure means behaviour changed — fine only if that was the point of the edit. Do
+not "fix" a failing assertion by changing the source unless the change is deliberate. Where
+recorded behaviour looks like a latent bug it is asserted as-is with a `CONCERN:` comment.
+
+| Suite | Covers |
+|---|---|
+| `server-logic` | pure decision logic in server.js / lib |
+| `client-logic` | client pure functions, lifted from the module tree |
+| `remediation-apply` | plan validation and the path-containment guards |
+| `rest-api` | the REST surface against a real booted server |
+| `engine-golden` | sast-engine output against fixtures |
+| `opengrep-map` | Opengrep JSON → finding shape: severity, rule ids, taint traces |
+| `ws-scan-protocol` | WebSocket message validation and framing |
+| `ws-scan-lifecycle` | scan start / progress / cancel / done sequencing |
+| `ws-fix-flow` | the preview / apply / chained fix handlers |
+| `coverage` | the file-coverage manifest — what a scan read and what it dropped |
+| `scan-report` | the agent roster and recon summary behind the Insights screen |
+| `scan-events` | the synthesized `scan-event` frame the deterministic engines emit |
+| `finding-factories` | engine output → Finding records, all three factories |
+| `finding-disposition` | severity rewrites, closures, and collapsed siblings |
+| `findings-store` | dataflow spans (`readFlowSpan`) and the CSV export |
+| `scan-handoff` | what the deterministic engine tells the reasoning pass |
+| `dead-code` | exports nothing reaches, and the test-only export allowlist |
+| `module-graph` | client import cycles and cluster size (Tarjan SCC) |
+
+Two things to know before believing a red run:
+
+- **There is a cost tripwire.** The WS suites assert that no scan record, finding, or agent run
+  was created — because the only way past the validation gates is to spawn a real `claude -p`
+  run costing real money. Never add a test that exercises a valid agent name end to end.
+- **The suite is load-sensitive.** The REST suite boots a real server and has hit its 90s
+  timeout under heavy parallel load while binding in ~1s standalone. A timeout there is worth
+  re-running serially before diagnosing it as a regression.
+
+There is no automated test for the live WebSocket streaming flow — that is verified manually in
+the browser.
+
+## Self-scanning
+
+This app can scan itself, and `.sast-engineignore` exists because of what happens when it does:
+the pattern agents' own rule definitions are literal vulnerable-code strings, so the engine
+reports its own rule files as findings. The ignore file excludes `sast-engine/rules/` and
+`sast-engine/utils/` plus `test/fixtures/`, and deliberately does **not** exclude
+`enumerate.js`, `ast-extract.js`, or `remediation-apply.js` — those hold real logic worth
+scanning.
+
+## Not yet built
+
+- Disk persistence — every store is in-memory and resets on restart
+- CSV *ingestion* (export exists at `GET /api/findings/export.csv`)
+- The **Reports** screen — a placeholder with no data and no endpoint
+- ASVS / NIST 800-53 mapping for deterministic findings (see docs/agents.md)
+- **Threat Model** and **Control Scan** were removed for maintainability and are planned to
+  return. Nothing in the codebase references them; rebuild rather than revert.

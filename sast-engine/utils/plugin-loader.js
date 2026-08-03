@@ -14,14 +14,14 @@
  * PLUGIN CONTRACT:
  *   A valid plugin must:
  *   - Export a default class (ES module)
- *   - Extend BaseAgent (from ../agents/base-agent.js)
+ *   - Extend BaseAgent (sast-engine/rules/core/base-agent.js)
  *   - Implement `async analyze(context)` returning an array of findings
  *   - Set `this.name` and `this.category` in the constructor
  *
  * EXAMPLE PLUGIN:
  *
  *   // .sast-engine/agents/my-rule.js
- *   import { BaseAgent, createFinding } from '../../agents/base-agent.js';
+ *   import { BaseAgent, createFinding } from '<sast-engine>/rules/core/base-agent.js';
  *
  *   export default class MyCustomRule extends BaseAgent {
  *     constructor() {
@@ -207,7 +207,9 @@ export function scaffoldPlugin(rootPath, pluginName) {
  */
 
 import fs from 'fs';
-import { BaseAgent, createFinding } from '../../agents/base-agent.js';
+// Point this at this engine's rules/core/base-agent.js. A relative path cannot be
+// pre-filled: the plugin lives in your repo, the engine lives in another.
+import { BaseAgent, createFinding } from '<sast-engine>/rules/core/base-agent.js';
 
 export default class ${className} extends BaseAgent {
   constructor() {

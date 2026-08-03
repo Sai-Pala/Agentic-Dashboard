@@ -1,0 +1,4 @@
+{
+  "//": "Marks public/js/ as ES modules for Node's resolver. The browser already knows these are modules from <script type=\"module\">; this exists so Node (the test suite, which imports them directly) does not have to guess and warn. The repo root stays CommonJS because server.js is CommonJS.",
+  "type": "module"
+}

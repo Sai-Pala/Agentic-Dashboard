@@ -25,8 +25,54 @@
 import path from 'path';
 import { parse } from '@babel/parser';
 
-/** Callers of an Express-style router. Deliberately the same list the regex used. */
+// Conventional names for the object routes hang off. This is only the FALLBACK set — the real
+// answer comes from collectRouterNames() below, which reads the file's own declarations.
 const ROUTER_OBJECTS = new Set(['app', 'router', 'server', 'api', 'r']);
+
+// Matches a variable whose name advertises what it is: userRouter, adminRoutes, apiRouter_v2.
+// Deliberately anchored to a Router/Routes suffix rather than a bare substring, so an
+// unrelated `routerCacheKey` does not start collecting HTTP routes.
+const ROUTER_NAME_RE = /(?:^|[a-z0-9_])(?:router|routes)(?:[_0-9]*)$/i;
+
+/**
+ * Find every identifier in this file that actually holds a router.
+ *
+ * The allowlist above used to be the ONLY test, which meant route extraction silently saw
+ * nothing in any codebase that names its routers — `const userRouter = express.Router()` and
+ * every `userRouter.get(...)` under it were invisible. That is the normal way to structure a
+ * real Express app, and the consequences were not cosmetic: this manifest is what feeds the
+ * reasoning review pass's worklist, so on a well-organised repo the expensive authorization
+ * review ran against an almost empty route list and reported nothing, while still billing per
+ * shard. "Found no problems" and "could not see the routes" looked identical.
+ *
+ * So: start from the conventional names, then add anything the file assigns from a
+ * Router()/express() call, plus anything whose name ends in Router/Routes. Union, never
+ * subtract — a file that does use `app` keeps working exactly as before.
+ */
+function collectRouterNames(ast) {
+  const names = new Set(ROUTER_OBJECTS);
+  walk(ast.program, (node) => {
+    if (node.type !== 'VariableDeclarator' || !node.id || node.id.type !== 'Identifier') return;
+    const varName = node.id.name;
+    if (ROUTER_NAME_RE.test(varName)) {
+      names.add(varName);
+      return;
+    }
+    const init = node.init;
+    if (!init) return;
+    // `express.Router()`, `Router()`, `express()`, `new Router()` — the shapes that produce
+    // something you can register routes on.
+    const callee = init.type === 'CallExpression' || init.type === 'NewExpression' ? init.callee : null;
+    if (!callee) return;
+    const calleeText = calleeName(callee);
+    if (!calleeText) return;
+    const last = lastSegment(calleeText);
+    if (last === 'Router' || last === 'router' || calleeText === 'express') {
+      names.add(varName);
+    }
+  });
+  return names;
+}
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all']);
 
 /** Operations where untrusted data causes real damage, matched on the callee name. */
@@ -157,6 +203,11 @@ export function extractFromAst(ast, relPath) {
   const definitionNodes = new Set();   // Identifier nodes that name a definition
   const bindingNodes = new Set();      // Identifier nodes that are import/export bindings
 
+  // Which identifiers in THIS file hold a router. Computed per file in a first pass, because
+  // `userRouter.get(...)` can appear above the `const userRouter = express.Router()` that
+  // declares it (hoisting, or simply a re-ordered file), and a single-pass check would miss it.
+  const routerObjects = collectRouterNames(ast);
+
   walk(ast.program, (node, parent) => {
     const line = node.loc ? node.loc.start.line : null;
 
@@ -166,7 +217,7 @@ export function extractFromAst(ast, relPath) {
       const method = lastSegment(name);
       const object = rootSegment(name);
 
-      if (object && ROUTER_OBJECTS.has(object) && method && HTTP_METHODS.has(method)
+      if (object && routerObjects.has(object) && method && HTTP_METHODS.has(method)
           && node.arguments.length && node.arguments[0].type === 'StringLiteral') {
         const { middleware, inlineHandler } = classifyArgs(node.arguments.slice(1));
         routes.push({
@@ -178,7 +229,7 @@ export function extractFromAst(ast, relPath) {
           inlineHandler,
           code: '',
         });
-      } else if (object && ROUTER_OBJECTS.has(object) && method === 'use' && node.arguments.length) {
+      } else if (object && routerObjects.has(object) && method === 'use' && node.arguments.length) {
         const hasPrefix = node.arguments[0].type === 'StringLiteral';
         const rest = classifyArgs(node.arguments.slice(hasPrefix ? 1 : 0));
         // In a prefixed use(), the last identifier is the router being mounted

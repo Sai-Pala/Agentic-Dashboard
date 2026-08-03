@@ -1,0 +1,187 @@
+/**
+ * Hybrid Scan: three engines over one directory, merged into findings.
+ *
+ * The deterministic half runs FIRST, not alongside the reasoning half — it costs seconds and
+ * nothing, and both reasoning passes take its output as their input. Running them concurrently
+ * makes the expensive engine re-read the whole tree knowing nothing about what the free one
+ * just found: a union, not a hybrid. SCA shares no data with either and runs throughout.
+ */
+
+
+const { loadSastEngine } = require('./sast-engine');
+const { severityRank } = require('./taxonomy');
+const { parseFileLine, isDuplicateOfReasoning, groupAdjacentSameRule } = require('./merge');
+// The deterministic half. `deterministic.js` (the vendored 491-rule pattern engine) is kept on
+// disk deliberately — its AI/agentic agents have no Opengrep equivalent and the overlap between
+// the two has not been measured yet. Do not delete it until it has.
+const { runOpengrepScan } = require('./engines/opengrep');
+const { runDeterministicScaScan } = require('./engines/sca');
+const { runLLMReasoningScan } = require('./engines/reasoning');
+const { toRepoRelative } = require('./paths');
+const { buildCoverageManifest } = require('./coverage');
+const {
+  findings,
+  toListItem,
+  findingFromSastEngine,
+  findingFromDepVuln,
+  findingFromLLMScan,
+} = require('../store/findings');
+
+async function runHybridReasoningScan(scan, targetPath, diffFiles, { children, send, finish, fail }) {
+  let engine;
+  try {
+    engine = await loadSastEngine();
+  } catch (err) {
+    fail(`Failed to load scan engine: ${err.message}`);
+    return;
+  }
+
+  // SCA is the fastest of the three by far, so it signals its own completion the moment it
+  // resolves rather than waiting for the others.
+  const scaPromise = runDeterministicScaScan(engine, scan, targetPath, { send }).then((result) => {
+    if (scan.status !== 'cancelled') {
+      // `failed` matters: a bar reading "Done" after a broken audit is the one confusion a
+      // scanner cannot afford — "found nothing" shown where "couldn't look" is the truth.
+      send({
+        type: 'scan-progress', runId: scan.runId, scanId: scan.id,
+        engine: 'sca', done: 1, total: 1, failed: !!result.error,
+      });
+    }
+    return result;
+  });
+
+  const detResult = await runOpengrepScan(scan, targetPath, diffFiles, { children, send });
+
+  if (scan.status === 'cancelled') return;
+
+  // Enumerated directly rather than arriving with the findings. The old pattern engine produced
+  // the route map as a by-product of runAll(); Opengrep has no equivalent and never will — it is
+  // a rule runner, not a framework-aware mapper. Losing this silently would be the expensive
+  // failure, because the reasoning pass is SHARDED by these routes: with no surface it reviews
+  // the tree unscoped, which its own warning calls substantially weaker coverage.
+  try {
+    scan.surface = engine.enumerateSurface(targetPath);
+  } catch (err) {
+    send({
+      type: 'scan-warning', runId: scan.runId, scanId: scan.id,
+      message: `Attack-surface enumeration failed, so the reasoning pass could not be scoped to routes and ran over the whole tree instead — weaker coverage, not a clean result: ${err.message}`,
+    });
+  }
+
+  // What the scan actually looked at, and what it silently dropped. Best-effort: a failure here
+  // must never fail the scan, since it is reporting about the scan rather than part of it.
+  //
+  // `scannedFiles` is Opengrep's own list of files it parsed — ground truth, so the manifest
+  // cannot drift from what was really read.
+  try {
+    scan.coverage = buildCoverageManifest(engine, targetPath, detResult.scannedFiles || []);
+  } catch (err) {
+    scan.coverage = { error: `Coverage could not be determined: ${err.message}` };
+  }
+
+  // Runs before adjudication so the reasoning pass reviews N distinct issues rather than N
+  // restatements of one — both cheaper and more accurate.
+  const { kept: collapsedDet, absorbed } = groupAdjacentSameRule(detResult.findings);
+
+  const llmResult = await runLLMReasoningScan(
+    scan, targetPath, diffFiles, collapsedDet, scan.surface, { children, send },
+  );
+  const scaResult = await scaPromise;
+
+  if (scan.status === 'cancelled') return;
+
+  if (detResult.error && llmResult.error && scaResult.error) {
+    fail(`Deterministic scan: ${detResult.error} — Reasoning pass: ${llmResult.error} — Dependency audit: ${scaResult.error}`);
+    return;
+  }
+  if (detResult.error) send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Deterministic pattern scan failed (other engines still succeeded): ${detResult.error}` });
+  if (llmResult.error) send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Reasoning pass failed (other engines still succeeded): ${llmResult.error}` });
+  if (scaResult.error) send({ type: 'scan-warning', runId: scan.runId, scanId: scan.id, message: `Dependency audit failed (other engines still succeeded): ${scaResult.error}` });
+
+  const created = [];
+  const adjudications = llmResult.adjudications || new Map();
+
+  // Pair each reasoning finding with a deterministic one at the same place (same file, within a
+  // couple of lines).
+  //
+  // Two engines independently flagging one location is the strongest signal this app produces, so
+  // neither half may be dropped in favour of the other. The pattern hit carries the structured
+  // half — rule, CWE, code context, taint span — while the reasoning finding carries the
+  // explanation of WHY it is exploitable, which is the half a human actually needs.
+  //
+  // They become one finding: structured fields from the pattern engine, prose from the reasoning
+  // pass, and a verdict recording that both agreed.
+  const detLine = (f) => ({ file: toRepoRelative(targetPath, f.file), line: f.line });
+  const corroborationByDet = new Map();  // det index -> reasoning finding
+  const mergedLlm = new Set();           // reasoning findings already merged, so not re-created
+  for (const rf of llmResult.findings) {
+    const loc = parseFileLine(rf.file);
+    if (!loc.file || loc.line == null) continue;
+    const idx = collapsedDet.findIndex((f, i) => {
+      if (corroborationByDet.has(i)) return false;  // one reasoning finding per pattern hit
+      const d = detLine(f);
+      return d.file === loc.file && d.line != null && Math.abs(d.line - loc.line) <= 2;
+    });
+    if (idx === -1) continue;
+    corroborationByDet.set(idx, rf);
+    mergedLlm.add(rf);
+  }
+
+  // Every decision the merge makes on the user's behalf, tallied. Each one removes or rewrites
+  // something an engine reported, and unrecorded they are invisible: a scan that discarded 40
+  // findings and one that never produced them would read identically.
+  const dispositions = {
+    patternRaw: detResult.findings.length,
+    collapsedAdjacent: detResult.findings.length - collapsedDet.length,
+    reasoningRaw: llmResult.findings.length,
+    mergedIntoPattern: 0,
+    duplicateReasoning: 0,
+    malformedReasoning: 0,
+    severityChanged: 0,
+    closedAsFalsePositive: 0,
+  };
+
+  for (const [i, f] of collapsedDet.entries()) {
+    const corroboration = corroborationByDet.get(i) || null;
+    if (corroboration) dispositions.mergedIntoPattern++;
+    const finding = findingFromSastEngine(
+      f, scan, targetPath, adjudications.get(i) || null, corroboration, absorbed.get(f) || 0,
+    );
+    if (finding.disposition && finding.disposition.severityApplied) dispositions.severityChanged++;
+    if (finding.disposition && finding.disposition.closedAs) dispositions.closedAsFalsePositive++;
+    findings.set(finding.id, finding);
+    scan.findingIds.push(finding.id);
+    created.push(toListItem(finding));
+  }
+
+  // Sorted most-severe-first so that when two calls disagree on severity for one issue, the
+  // surviving copy is the more severe reading rather than whichever finished first.
+  const keptLlm = [];
+  for (const rf of [...llmResult.findings].sort((a, b) => severityRank(a.severity) - severityRank(b.severity))) {
+    const title = String(rf.title || '').trim();
+    const description = String(rf.description || '').trim();
+    if (!title || !description) { dispositions.malformedReasoning++; continue; } // never fail the scan over one bad entry
+    if (mergedLlm.has(rf)) continue;      // already folded into its deterministic counterpart
+    if (isDuplicateOfReasoning(rf, keptLlm)) { dispositions.duplicateReasoning++; continue; }
+    keptLlm.push(rf);
+    const finding = findingFromLLMScan(rf, scan);
+    if (finding.disposition && finding.disposition.closedAs) dispositions.closedAsFalsePositive++;
+    findings.set(finding.id, finding);
+    scan.findingIds.push(finding.id);
+    created.push(toListItem(finding));
+  }
+
+  // SCA findings are package/version-keyed, so nothing above can match them: all survive.
+  for (const v of scaResult.findings) {
+    const finding = findingFromDepVuln(v, scan);
+    findings.set(finding.id, finding);
+    scan.findingIds.push(finding.id);
+    created.push(toListItem(finding));
+  }
+
+  scan.reasoningCostUsd = llmResult.costUsd || 0;
+  scan.dispositions = dispositions;
+  finish(created);
+}
+
+module.exports = { runHybridReasoningScan };
