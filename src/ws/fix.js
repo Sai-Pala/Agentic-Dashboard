@@ -59,6 +59,41 @@ function validateFixRequest(msg, { children, send }, { runIdKeys, pathPurpose })
 }
 
 /**
+ * Apply an `edit_plan` and record it as a `fix` run — the only path in this app that writes to a
+ * user's files.
+ *
+ * Shared by the standalone Fix button and the chained pipeline, which previously each carried
+ * their own copy. Every line of it is a promise to the client or the store: the run must appear in
+ * `finding.runs` before the write starts (so a crash mid-write leaves a `running` record rather
+ * than nothing), it must leave `runIndex` on the way out whether or not the write succeeded, and
+ * the terminal `done` must always be sent. Two copies of that is two chances to drop one of them.
+ *
+ * @returns {Promise<{applied: boolean, error?: string, diff?: string}>} the raw apply result, so
+ *          the caller can decide whether to chain onward.
+ */
+async function applyPlanAsFixRun({ runId, findingId, finding, targetPath, plan, send }) {
+  const runRecord = {
+    runId, agent: 'fix', instruction: '', context: '',
+    status: 'running', verdict: null, fullText: '',
+    startedAt: Date.now(), finishedAt: null,
+  };
+  finding.runs.push(runRecord);
+  runIndex.set(runId, { findingId: finding.id, run: runRecord });
+  send({ type: 'started', runId, findingId, agent: 'fix' });
+
+  const result = await applyRemediationPlan(targetPath, { edit_plan: plan });
+  const verdict = { verdict: result.applied ? 'applied' : 'not_applied', applied_diff: result.diff };
+  runRecord.status = result.error ? 'error' : 'done';
+  runRecord.verdict = verdict;
+  runRecord.finishedAt = Date.now();
+  runIndex.delete(runId);
+  if (result.error) send({ type: 'stderr', runId, findingId, data: result.error });
+  finding.status = deriveStatus(finding);
+  send({ type: 'done', runId, findingId, code: result.error ? 1 : 0, verdict, fullText: '' });
+  return result;
+}
+
+/**
  * Runs Remediation read-only against the finding's target directory and stops — no apply, no
  * automatic chain into Fix, so a human always sees the proposal before anything is written.
  */
@@ -131,26 +166,7 @@ function handleRemediateFixMessage(msg, { children, send }) {
     return;
   }
 
-  const runRecord = {
-    runId, agent: 'fix', instruction: '', context: '',
-    status: 'running', verdict: null, fullText: '',
-    startedAt: Date.now(), finishedAt: null,
-  };
-  finding.runs.push(runRecord);
-  runIndex.set(runId, { findingId: finding.id, run: runRecord });
-  send({ type: 'started', runId, findingId, agent: 'fix' });
-
-  (async () => {
-    const result = await applyRemediationPlan(targetPath, { edit_plan: plan });
-    const verdict = { verdict: result.applied ? 'applied' : 'not_applied', applied_diff: result.diff };
-    runRecord.status = result.error ? 'error' : 'done';
-    runRecord.verdict = verdict;
-    runRecord.finishedAt = Date.now();
-    runIndex.delete(runId);
-    if (result.error) send({ type: 'stderr', runId, findingId, data: result.error });
-    finding.status = deriveStatus(finding);
-    send({ type: 'done', runId, findingId, code: result.error ? 1 : 0, verdict, fullText: '' });
-  })();
+  applyPlanAsFixRun({ runId, findingId, finding, targetPath, plan, send });
 }
 
 /**
@@ -206,27 +222,13 @@ function handleRemediateAllMessage(msg, { children, send }) {
       return; // nothing confident enough to apply — chain stops after the proposal
     }
 
-    const fixRunRecord = {
-      runId: fixRunId, agent: 'fix', instruction: '', context: '',
-      status: 'running', verdict: null, fullText: '',
-      startedAt: Date.now(), finishedAt: null,
-    };
-    finding.runs.push(fixRunRecord);
-    runIndex.set(fixRunId, { findingId: finding.id, run: fixRunRecord });
-    send({ type: 'started', runId: fixRunId, findingId, agent: 'fix' });
-
-    const result = await applyRemediationPlan(targetPath, { edit_plan: plan });
-    const fixVerdict = { verdict: result.applied ? 'applied' : 'not_applied', applied_diff: result.diff };
-    fixRunRecord.status = result.error ? 'error' : 'done';
-    fixRunRecord.verdict = fixVerdict;
-    fixRunRecord.finishedAt = Date.now();
-    runIndex.delete(fixRunId);
-    if (result.error) send({ type: 'stderr', runId: fixRunId, findingId, data: result.error });
-    finding.status = deriveStatus(finding);
-    send({ type: 'done', runId: fixRunId, findingId, code: result.error ? 1 : 0, verdict: fixVerdict, fullText: '' });
+    const result = await applyPlanAsFixRun({
+      runId: fixRunId, findingId, finding, targetPath, plan, send,
+    });
 
     if (result.error || !result.applied) return; // nothing written — don't chain into Verify
 
+    const fixVerdict = { verdict: 'applied', applied_diff: result.diff };
     const verifyUserPrompt = `${instruction}\n\nFinding context:\n${context}\n\nThe Remediation agent proposed this fix and it was just applied to this exact directory:\n${JSON.stringify(fixVerdict, null, 2)}\n\nConfirm whether the fix actually landed and resolves the finding.`;
     const ver = await spawnAgentStage({
       runId: verifyRunId, findingId, finding, agentName: 'verify',

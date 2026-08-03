@@ -132,6 +132,9 @@ function selectForAdjudication(adjudicable, maxTotal, maxPerRule) {
   const perRule = new Map();
   const chosen = [];
   const deferred = [];
+  // Position in the severity-sorted input, captured once. The final sort below needs it, and
+  // looking it up with indexOf() from inside the comparator is a linear scan per comparison.
+  const severityOrder = new Map(adjudicable.map((entry, i) => [entry, i]));
 
   for (const entry of adjudicable) {
     const rule = entry[1].rule || entry[1].title || 'unknown';
@@ -150,7 +153,7 @@ function selectForAdjudication(adjudicable, maxTotal, maxPerRule) {
   }
 
   // Restore severity order: the deferred tail was appended after the capped head.
-  return chosen.sort((a, b) => adjudicable.indexOf(a) - adjudicable.indexOf(b));
+  return chosen.sort((a, b) => severityOrder.get(a) - severityOrder.get(b));
 }
 
 /**

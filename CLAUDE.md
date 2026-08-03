@@ -5,9 +5,15 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 ## What this is
 
 A local, single-user AppSec tool. It scans a target directory for security findings, then walks
-each finding through a fix pipeline. Two things run the scan: a deterministic pattern engine
-(`sast-engine/`, no LLM) and `claude -p` reasoning passes. Results merge into one finding list,
-streamed live to a browser UI over WebSocket.
+each finding through a fix pipeline. Two things run the scan: a deterministic engine (Opengrep,
+no LLM) and `claude -p` reasoning passes. Results merge into one finding list, streamed live to a
+browser UI over WebSocket.
+
+`sast-engine/` is still vendored and still loaded, but it is **no longer the deterministic
+scanner** — Opengrep replaced that half. What the app uses it for now is route enumeration, the
+dependency audit, and the file-discovery rules the coverage manifest is built from. Its 491
+pattern rules are dormant; see `src/services/engines/deterministic.js` for why they are parked
+rather than deleted.
 
 Everything is in-memory and session-lifetime. There is no database, no auth, no build step.
 
@@ -16,7 +22,7 @@ Everything is in-memory and session-lifetime. There is no database, no auth, no 
 ```bash
 npm install
 npm start     # node server.js — http://localhost:4500
-npm test      # node --test "test/**/*.test.js" — 494 tests, ~30s
+npm test      # node --test "test/**/*.test.js" — 520 tests, ~30s
 npm run lint  # eslint . — tuned to catch bugs, not taste; see eslint.config.js
 ```
 
@@ -38,13 +44,18 @@ src/
   config.js             every constant and every tunable number
   routes/               controllers — parse the request, call a service, respond
     agents  findings  scans  session  timeline
+  types.js              JSDoc @typedef only — no runtime code, imported for editor checking
   services/             logic, no req/res
     scanner.js          orchestrates the three engines and merges them
-    engines/            deterministic.js  reasoning.js  sca.js  plan.js (shard planning)
+    engines/            opengrep.js (the deterministic half)  reasoning.js  sca.js
+                        plan.js (shard planning)  emit.js (the shared scan-event frame)
+                        deterministic.js — DORMANT, the old pattern engine; nothing calls it
     claude.js           spawning `claude -p`, relaying stream-json
     remediation.js      the fix flow
     sast-engine.js      loads the vendored ESM engine via dynamic import()
-    merge.js  taxonomy.js  verdict.js
+    coverage.js         what a scan read and what it silently dropped
+    scan-report.js      agent roster + recon summary (DORMANT with deterministic.js)
+    merge.js  taxonomy.js  verdict.js  paths.js
   store/                the in-memory data
     findings/           state  status  list-item  factories  flow  csv  (index re-exports)
     scans.js
@@ -56,9 +67,11 @@ public/
   js/
     main.js             entry point: wiring order, nothing else
     state.js            the shared mutable state — one object, see docs/ui.md
-    api.js  ws.js  router.js
+    api.js  ws.js  router.js  nav.js  events.js (cross-screen pub/sub — see below)
     views/              one folder or file per screen
       dashboard  scans/  findings/  finding-detail/  surface  timeline  settings
+      insights            how a scan behaved: coverage, gating, cost
+      surface-guards.js   shared by surface + insights, not a screen
     components/         UI used by more than one view
       loop/ (state cell boxes actions)  runs  modals  menu  console
     lib/                format  html  icons  highlight  meta
@@ -183,12 +196,18 @@ recorded behaviour looks like a latent bug it is asserted as-is with a `CONCERN:
 | `remediation-apply` | plan validation and the path-containment guards |
 | `rest-api` | the REST surface against a real booted server |
 | `engine-golden` | sast-engine output against fixtures |
+| `opengrep-map` | Opengrep JSON → finding shape: severity, rule ids, taint traces |
 | `ws-scan-protocol` | WebSocket message validation and framing |
+| `ws-scan-lifecycle` | scan start / progress / cancel / done sequencing |
 | `ws-fix-flow` | the preview / apply / chained fix handlers |
 | `coverage` | the file-coverage manifest — what a scan read and what it dropped |
 | `scan-report` | the agent roster and recon summary behind the Insights screen |
+| `scan-events` | the synthesized `scan-event` frame the deterministic engines emit |
+| `finding-factories` | engine output → Finding records, all three factories |
 | `finding-disposition` | severity rewrites, closures, and collapsed siblings |
+| `findings-store` | dataflow spans (`readFlowSpan`) and the CSV export |
 | `scan-handoff` | what the deterministic engine tells the reasoning pass |
+| `dead-code` | exports nothing reaches, and the test-only export allowlist |
 | `module-graph` | client import cycles and cluster size (Tarjan SCC) |
 
 Two things to know before believing a red run:

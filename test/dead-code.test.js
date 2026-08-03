@@ -62,14 +62,25 @@ const ROOT = path.join(__dirname, '..');
  * Exported for the test suite alone. Each entry is a deliberate choice, not an oversight —
  * a pure helper worth testing directly that nothing else happens to need yet. Keep it short:
  * a long list means production code is being shaped by its tests.
+ *
+ * This list is enforced in both directions (see the last two tests). Adding a test-only export
+ * without listing it here fails, and so does listing something that production actually uses.
  */
 const TEST_ONLY_EXPORTS = new Set([
-  'ADJACENT_RULE_LINES',  // merge.js — the dedupe window, asserted directly
-  'loopTrackHtml',        // loop/cell.js — rendered markup, asserted directly
-  'AGENT_META',           // lib/meta.js — the label table
-  'findingsSortValue',    // findings/table.js — pure sort key
-  'locateFindString',     // remediation-apply.js — plan validation internals
-  'countOccurrences',     // remediation-apply.js — ditto
+  'ADJACENT_RULE_LINES',      // merge.js — the dedupe window, asserted directly
+  'dedupeAdjacentSameRule',   // merge.js — groupAdjacentSameRule().kept, which is all tests want
+  'csvEscape',                // findings/csv.js — quoting rules, asserted per-input
+  'mapSeverity',              // opengrep.js — the five-level severity mapping
+  'ruleIdOf',                 // opengrep.js — check_id -> rule name
+  'titleOf',                  // opengrep.js — rule name -> display title
+  'owaspOf',                  // opengrep.js — OWASP edition preference
+  'taintSourceLineOf',        // opengrep.js — the nested dataflow_trace tuple
+  'toEngineFinding',          // opengrep.js — the whole mapper, against recorded fixtures
+  'loopTrackHtml',            // loop/cell.js — rendered markup, asserted directly
+  'AGENT_META',               // lib/meta.js — the label table
+  'findingsSortValue',        // findings/table.js — pure sort key
+  'locateFindString',         // remediation-apply.js — plan validation internals
+  'countOccurrences',         // remediation-apply.js — ditto
 ]);
 
 function walk(dir, out = []) {
@@ -179,5 +190,38 @@ describe('dead code', () => {
       [],
       'used only inside its own file — drop the `export` keyword, or add it to TEST_ONLY_EXPORTS with a reason.',
     );
+  });
+
+  /**
+   * The two checks that give TEST_ONLY_EXPORTS teeth.
+   *
+   * Without them the list is inert: the check above already treats any test reference as
+   * legitimate use, so a symbol exported purely for a test passes whether or not it is listed,
+   * and emptying the list changes no result. That silently inverts its stated purpose — "keep it
+   * short" cannot be a discipline if nothing ever has to be added.
+   */
+  test('every export only the tests use is declared in TEST_ONLY_EXPORTS', () => {
+    const undeclared = declared.filter(({ file, name }) =>
+      !TEST_ONLY_EXPORTS.has(name) &&
+      !usedIn([...appFiles, ...referenceOnlyFiles], name, file) &&
+      usedIn(testFiles, name, file));
+
+    assert.deepEqual(
+      undeclared.map((d) => `${path.relative(ROOT, d.file)} -> ${d.name}`),
+      [],
+      'exported, but only a test imports it. Either wire it into the app, or add it to '
+      + 'TEST_ONLY_EXPORTS with a one-line reason so the seam is a recorded decision.',
+    );
+  });
+
+  test('no TEST_ONLY_EXPORTS entry has since gained a production caller', () => {
+    // An entry naming nothing in appFiles is not stale — remediation-apply.js lives under
+    // sast-engine/, which this suite reads for usage but never audits.
+    const stale = [...TEST_ONLY_EXPORTS].filter((name) => {
+      const decl = declared.find((d) => d.name === name);
+      return decl && usedIn([...appFiles, ...referenceOnlyFiles], name, decl.file);
+    });
+
+    assert.deepEqual(stale, [], 'production uses these now — drop them from TEST_ONLY_EXPORTS.');
   });
 });
